@@ -1,0 +1,52 @@
+
+.chatwindow {
+	border-radius: 14px 14px 0px 0px;
+	box-sizing: border-box;
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+	
+	background: white;
+}
+
+.chatwindow-controls {
+	margin: 14px;
+	height: 40px;
+	display: flex;
+}
+.chatwindow-input {
+	margin: 5px;
+	flex: 1;
+}
+
+.chatwindow-messages {
+	box-sizing: border-box;
+	box-shadow: inset 0px 3px 3px rgba(0, 0, 0, .5);
+	margin: 10px;
+	background: grey;
+	
+	flex: 1;
+	overflow: hidden;
+
+}
+
+
+.chatwindow-message {
+
+	box-sizing: border-box;
+	
+
+}
+
+.chatwindow-message p {
+	margin: 0px;
+}
+
+.chatwindow-message-body {
+	display: inline-block;
+	padding: 2px 4px;
+	border-radius: 10px;
+	box-sizing: border-box;
+	background: white;
+	margin: 6px;
+}

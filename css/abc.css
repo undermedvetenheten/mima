@@ -1,0 +1,43 @@
+.section-parseview.section {
+	flex: 1;
+	overflow-y: scroll;
+}
+
+.section-boteditor.section {
+	flex: 1;
+}
+
+
+.section-keybrowser.section {
+	height: 120px;
+	overflow-y: scroll;
+}
+
+
+.section-botpreview.section {
+	flex: 1;
+}
+
+.chancery-inspector.section {
+	height: 50%;
+	overflow-y: scroll;
+}
+
+.chatwindow {
+	flex: 1;
+}
+
+
+.section-jsoneditor.section {
+	flex: 1;
+}
+
+
+.blackboard-obj {
+	border-radius: 10px;
+	box-shadow: 0px 1px 3px rgba(0, 0, 0, .5);
+}
+
+.blackboard-item {
+	display: inline-block;
+}

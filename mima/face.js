@@ -37,11 +37,11 @@ function Face() {
 	this.width  = 300
 	this.height = 400
 	this.rows = 16
-	this.columns = 14
+	this.columns = 13
 	this.pixelW = this.width/this.columns
 	this.pixelH = this.height/this.rows
 
-	this.detailColor = new KColor(Math.random(), .9, .6)
+	this.detailColor = new KColor(Math.random(), .6, .6)
 	this.faceColor = new KColor(Math.random(), .9, .8)
 	this.bgColor = new KColor(Math.random(), .9, .5)
 
@@ -93,29 +93,6 @@ Face.prototype.setWord = function(word, length) {
 	this.particles.push(new Particle({word:word, lifespan:length*.007}))
 }
 
-Face.prototype.drawEye = function(g, side) {
-	let pw = this.pixelW
-	let ph = this.pixelH
-
-	
-	let x = this.columns/2 - side*3
-	let y = 5
-	g.rect(x*pw, y*ph, pw*2*side, ph)
-
-}
-
-
-Face.prototype.drawMouth = function(g, t) {
-	
-	let mouth = app.values.mouth
-	let w = this.columns*.5/(mouth + 1)
-	let h = mouth*5 + .2
-	let y = this.rows/2
-	g.rect(-(w/2 - this.columns/2)*this.pixelW, y*this.pixelH, w*this.pixelW, h*this.pixelH)
-
-}	
-
-
 Face.prototype.drawSpace = function(g, t) {
 	let stress = app.values.agitation
 	let p = new Vector()
@@ -134,9 +111,69 @@ Face.prototype.drawSpace = function(g, t) {
 	}
 }
 
-Face.prototype.draw = function(g, time) {
-	let t = time.current
-	this.lastTime = t
+Face.prototype.drawFaceDetails = function(g, t) {
+	let pw = this.pixelW
+	let ph = this.pixelH
+
+
+	let fuzz = app.values.eyeFuzz
+	let mouth = app.values.mouth
+	let mouthWidth = app.values.mouthWidth
+	let blink = app.values.blink
+	// let detailShade = app.values.detailShade
+	let detailShade  = 1 - app.values.opacity
+
+	let offset = new Vector()
+	for (var i = 0; i < 4; i++) {
+
+		// 
+		this.detailColor.hueShift(.1*fuzz*Math.sin(i + t)).fill(g, Math.sin(i) + detailShade - .5, .6)
+		offset.setToPolar(fuzz*i*utilities.noise(t), 20*utilities.noise(t*.02, i))
+		g.pushMatrix()
+		g.translate(offset.x, offset.y)
+
+		let sides = [-1,1]
+
+		// Draw the eyes
+		sides.forEach(scaleX => {
+			g.pushMatrix()
+			g.scale(scaleX,1)
+			g.translate(pw*1.5, ph*-3)
+			// eyebrows
+			g.scale(1, 1 - blink*.2)
+			g.rect(0, -ph, pw*4, ph*1)
+
+			g.scale(1, 1 - .9*blink)
+			g.rect(0, 0, pw*2, ph*1)
+
+			g.popMatrix()
+
+		})
+
+		// Nose
+		g.rect(-pw*1.5, ph*-4, pw*1, ph*7)
+		g.rect(-pw*.5, ph*2, pw*2, ph*1)
+		
+		// Mouth
+		g.pushMatrix()
+		g.translate(0, pw*5)
+		g.scale((1 + mouth*.4)*(1 - mouthWidth*.5), 1 - mouth*.2)
+		g.rect(-pw*3.5, -ph, pw*7, ph*1)
+		
+		g.scale(1, mouth*2.8 + .2)
+		g.rect(-pw*1.5, 0, pw*3, ph*1)
+
+		g.popMatrix()		
+
+		g.popMatrix()
+	}
+}
+
+Face.prototype.drawFaceBG = function(g, t) {
+	let rainbow = app.values.rainbow
+	let faceOpacity = app.values.opacity
+	let hue = app.values.hue
+	let stress = app.values.agitation*.1
 
 	let w = this.width
 	let h = this.height
@@ -144,41 +181,14 @@ Face.prototype.draw = function(g, time) {
 	let ph = this.pixelH
 
 	
-	let rainbow = app.values.rainbow
-	let zoomScale = 1/(app.values.perspective*.7 + .3)
 
-	let faceOpacity = app.values.opacity
-	let hue = app.values.hue
-	let stress = app.values.agitation*.1
-	
-	this.faceColor.h = (hue + 10)%1
-
-	if (app.values.perspective > -1) {
-		let z2 = utilities.lerp(zoomScale, 1, .8)
-		g.pushMatrix()
-		g.scale(z2, z2)
-		this.drawSpace(g, t)
-		g.popMatrix()
-	}
-
-	g.pushMatrix()
-	
-
-	// Zoom the face
-	g.scale(zoomScale, zoomScale)
-
-	g.translate(-w/2, -h/2)
-
-	// Face background
+	// Draw the static rectangle
 	this.faceColor.fill(g, rainbow, .4*faceOpacity)
-	g.rect(0, 0, w, h)
+	g.rect(-w/2, -h/2, w, h)
 
-	g.pushMatrix()
-	
 	this.faceColor.s = 1 - rainbow/11
 	
-	// // console.log(stress)
-
+	// Draw the face squares	
 	for (var i = 0; i < this.columns; i++) {
 		for (var j = 0; j < this.rows; j++) {
 			let jiggle = stress*9
@@ -191,44 +201,44 @@ Face.prototype.draw = function(g, time) {
 			let r = Math.pow(stress, 3)*5*pw
 			// console.log(r)
 			let theta =i + j + .3*utilities.noise(i + t*jiggle , j + t*jiggle )
+			let x = -w/2 + i*pw 
+			let y = -h/2 + j*ph 
 
-			g.rect(i*pw + r*Math.sin(theta), j*ph + r*Math.cos(theta), pw + 1, ph + 1)
+			g.rect(x + r*Math.sin(theta), y + r*Math.cos(theta), pw + 1, ph + 1)
 		}
 	}
 
-	let offset = new Vector()
+}
 
-	let fuzz = app.values.eyeFuzz
-	for (var i = 0; i < 4; i++) {
-		this.detailColor.hueShift(.1*fuzz*Math.sin(i + t)).fill(g, Math.sin(i), .3)
-		offset.setToPolar(fuzz*i*utilities.noise(t), 20*utilities.noise(t*.02, i))
-		g.pushMatrix()
-		g.translate(offset.x, offset.y)
-
-		this.drawEye(g, -1)
-		this.drawEye(g, 1)
-		this.drawMouth(g, t)
-		g.popMatrix()
-	}
+Face.prototype.draw = function(g, time) {
+	let t = time.current
+	this.lastTime = t
 
 
-	g.popMatrix()
 	
-
-	// Draw the debug 
-	if (this.drawDebug) {
-		g.translate(-50, -20)
-		this.stress.draw(g, t)
-
+	let zoomScale = 1/(app.values.perspective*.7 + .3)
+	
+	// Draw spacey particles
+	if (app.values.perspective > -1) {
+		let z2 = utilities.lerp(zoomScale, 1, .8)
 		g.pushMatrix()
-		g.translate(0, 100)
-		this.mouth.draw(g, t)
+		g.scale(z2, z2)
+		this.drawSpace(g, t)
 		g.popMatrix()
 	}
 
+	g.pushMatrix()
+	g.scale(zoomScale, zoomScale)
+
+	this.drawFaceBG(g, t)
+	this.drawFaceDetails(g, t)
+
 	g.popMatrix()
 
+
+	// Draw speech particles
 	this.particles.forEach(p => p.draw(g))
 
 
+	// app.valueTracker.mouthWidth.draw(g, t)
 }

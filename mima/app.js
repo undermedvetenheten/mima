@@ -1,5 +1,5 @@
 
-let valueNames = ["perspective", "mouth", "eyeFuzz", "agitation", "speed", "volume", "rainbow", "opacity", "hue"]
+let valueNames = ["blink","perspective", "mouth", "mouthWidth", "eyeFuzz", "agitation", "speed", "volume", "rainbow", "opacity", "hue"]
 
 let settings = {
 	volume: .5,
@@ -18,6 +18,13 @@ let app = {
 	values: {
 	},
 
+	blink() {
+		app.animateValueTo("blink", 1, .1)
+			setTimeout(() => {
+
+			app.animateValueTo("blink", 0, .3)
+		}, Math.random()*400 + 100)
+	},
 
 	// Animate the face speaking and play sounds
 	speakWords(output, progress) {
@@ -109,8 +116,18 @@ let app = {
 		clearInterval(this.tickInterval)
 
 		this.instance.start()
+
+		let blinkCount = 0
+		let tickCount = 0
 		this.tickInterval = setInterval(() => {
 			this.instance.tick()
+			blinkCount++
+			tickCount++
+
+			if (blinkCount > 50 + 60*Math.random()) {
+				app.blink()
+				blinkCount = 0
+			}
 		}, 100) 
 	},
 
@@ -127,12 +144,25 @@ let app = {
 		app.instance.input(msg)
 	},
 
+	animateValueTo(name, val, dt) {
+		if (this.valueTracker[name] === undefined)
+			console.warn("No value", name)
+
+		this.valueTracker[name].set(val, app.time.current, dt)
+	},
+
+
+
 	init() {
 		
 		valueNames.forEach((name) => {
 			this.valueTracker[name] = new LerpValue()
 			this.values[name] = 0
 		})
+
+
+		
+	
 
 		this.blackboard = this.instance.blackboard
 		this.blackboard.onModify((path, value) => {
@@ -166,6 +196,11 @@ let app = {
 			}, 
 			onStart: (g, t) => {
 				app.time = t
+
+				app.valueTracker.perspective.set(2, t.current, .1)
+				app.valueTracker.opacity.set(10, t.current, .1)
+
+
 
 			}
 		}); 

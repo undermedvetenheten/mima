@@ -89,14 +89,14 @@ entity: ["atom", "human", "electron", "planet", "active entity", "galaxy", "star
 			onEnterPlay: ["decorative/JungianPenguin.mp3"],
 			onEnter: "perspective=0.5 opacity=0 hue=randomInt(3)+4",
 			onEnterSay: ["You need a good name..."],
-			chips : ["#adj.capitalize# #animal.capitalize#", "#adj.capitalize# #animal.capitalize#", "#adj.capitalize# #animal.capitalize#", "#adj.capitalize# #animal.capitalize#"],
+			chips : ["#adj.capitalize# #animal.capitalize#", "#adj.capitalize# #animal.capitalize#"],
 			exits: ["'' wait:4 ->nom"]
 		},
 		characters: {
 			onEnter: "perspective=10 rainbow=randomInt(10) valence=2",
 			onEnterPlay: ["blips/affirm.mp3"],
 			onEnterSay: ["Which one of these names do you prefer?"],
-			chips: ["#adj.capitalize# #animal.s.capitalize#","#adj.capitalize# #animal.s.capitalize#","#adj.capitalize# #animal.s.capitalize#","#adj.capitalize# #animal.s.capitalize#"],
+			chips: ["#adj.capitalize# #animal.s.capitalize#","#adj.capitalize# #animal.s.capitalize#"],
 			exits: ["'' ->nom wait:4 'ok'", "'' wait=4 ->nom '...ok' wait=4 'lets call you #/robe/name# then'"]
 		},
 		nom: {

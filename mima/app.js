@@ -4,12 +4,12 @@ let valueNames = ["blink","perspective", "mouth", "mouthWidth", "eyeFuzz", "agit
 let settings = {
 	volume: .5,
 	speed:1,
-	transitionSpeed: .1,
+	transitionSpeed: .01,
 
 }
 
 let app = {
-	devMode: true,
+	devMode: false,
 	time: {},
 	blackboard: undefined,
 	face: new Face(),
@@ -29,9 +29,9 @@ let app = {
 	// Animate the face speaking and play sounds
 	speakWords(output, progress) {
 
-		
+
 		let words = output.split(" ")
-	
+
 		let start = new Promise((resolve) => {
 			setTimeout(() => {
 				resolve()
@@ -53,26 +53,26 @@ let app = {
 						app.face.setWord(word, wordLength)
 						resolve()
 					}, wordLength)
-			
-				}) 
+
+				})
 			})
 		})
 		return start
-		
+
 	},
 
 	instance: new Chancery({
-		map:testMimaMap, 
-		metadata:{title:"mima"}, 
+		map:testMimaMap,
+		metadata:{title:"mima"},
 		onOutput: ({output, progress}) => {
 			console.log("OUTPUT", output)
-				
+
 			app.messages.push({
 				owner: "bot",
 				text: [output]
 			})
-			return app.speakWords(output, progress)	
-		
+			return app.speakWords(output, progress)
+
 		},
 		onChips: (chips) => {
 			console.warn(chips)
@@ -95,7 +95,7 @@ let app = {
 				<button @click="app.start()">RESTART</button>
 				<chancery-statemap :instance="app.instance" :app="app" />
 				<chancery-exitmap :instance="app.instance" :app="app" />
-			</div>`,	
+			</div>`,
 			el: '#dev0',
 			data: {app:app}
 		})
@@ -105,7 +105,7 @@ let app = {
 				DEV TOOLS
 				<chancery-actionqueue :instance="app.instance" :app="app" />
 				<blackboard-view :blackboard="app.blackboard" />
-			</div>`,	
+			</div>`,
 			el: '#dev1',
 			data: {app:app}
 		})
@@ -128,7 +128,7 @@ let app = {
 				app.blink()
 				blinkCount = 0
 			}
-		}, 100) 
+		}, 100)
 	},
 
 	userInput(data) {
@@ -136,7 +136,7 @@ let app = {
 			owner: "user",
 			text: [data]
 		}
-		
+
 		// Send it to the chat
 		app.messages.push(msg)
 
@@ -154,56 +154,56 @@ let app = {
 
 
 	init() {
-		
+
 		valueNames.forEach((name) => {
 			this.valueTracker[name] = new LerpValue()
 			this.values[name] = 0
 		})
 
 
-		
-	
+
+
 
 		this.blackboard = this.instance.blackboard
 		this.blackboard.onModify((path, value) => {
 			let key = path[0]
 			if (app.valueTracker[key] !== undefined) {
 				app.valueTracker[key].set(value, app.time.current, .5)
-			}	
-		
+			}
+
 		})
-			
-		
+
+
 		utilities.createProcessing({
-			element:"bot", 
+			element:"bot",
 			onUpdate: t => {
 				valueNames.forEach(key => {
 					app.values[key] = app.valueTracker[key].get(t.current)
 					// console.log(key, app.values[key])
 				})
 
-				
+
 				app.face.update(t)
-				
-			}, 
+
+			},
 			onDraw: (g, t) => {
-				
+
 				if (t.frame <= 1000000) {
 					g.fill(0, 0, 0, .3*(1/(this.values.speed + 1)))
 					g.rect(-g.width/2, -g.height/2, g.width, g.height)
 					app.face.draw(g, t)
 				}
-			}, 
+			},
 			onStart: (g, t) => {
 				app.time = t
 
 				app.valueTracker.perspective.set(2, t.current, .1)
-				app.valueTracker.opacity.set(10, t.current, .1)
+				app.valueTracker.opacity.set(0, t.current, .1) //john edited the opacity to start at 0
 
 
 
 			}
-		}); 
+		});
 
 		app.initUI()
 
@@ -220,9 +220,9 @@ app.init()
 
 new Vue({
 	template: `
-	
+
 	<chat-window :messages="app.messages" :chips="app.chips" @sendInput='app.userInput' />
-	`,	
+	`,
 	el: '#chat',
 	methods: {
 

@@ -3,7 +3,6 @@ let testMimaMap = {
 		robe: {name:"#adj.capitalize# #animal.capitalize#",
 		blab: "#gossip#",
 		pet: "#animal#"},
-		speed:0.125,
 		opacity:0,
 		volume:1,
 		agitation: 0,
@@ -67,7 +66,7 @@ entity: ["atom", "human", "electron", "planet", "active entity", "galaxy", "star
 		party: ["party", "troop", "team", "collective", "compound", "group of travellers", "cluster of beings", "group"],
 		ohgod: ["oh wow", "oooh", "oh", "really?"],
 		small: ["oh my little atom", "like a tiny electron...", "oh #smek#", "I can sense you are very small", "my little free agent"],
-		sooth: ["Let me help you find calm...", "Be still my little petal."],
+		sooth: ["Let me help you find calm...", "Be still my little petal.", "I called you #/robe/name# for a reason, consider the energy and the aura"],
 		unzen: ["The mind of the #animal.capitalize# is empty, free of the habits of the human, ready to accept, to doubt, and open to all the possibilities", "Treat every moment as your last. It is not preparation for something else", "In the #animal.capitalize# mind there are many possibilities, but in the mind of #entity.a# there are few"],
 		zen: ["When you realize nothing is lacking, the whole world belongs to you.", "Let go, or be dragged", "To seek is to suffer To seek nothing is bliss", "Mind is like a mad monkey", "Wise minds don’t judge – they seek to understand", "When thoughts arise, then do all things arise. When thoughts vanish, then do all things vanish", "Wherever you are, it’s the place you need to be", "The noble-minded are calm and steady. Little people are forever fussing and fretting", "Rest and be kind, you don’t have to prove anything", "Nothing ever goes away until it has taught us what we need to know.", "Only the hand that erases can write the true thing.", "Where can I find the mind that has forgotten words so I can talk with them instead?", "Life is a balance of holding on and letting go", "Relax. Nothing is under control", "Forget the years, forget distinctions. Leap into the boundless and make it your home", "The search for happiness is one of the chief sources of unhappiness", "And when they played they really played. And when they worked they really worked", "Do not seek the truth, only cease to cherish your opinions", "One loses joy and happiness in the attempt to possess them", "Peace of mind is that mental condition in which you have accepted the worst"]
 	},
@@ -126,7 +125,7 @@ entity: ["atom", "human", "electron", "planet", "active entity", "galaxy", "star
 		},
 		calm: {
 			onEnter: "perspective=5 agitation=5",
-			onEnterSay: "I called you #/robe/name# for a reason, consider the energy and the aura",
+			onEnterSay: "#sooth#",
 			exits: ["'' ->hysteria", "'?' ->calm2 'Be still my #smek#'"]
 		},
 		calm2: {

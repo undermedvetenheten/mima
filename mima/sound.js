@@ -4,22 +4,22 @@ let soundLibrary = {
 
 
 var reverb = new Pizzicato.Effects.Reverb({
-	time: 1,
+	time: 10,
 	decay: 0.8,
 	reverse: true,
-	mix: 0.5
+	mix: 0.3
 });
 
 let effects = {
 	dubDelay : new Pizzicato.Effects.DubDelay({
-		feedback: 0.6,
+		feedback: 0.3,
 		time: 0.7,
 		mix: 0.5,
-		cutoff: 700
+		cutoff: 7000
 	}),
 
 	reverb : new Pizzicato.Effects.Reverb({
-		time: 1,
+		time: 10,
 		decay: 0.8,
 		reverse: true,
 		mix: 0.3
@@ -36,7 +36,7 @@ let effects = {
 
 function randomChirp(length) {
 
-	
+
 
 	let keys = Object.keys(soundLibrary.chirps)
 	if (keys.length !== 0) {
@@ -49,13 +49,13 @@ function randomChirp(length) {
 			sound.volume *= .3
 			sound.addEffect(effects.reverb)
 		} else {
-			sound.volume = settings.volume*(.5 + .05*app.values.volume)		
+			sound.volume = settings.volume*(.5 + .05*app.values.volume)
 		}
 
 
-		
+
 		sound.play()
-	
+
 		sound.sourceNode.playbackRate.value = (Math.pow(.92, app.values.speed + .01))*settings.speed / (length*.001 + 1 + Math.random())
 		sound.on('end', () => {
 			console.log("done!")
@@ -74,7 +74,7 @@ function initSounds() {
 	let chirps = ["affirm", "hi", "iguess", "chirp", "sigh", "uh huh", "why", "yes", "yo"]
 
 	chirps.forEach((name) => {
-		var sound = new Pizzicato.Sound({ 
+		var sound = new Pizzicato.Sound({
 			source: 'file',
 			options: { path: 'mima/sounds/blips/' + name + '.wav' }
 		}, ()  => {
@@ -82,7 +82,7 @@ function initSounds() {
 		//	sound.play();
 			soundLibrary.chirps[name] = sound
 		});
-		
+
 	})
 }
 }

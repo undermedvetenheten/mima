@@ -63,6 +63,8 @@ entity: ["atom", "human", "electron", "planet", "active entity", "galaxy", "star
 		questions: "what why when who is ?".split(" "),
 		old: ["your not as green as your cabbage looks", "a shroud has no pockets", "if you want to live and thrive let a spider run alive", "dont cast your cloak until the may flowers bloom", "worse things happen at sea", "never put your hand where you wouldnt put your nose", "do what you like but you will be on parade in the morning", "waste not want not", "bang on the pan nevermind your dungy hands", "use a blunt axe for splitting kindlers, not a sharp one", "never leave the bank with a smile on your face", "worrying and ironing, dont do either", "be thankful you can still get into the doghouse", "Dont put anything in your ear apart from your elbow", "a bird cant fly on one wing", "keen on pastry if you would eat the poke", "only made the skitter bigger by standing in it", "whats for you will not go by you", "well you werent hiding behind the door when they gave out the #moods# #stuff.s#"],
 		adventure: "lament cry wail tale myth story epic tears wish desire dance mystery enigma drama path training sorrows joy tragedy comedy riddle puzzle regret victory loss song adventure question quest vow oath tale travels".split(" "),
+		larp: ["ship", "space", "void", "abyss", "empty"],
+		larpHysteria: [""],
 		party: ["party", "troop", "team", "collective", "compound", "group of travellers", "cluster of beings", "group"],
 		ohgod: ["oh wow", "oooh", "oh", "really?"],
 		small: ["oh my little atom", "like a tiny electron...", "oh #smek#", "I can sense you are very small", "my little free agent"],
@@ -73,7 +75,7 @@ entity: ["atom", "human", "electron", "planet", "active entity", "galaxy", "star
 	states: {
 		origin: {
 			onEnter: ["speed=5"],
-			onEnterPlay: ["Mima Fizzing.mp3"],
+			onEnterPlay: ["decorative/Lores/honk2.mp3"],
 			onEnterSay: ["Hello"],
 			exits: ["wait:4 ->welcome"]
 		},
@@ -101,6 +103,7 @@ entity: ["atom", "human", "electron", "planet", "active entity", "galaxy", "star
 		},
 		nom: {
 			onEnter: "perspective=1 opacity=0.125 hue=5 robe.name=INPUT",
+			onEnterPlay: ["MimaMax.mp3"],
 			onEnterSay: "#/robe/name# is a good name for you",
 			exits: ["wait:4 ->curious 'This name suits your #adj# energy' wait:3 'What do you want to talk about, #/robe/name#?'"]
 		},

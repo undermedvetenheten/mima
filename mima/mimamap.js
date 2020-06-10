@@ -122,17 +122,20 @@ entity: ["atom", "human", "electron", "planet", "active entity", "galaxy", "star
 		},
 		curious: {
 			onEnter: "perspective=0.5 valence=2 speed=4",
-			exits: ["'' wait:4 ->curious2 robe.blab=INPUT wait:4 '...' wait:4 '#zen#'", "'#trigger#' wait:4 ->hysteria 'oh #smek#...'"]
+			exits: ["'' wait:4 ->curious2 robe.blab=INPUT", "'#trigger#' wait:4 ->hysteria 'oh #smek#...'"],
+			onExit: "wait:4 '#zen#'"
 		},
 		curious2: {
 			onEnter: "perspective=randomInt(5) valence=randomInt(2)",
 			onEnterSay: "#inquire#",
-			exits: ["'' wait:4 ->curious3 robe.blab=INPUT wait:4", "'#trigger#' wait:3 ->hysteria 'oh #smek#...'"]
+			exits: ["'' wait:4 ->curious3 robe.blab=INPUT", "'#trigger#' wait:3 ->hysteria 'oh #smek#...'"],
+			onExit: "wait:4 '#unzen#'"
 		},
 		curious3: {
 			onEnter: "perspective=randomInt(7) valence=randomInt(5) hue=randomInt(4)+10 eyeFuzz=10",
 			onEnterSay: "#wisdome#",
-			exits: ["'' wait:4 ->curious2 robe.blab=INPUT wait:4 '#old#'", "'#trigger#' wait:3 ->hysteria 'oh #smek#'"]
+			exits: ["'' wait:4 ->curious2 robe.blab=INPUT", "'#trigger#' wait:3 ->hysteria 'oh #smek#'"],
+			onExit: "wait:4 '#old#'"
 		},
 		hysteria: {
 			onEnter: "perspective=10 agitation=10",

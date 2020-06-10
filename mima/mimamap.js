@@ -87,7 +87,7 @@ entity: ["atom", "human", "electron", "planet", "active entity", "galaxy", "star
 		},
 		welcome: {
 			onEnter: [ "rainbow=1 opacity=1 speed=1 volume=1"],
-			onEnterPlay: ["#blips#"],
+			onEnterPlay: ["blips/hi.wav"],
 			onEnterSay: "are you one entity or many?",
 			onEnter:"perspective=1",
 			chips : ["One", "Many"],

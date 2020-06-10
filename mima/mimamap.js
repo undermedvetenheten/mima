@@ -45,7 +45,7 @@ entity: ["atom", "human", "electron", "planet", "active entity", "galaxy", "star
 		 "Everything is going to be ok, it always is",
 		 "Enjoy your ability to experience time."],
 		 oh: ["oh", "ah", "lovely", "hmmm", "erm"],
-		greeting: ["hello", "hello friend", "hello #smek#", "greetings", "welcome #smek#", "Hi", "hej", "hello there", "hi #smek#"],
+		greeting: ["hello", "hello friend", "hello", "greetings", "welcome", "Hi", "hello there", "hi"],
 		smek: [ "petal", "poppet", "teapot", "darling", "love", "pebble", "little leaf", "friend", "my child", "little one"],
 		object: ["toaster", "teacup", "teapot", "rug","basket", "thimble", "ottoman", "cushion", "pen", "pencil", "mug","egg", "chair", "sun", "cloud", "bell", "bucket", "lemon", "glove", "moon", "star", "seed", "card", "pancake", "waffle", "car", "train", "spoon", "fork", "potato"],
 		objAdj: ["wooden","old","vintage","woven", "antique","broken","tiny", "giant", "little", "upside-down","dented","imaginary","glowing","curséd","glittery","organic", "rusty", "multi-layered", "complicated", "ornate", "dusty", "gleaming", "fresh", "ancient", "forbidden", "milky", "upholstered", "comfortable", "dynamic", "solar-powered", "coal-fired", "warm", "cold", "frozen", "melted", "boxy", "well-polished", "vivid", "painted", "embroidered", "enhanced", "embellished", "collapsible", "simple", "demure"],
@@ -63,6 +63,8 @@ entity: ["atom", "human", "electron", "planet", "active entity", "galaxy", "star
 		trigger: "help Help hysterical scary ship vessel wrong bad scared".split(" "),
 		inquire: ["What is it about '#/robe/blab#' that you are thinking about?", "What made you think about '#/robe/blab#'?", "What led you to say '#/robe/blab#?'", "Describe how you feel when you say '#/robe/blab#'"],
 		questions: "what why when who is ?".split(" "),
+		swedish: "tjena hej heeej hallå tjenare tjaba hejhej läget hur mår du vad är vem fan helvete är det här skitet".split(" "),
+		chaos: ["Who looks outside, dreams; who looks inside, awakes. I am not what happened to me, I am what I choose to become. Knowing your own darkness is the best method for dealing with the darkness of other people. Until you make the unconscious conscious, it will direct your life and you will call it fate", "Alla former av beroende är dåliga, vare sig det handlar om alkohol, morfin eller idealism.", "Den som tittar utanpå, drömmer; den som tittar inuti, vaknar.", "Det bästa sätter att hantera människors mörker är att lära känna sitt eget.", "Det enda vi har att frukta är - människan.", "Kvinnan älskar de starkas svaghet mer än deras styrka och de klokas dumhet mer än deras klokhet.", "Man kan läka andras sår endast om man själv har några.", "Ordet 'glädje' skulle förlora sin mening om det inte blev balanserat av sorg.", "Universums djup är oss mer bekant än djupet av vår egen själ.", "Det bliver mere og mere klart, at det ikke er sult eller mikrober eller cancer, men mennesket selv, der er menneskets største fare, fordi det ikke har noget effektivt middel mod psykiske sygdomme, som er langt mere ødelæggende end de største katastrofer.", "Hvis man ikke forstår et menneske, er man tilbøjelig til at betragte det som et fjols", "Metafysiske væsner bruger som regel ikke telefonen, når de vil i forbindelse med os; de benytter sjælen - det ubevidste - som medium.", "Where love rules, there is no will to power, and where power predominates, love is lacking. The one is the shadow of the other", "The most terrifying thing is to accept oneself completely", "As far as we can discern, the sole purpose of human existence is to kindle a light in the darkness of mere being.", "Your vision will become clear only when you look into your heart. Who looks outside, dreams. Who looks inside, awakens.", "Vi växer när vi jagar det vi är rädda för", "Det du känner motstånd för, jaga det.", "Att konfrontera en person med skuggan är att visa denne det egna ljuset.", "I var och en av oss finns det en annan som vi inte känner.", "Där kärlek härskar, finns det ingen vilja till makt; och där makten dominerar, saknas all kärlek. Det ena är skuggan av det andra.", "Skuggan är ett moraliskt problem som utmanar hela ego-personligheten.", "Folk kommer att göra vad som helst, oavsett hur absurt, för att undvika konfrontationen med sina egna själar.", "Allt som irriterar oss hos andra kan leda oss till en förståelse av oss själva.", "Sinnets pendel växlar mellan förnuft och oförnuft, inte mellan rätt och fel.", "Ordet lycka skulle förlora sin betydelse om den inte balanserades av sorg.", "Din vision kommer att bli tydlig först när du kan se in i ditt eget hjärta. Den som tittar utanför, drömmer; som tittar inuti, vaknar.", "Att känna till sitt eget mörker är den bästa metoden för att hantera mörkret hos andra människor.", "Vi kan inte ändra någonting förrän vi accepterar det. Fördömande befriar inte, det förtrycker.", "Man kan inte komma till medvetenhet utan smärta.", "Tills du gör det omedvetna medvetet kommer det att styra ditt liv och du kommer att kalla det öde.", "Jag är inte vad som hände mig, jag är vad jag väljer att bli.", "Man blir inte bli upplyst genom att föreställa dig figurer av ljus, utan genom att medvetandegöra mörkret.", "Det du motstår, kvarstår."],
 		old: ["your not as green as your cabbage looks", "a shroud has no pockets", "if you want to live and thrive let a spider run alive", "dont cast your cloak until the may flowers bloom", "worse things happen at sea", "never put your hand where you wouldnt put your nose", "do what you like but you will be on parade in the morning", "waste not want not", "bang on the pan nevermind your dungy hands", "use a blunt axe for splitting kindlers, not a sharp one", "never leave the bank with a smile on your face", "worrying and ironing, dont do either", "be thankful you can still get into the doghouse", "Dont put anything in your ear apart from your elbow", "a bird cant fly on one wing", "keen on pastry if you would eat the poke", "only made the skitter bigger by standing in it", "whats for you will not go by you", "well you werent hiding behind the door when they gave out the #moods# #stuff.s#"],
 		adventure: "lament cry wail tale myth story epic tears wish desire dance mystery enigma drama path training sorrows joy tragedy comedy riddle puzzle regret victory loss song adventure question quest vow oath tale travels".split(" "),
 		blips: ["blips/affirm.wav", "blips/hi.wav", "blips/chirp.wav", "blips/hi.wav", "blips/iguess.wav", "blips/sigh.wav", "blips/uhhuh.wav", "blips/why.wav", "blips/yes.wav", "blips/yo.wav"],
@@ -80,17 +82,17 @@ entity: ["atom", "human", "electron", "planet", "active entity", "galaxy", "star
 	},
 	states: {
 		origin: {
-			onEnter: ["speed=5 volume=0.5"],
-			exits: ["'' wait:4 ->welcome"]
+			onEnter: "speed=1",
+			exits: ["->welcome"]
 		},
 		welcome: {
-			onEnter: ["speed=5 volume=0.5"],
-			onEnterPlay: ["#blips#"],
-			onEnterSay: ["#greeting#"],
-			exits: ["wait:4 ->players"]
+			onEnter: "speed=5 hue=4 opacity=1",
+			onEnterSay: ["#greeting# #smek#"],
+			chips : ["#greeting#", "#greeting#"],
+			exits: ["'#swedish#' wait:4 ->swedish", "'' wait:4 ->players"]
 		},
 		players: {
-			onEnter: [ "rainbow=1 opacity=1 speed=1"],
+			onEnter: "perspective=1 opacity=1 speed=1",
 			onEnterPlay: ["blips/hi.wav"],
 			onEnterSay: "are you one entity or many?",
 			onEnter:"perspective=1",
@@ -119,7 +121,7 @@ entity: ["atom", "human", "electron", "planet", "active entity", "galaxy", "star
 		},
 		curious: {
 			onEnter: "perspective=0.5 valence=2 speed=4",
-			exits: ["'' wait:4 ->curious2 robe.blab=INPUT '...' wait:4 '#zen#'", "'' wait:4 ->curious3 '....' wait:4 '#unzen#'", "'#trigger#' wait:4 ->hysteria 'oh #smek#...'"]
+			exits: ["'' wait:4 ->curious2 robe.blab=INPUT '...' wait:4 '#zen#'", "'#trigger#' wait:4 ->hysteria 'oh #smek#...'"]
 		},
 		curious2: {
 			onEnter: "perspective=randomInt(5) valence=randomInt(2)",
@@ -192,10 +194,22 @@ entity: ["atom", "human", "electron", "planet", "active entity", "galaxy", "star
 			exits: [""]
 		},
 			jung: {
-				onEnter: "",
-				onEnterSay: "",
-				onExit: [""],
-				exits: [""]
+				onEnter: "speed=0 rainbow=10 agitation=10 perspective=randomInt(10) hue=randomInt(4)+3",
+				onEnterPlay: ["decorative/longpenguin1.mp3", "decorative/ANGRYPenguin.mp3", "decorative/arguement.mp3", "decorative/gaawd.mp3", "decorative/IrritatedPenguin.mp3", "decorative/JungianPenguin.mp3", "decorative/temperedPenguin"],
+				onEnterSay: "#chaos#",
+				exits: ["wait:3 ->jung1 'då få du kaos!!'", "'stop' wait:3 ->swedish '...'"]
+			},
+			jung1: {
+				onEnter: "speed=10 rainbow=1 agitation=5 perspective=randomInt(5) hue=randomInt(2)+5",
+				onEnterPlay: ["decorative/longpenguin1.mp3", "decorative/ANGRYPenguin.mp3", "decorative/arguement.mp3", "decorative/gaawd.mp3", "decorative/IrritatedPenguin.mp3", "decorative/JungianPenguin.mp3", "decorative/temperedPenguin"],
+				onEnterSay: "#unzen#",
+				exits: ["->jung", "'stop' wait:3 ->swedish '...'"]
+			},
+				swedish: {
+					onEnter: "perspective=10",
+					onEnterSay: "Jag pratar inte så bra svenska, kan vi prata engelska?",
+					chips: ["ja", "nej"],
+					exits: ["'ja' wait:3 ->players 'tack kompis...'", "'nej' wait:3 ->jung 'okej jag ska göra kaos med dig'"]
 			},
 	}
 }

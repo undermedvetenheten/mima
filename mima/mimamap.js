@@ -105,7 +105,7 @@ entity: ["atom", "human", "electron", "planet", "active entity", "galaxy", "star
 			onEnterPlay: ["#blips#"],
 			onEnterSay: ["Which one of these names do you prefer?"],
 			chips: ["#adj.capitalize# #animal.s.capitalize#","#adj.capitalize# #animal.s.capitalize#"],
-			exits: ["'' wait:4 ->nom '...ok' wait:4 'lets call you #/INPUT.capitalize# then'"]
+			exits: ["'' wait:4 ->nom '...ok' wait:4 'lets call you #/INPUT# then'"]
 		},
 		nom: {
 			onEnter: "perspective=1 opacity=0.125 hue=5 robe.name=INPUT",

@@ -71,7 +71,7 @@ function initSounds() {
 		console.log("RESUME SOUND")
 	Pizzicato.context.resume();
 
-	let chirps = ["affirm", "hi", "iguess", "chirp", "sigh", "uh huh", "why", "yes", "yo"]
+	let chirps = ["affirm", "hi", "iguess", "chirp", "sigh", "uhhuh", "why", "yes", "yo"]
 
 	chirps.forEach((name) => {
 		var sound = new Pizzicato.Sound({

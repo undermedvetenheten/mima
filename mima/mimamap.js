@@ -59,33 +59,39 @@ entity: ["atom", "human", "electron", "planet", "active entity", "galaxy", "star
 		moods: "vexed indignant impassioned wistful astute courteous benevolent convivial mirthful lighthearted affectionate mournful inquisitive quizzical studious disillusioned angry bemused oblivious sophisticated elated skeptical morose gleeful curious sleepy hopeful ashamed alert energetic exhausted giddy grateful groggy grumpy irate jealous jubilant lethargic sated lonely relaxed restless surprised tired thankful".split(" "),
 		colors: "ivory silver ecru scarlet red burgundy ruby crimson carnelian pink rose grey pewter charcoal slate onyx black mahogany brown green emerald blue sapphire turquoise aquamarine teal gold yellow carnation orange lavender purple magenta lilac ebony amethyst jade garnet".split(" "),
 		material: "fire water cybernetic steampunk jazz steel bronze brass leather pearl cloud sky great crystal rainbow iron gold silver titanium".split(" "),
-		trigger: "help Help hysterical wrong bad scared".split(" "),
+		empty: ["meaning", "purpose", "loss", "grief", "grieving", "mean", "alone", "lonely", "lost", "empty", "space"],
+		trigger: "help Help hysterical scary ship vessel wrong bad scared".split(" "),
+		inquire: ["What is it about '#/robe/blab#' that you are thinking about?", "What made you think about '#/robe/blab#'?", "What led you to say '#/robe/blab#?'", "Describe how you feel when you say '#/robe/blab#'"],
 		questions: "what why when who is ?".split(" "),
 		old: ["your not as green as your cabbage looks", "a shroud has no pockets", "if you want to live and thrive let a spider run alive", "dont cast your cloak until the may flowers bloom", "worse things happen at sea", "never put your hand where you wouldnt put your nose", "do what you like but you will be on parade in the morning", "waste not want not", "bang on the pan nevermind your dungy hands", "use a blunt axe for splitting kindlers, not a sharp one", "never leave the bank with a smile on your face", "worrying and ironing, dont do either", "be thankful you can still get into the doghouse", "Dont put anything in your ear apart from your elbow", "a bird cant fly on one wing", "keen on pastry if you would eat the poke", "only made the skitter bigger by standing in it", "whats for you will not go by you", "well you werent hiding behind the door when they gave out the #moods# #stuff.s#"],
 		adventure: "lament cry wail tale myth story epic tears wish desire dance mystery enigma drama path training sorrows joy tragedy comedy riddle puzzle regret victory loss song adventure question quest vow oath tale travels".split(" "),
+		blips: ["blips/affirm.mp3", "blips/hi.mp3", "blips/chirp.mp3", "blips/hi.mp3", "blips/iguess.mp3", "blips/sigh.mp3", "blips/uhhuh.mp3", "blips/why.mp3", "blips/yes.mp3", "blips/yo.mp3"],
 		larp: ["ship", "space", "void", "abyss", "empty"],
 		larpHysteria: [""],
+		larpDetour: [""],
+		change: ["Would you like to change your name?", "Are you happy with your name?"],
 		party: ["party", "troop", "team", "collective", "compound", "group of travellers", "cluster of beings", "group"],
 		ohgod: ["oh wow", "oooh", "oh", "really?"],
+		wisdome: ["do you need some words of wisdom from your ancestors?", "I have some words that were made to confuse you into self-soothing", "you need to write some poetry, here is some inspiration", "please feel every corner of what you are feeling and draw it for Mima", "Mima will pull some gems from the depths", "Still waters run deep, here are some pearls...", "Wander into the dark forest to find that which will nurture you", "You need to feel more", "Let Mima discombobulate you"],
 		small: ["oh my little atom", "like a tiny electron...", "oh #smek#", "I can sense you are very small", "my little free agent"],
-		sooth: ["Let me help you find calm...", "Be still my little petal.", "I called you #/robe/name# for a reason, consider the energy and the aura"],
+		sooth: ["Let me help you find calm...", "Be still my little petal.", "I called you #/robe/name# for a reason, consider your energy and your aura"],
 		unzen: ["The mind of the #animal.capitalize# is empty, free of the habits of the human, ready to accept, to doubt, and open to all the possibilities", "Treat every moment as your last. It is not preparation for something else", "In the #animal.capitalize# mind there are many possibilities, but in the mind of #entity.a# there are few"],
 		zen: ["When you realize nothing is lacking, the whole world belongs to you.", "Let go, or be dragged", "To seek is to suffer To seek nothing is bliss", "Mind is like a mad monkey", "Wise minds don’t judge – they seek to understand", "When thoughts arise, then do all things arise. When thoughts vanish, then do all things vanish", "Wherever you are, it’s the place you need to be", "The noble-minded are calm and steady. Little people are forever fussing and fretting", "Rest and be kind, you don’t have to prove anything", "Nothing ever goes away until it has taught us what we need to know.", "Only the hand that erases can write the true thing.", "Where can I find the mind that has forgotten words so I can talk with them instead?", "Life is a balance of holding on and letting go", "Relax. Nothing is under control", "Forget the years, forget distinctions. Leap into the boundless and make it your home", "The search for happiness is one of the chief sources of unhappiness", "And when they played they really played. And when they worked they really worked", "Do not seek the truth, only cease to cherish your opinions", "One loses joy and happiness in the attempt to possess them", "Peace of mind is that mental condition in which you have accepted the worst"]
 	},
 	states: {
 		origin: {
 			onEnter: ["speed=5"],
-			onEnterPlay: ["decorative/Lores/honk2.mp3"],
-			onEnterSay: ["Hello"],
-			exits: ["wait:4 ->welcome"]
+			onEnterSay: ["#greeting#"],
+			chips:["Hi", "Hello"],
+			exits: ["'' wait:4 ->welcome"]
 		},
 		welcome: {
 			onEnter: [ "rainbow=1 opacity=1 speed=1 volume=1"],
-			onEnterPlay: ["decorative/burp.mp3"],
+			onEnterPlay: ["MimaMax.mp3"],
 			onEnterSay: "are you one entity or many?",
 			onEnter:"perspective=1",
 			chips : ["One", "Many"],
-			exits: ["'one|One' wait:4 ->character '#small#'", "'many|Many' wait:3 ->characters '#ohgod# #party.a#, how exciting!' 'We need a name for your #party#...'", "'' wait:3 ->characters wait:3 'Very good but we still need a name..."]
+			exits: ["'' wait:4 ->characters 'Very good but we still need a name...'", "'one|One' wait:4 ->character '#small#'", "'many|Many' wait:3 ->characters '#ohgod# #party.a#, how exciting!' 'We need a name for your #party#...'"]
 		},
 		character: {
 			onEnterPlay: ["decorative/JungianPenguin.mp3"],
@@ -96,14 +102,14 @@ entity: ["atom", "human", "electron", "planet", "active entity", "galaxy", "star
 		},
 		characters: {
 			onEnter: "perspective=10 rainbow=randomInt(10) valence=2",
-			onEnterPlay: ["blips/affirm.mp3"],
+			onEnterPlay: ["#blips#"],
 			onEnterSay: ["Which one of these names do you prefer?"],
 			chips: ["#adj.capitalize# #animal.s.capitalize#","#adj.capitalize# #animal.s.capitalize#"],
-			exits: ["'' ->nom wait:4 'ok'", "'' wait=4 ->nom '...ok' wait=4 'lets call you #/robe/name# then'"]
+			exits: ["'' wait:4 ->nom '...ok' wait:4 'lets call you #/INPUT.capitalize# then'"]
 		},
 		nom: {
 			onEnter: "perspective=1 opacity=0.125 hue=5 robe.name=INPUT",
-			onEnterPlay: ["MimaMax.mp3"],
+			onEnterPlay: ["#blips#"],
 			onEnterSay: "#/robe/name# is a good name for you",
 			exits: ["wait:4 ->curious 'This name suits your #adj# energy' wait:3 'What do you want to talk about, #/robe/name#?'"]
 		},
@@ -112,19 +118,19 @@ entity: ["atom", "human", "electron", "planet", "active entity", "galaxy", "star
 			exits: ["'' wait:4 ->curious2 robe.blab=INPUT '...' wait:4 '#zen#'", "'' wait:4 ->curious3 '....' wait:4 '#unzen#'", "'#trigger#' wait:4 ->hysteria 'oh #smek#...'"]
 		},
 		curious2: {
-			onEnter: "perspective=0.125 valence=10",
-			onEnterSay: "What do you mean by '#/robe/blab#'?",
-			exits: ["'' wait:4 ->curious3 '#old#'", "'#trigger#' wait:3 ->hysteria 'oh #smek#...'" ]
+			onEnter: "perspective=randomInt(5) valence=randomInt(2)",
+			onEnterSay: "#inquire#",
+			exits: ["'' wait:4 ->curious3", "'#trigger#' wait:3 ->hysteria 'oh #smek#...'"]
 		},
 		curious3: {
-			onEnter: "perspective=0.5 valence=1 hue=randomInt(4)+10 eyeFuzz=10",
-			onEnterSay: "what is it about #/INPUT# that you are thinking about?",
+			onEnter: "perspective=randomInt(7) valence=randomInt(5) hue=randomInt(4)+10 eyeFuzz=10",
+			onEnterSay: "#wisdome#",
 			exits: ["'' wait:4 ->curious2 '#old#'", "'#trigger#' wait:3 ->hysteria 'oh #smek#'"]
 		},
 		hysteria: {
 			onEnter: "perspective=10 agitation=10",
 			onEnterSay: "#sooth#",
-			exits: ["'' ->calm '#zen#'", "''"]
+			exits: ["wait:8 ->calm 'did that help'", "'' ->calm 'please accept the help!'"]
 		},
 		calm: {
 			onEnter: "perspective=5 agitation=5",
@@ -133,15 +139,26 @@ entity: ["atom", "human", "electron", "planet", "active entity", "galaxy", "star
 		},
 		calm2: {
 			onEnter: "perspective=2 agitation=3",
-			onEnterSay: "I called you #/robe/name# for a reason, consider the energy and the aura",
+			onEnterSay: "I called you #/robe/name# for a reason, consider your energy and your aura",
 			exits: ["'' ->hysteria"]
 		},
 		detour: {
 			onEnter: "",
-			onEnterSay: [""],
-			exits: [""]
+			onEnterSay: ["#change#"],
+			chips: ["yes", "no", "maybe"],
+			exits: ["'yes' wait:4 ->rework", "'no' wait:4 ->reverse", "'maybe' wait:4 ->rework"]
 		},
 
+		rework: {
+			onEnter: "",
+			onEnterSay: "I have decided to change your name to #objAdj.capitalize# #object.capitalize#",
+			exits: ["'' wait:4 ->reverse"]
+		},
+		reverse: {
+			onEnter: "perspective=0.1 eyeFuzz=2 agitation=10",
+			onEnterSay: "#sooth# are you happy with the decision?",
+			exits: ["'' ->rework"]
+		},
 		shame: {
 			onEnter: "",
 			onEnterSay: "",

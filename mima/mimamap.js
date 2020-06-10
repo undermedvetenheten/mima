@@ -80,14 +80,14 @@ entity: ["atom", "human", "electron", "planet", "active entity", "galaxy", "star
 	},
 	states: {
 		origin: {
-			onEnter: ["speed=5"],
+			onEnter: ["speed=5 volume=0.5"],
 			onEnterSay: ["#greeting#"],
 			chips:["Hi", "Hello"],
 			exits: ["'' wait:4 ->welcome"]
 		},
 		welcome: {
-			onEnter: [ "rainbow=1 opacity=1 speed=1 volume=1"],
-			onEnterPlay: ["blips/hi.wav"],
+			onEnter: [ "rainbow=1 opacity=1 speed=1"],
+			onEnterPlay: ["MimaMax.mp3"],
 			onEnterSay: "are you one entity or many?",
 			onEnter:"perspective=1",
 			chips : ["One", "Many"],

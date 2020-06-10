@@ -4,7 +4,7 @@ let valueNames = ["blink","perspective", "mouth", "mouthWidth", "eyeFuzz", "agit
 let settings = {
 	volume: .5,
 	speed:1,
-	transitionSpeed: .01,
+	transitionSpeed: 0.1,
 
 }
 

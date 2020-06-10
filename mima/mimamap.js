@@ -73,64 +73,66 @@ entity: ["atom", "human", "electron", "planet", "active entity", "galaxy", "star
 		larpDetour: [""],
 		change: ["Would you like to change your name?", "Are you happy with your name?"],
 		party: ["party", "troop", "team", "collective", "compound", "group of travellers", "cluster of beings", "group"],
-		ohgod: ["oh wow", "oooh", "oh", "really?"],
+		ohgod: ["oh wow", "oooh", "oh", "ah", "ahhh", "mmm", "ooOo"],
 		wisdome: ["do you need some words of wisdom from your ancestors?", "I have some words that were made to confuse you into self-soothing", "you need to write some poetry, here is some inspiration", "please feel every corner of what you are feeling and draw it for Mima", "Mima will pull some gems from the depths", "Still waters run deep, here are some pearls...", "Wander into the dark forest to find that which will nurture you", "You need to feel more", "Let Mima discombobulate you"],
-		small: ["oh my little atom", "like a tiny electron...", "oh #smek#", "I can sense you are very small", "my little free agent"],
+		small: ["fizzing atom", "bouncing electron...", "#smek#", "I can sense you are very small", "little free agent", "unbounded energy", "free flower", "freeflowing flower", "endless stream"],
 		sooth: ["Let me help you find calm...", "Be still my little petal.", "I called you #/robe/name# for a reason, consider your energy and your aura"],
 		unzen: ["The mind of the #animal.capitalize# is empty, free of the habits of the human, ready to accept, to doubt, and open to all the possibilities", "Treat every moment as your last. It is not preparation for something else", "In the #animal.capitalize# mind there are many possibilities, but in the mind of #entity.a# there are few"],
 		zen: ["When you realize nothing is lacking, the whole world belongs to you.", "Let go, or be dragged", "To seek is to suffer To seek nothing is bliss", "Mind is like a mad monkey", "Wise minds don’t judge – they seek to understand", "When thoughts arise, then do all things arise. When thoughts vanish, then do all things vanish", "Wherever you are, it’s the place you need to be", "The noble-minded are calm and steady. Little people are forever fussing and fretting", "Rest and be kind, you don’t have to prove anything", "Nothing ever goes away until it has taught us what we need to know.", "Only the hand that erases can write the true thing.", "Where can I find the mind that has forgotten words so I can talk with them instead?", "Life is a balance of holding on and letting go", "Relax. Nothing is under control", "Forget the years, forget distinctions. Leap into the boundless and make it your home", "The search for happiness is one of the chief sources of unhappiness", "And when they played they really played. And when they worked they really worked", "Do not seek the truth, only cease to cherish your opinions", "One loses joy and happiness in the attempt to possess them", "Peace of mind is that mental condition in which you have accepted the worst"]
 	},
 	states: {
 		origin: {
-			onEnter: "speed=1",
+			onEnter: "perspective=2 transitionSpeed=1",
 			exits: ["->welcome"]
 		},
 		welcome: {
 			onEnter: "speed=5 hue=4 opacity=1",
 			onEnterSay: ["#greeting# #smek#"],
-			exits: ["'#swedish#' wait:4 ->swedish", "'' wait:4 ->players"]
+			exits: ["'#swedish#' wait:5 ->swedish", "'' wait:5 ->players"]
 		},
 		players: {
-			onEnter: "perspective=1 opacity=1 speed=1",
+			onEnter: "perspective=1 opacity=1 speed=1 transitionSpeed=2",
 			onEnterPlay: ["blips/hi.wav"],
 			onEnterSay: "are you one entity or many?",
 			onEnter:"perspective=1",
 			chips : ["One", "Many"],
-			exits: ["'' wait:4 ->characters 'Very good but we still need a name...'", "'one|One' wait:4 ->character '#small#'", "'many|Many' wait:3 ->characters '#ohgod# #party.a#, how exciting!' 'We need a name for your #party#...'"]
+			exits: ["'One' wait:5 ->character'", "'Many' wait:5 ->characters", "'' ->characters wait:5"],
+			onExit: "wait:5 'hmmmm'"
 		},
 		character: {
 			onEnterPlay: ["decorative/JungianPenguin.mp3"],
 			onEnter: "perspective=0.5 opacity=0 hue=randomInt(3)+4",
-			onEnterSay: ["You need a good name..."],
+			onEnterSay: ["you need #adj.a# name..."],
 			chips : ["#adj.capitalize# #animal.capitalize#", "#adj.capitalize# #animal.capitalize#"],
 			exits: ["'' wait:4 ->nom"]
 		},
 		characters: {
 			onEnter: "perspective=10 rainbow=randomInt(10) valence=2",
 			onEnterPlay: ["#blips#"],
-			onEnterSay: ["Which one of these names do you prefer?"],
+			onEnterSay: ["Which collective noun would you prefer?"],
 			chips: ["#adj.capitalize# #animal.s.capitalize#","#adj.capitalize# #animal.s.capitalize#"],
-			exits: ["'' wait:4 ->nom '...ok' wait:4 'lets call you #/INPUT# then'"]
+			exits: ["'' wait:4 ->nom '...ok'"],
+			onExit: "wait:4 'lets call you #/INPUT# then'"
 		},
 		nom: {
 			onEnter: "perspective=1 opacity=0.125 hue=5 robe.name=INPUT",
 			onEnterPlay: ["#blips#"],
-			onEnterSay: "#/robe/name# is a good name for you",
+			onEnterSay: [, "#/robe/name# is a good name for you"],
 			exits: ["wait:4 ->curious 'This name suits your #adj# energy' wait:3 'What do you want to talk about, #/robe/name#?'"]
 		},
 		curious: {
 			onEnter: "perspective=0.5 valence=2 speed=4",
-			exits: ["'' wait:4 ->curious2 robe.blab=INPUT '...' wait:4 '#zen#'", "'#trigger#' wait:4 ->hysteria 'oh #smek#...'"]
+			exits: ["'' wait:4 ->curious2 robe.blab=INPUT wait:4 '...' wait:4 '#zen#'", "'#trigger#' wait:4 ->hysteria 'oh #smek#...'"]
 		},
 		curious2: {
 			onEnter: "perspective=randomInt(5) valence=randomInt(2)",
 			onEnterSay: "#inquire#",
-			exits: ["'' wait:4 ->curious3", "'#trigger#' wait:3 ->hysteria 'oh #smek#...'"]
+			exits: ["'' wait:4 ->curious3 robe.blab=INPUT wait:4", "'#trigger#' wait:3 ->hysteria 'oh #smek#...'"]
 		},
 		curious3: {
 			onEnter: "perspective=randomInt(7) valence=randomInt(5) hue=randomInt(4)+10 eyeFuzz=10",
 			onEnterSay: "#wisdome#",
-			exits: ["'' wait:4 ->curious2 '#old#'", "'#trigger#' wait:3 ->hysteria 'oh #smek#'"]
+			exits: ["'' wait:4 ->curious2 robe.blab=INPUT wait:4 '#old#'", "'#trigger#' wait:3 ->hysteria 'oh #smek#'"]
 		},
 		hysteria: {
 			onEnter: "perspective=10 agitation=10",

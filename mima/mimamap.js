@@ -88,7 +88,6 @@ entity: ["atom", "human", "electron", "planet", "active entity", "galaxy", "star
 		welcome: {
 			onEnter: "speed=5 hue=4 opacity=1",
 			onEnterSay: ["#greeting# #smek#"],
-			chips : ["#greeting#", "#greeting#"],
 			exits: ["'#swedish#' wait:4 ->swedish", "'' wait:4 ->players"]
 		},
 		players: {

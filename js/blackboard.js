@@ -96,7 +96,6 @@ Blackboard.prototype.getHolder = function(path, createKeys) {
 				return undefined
 			}
 			else {
-				console.warn("Couldn't find", path, "at key", key)
 				return undefined
 			}
 		} else {

@@ -1,6 +1,6 @@
 // Create a chancery instance from a parsed map
 
-function Chancery({map, metadata, onOutput, onChips,transitionSpeed=0}) {
+function Chancery({map, metadata, handlers, transitionSpeed=0}) {
 	// Is this map parsed?
 	if (!map.isParsed) {
 		map = parseChancery(map)
@@ -40,8 +40,19 @@ function Chancery({map, metadata, onOutput, onChips,transitionSpeed=0}) {
 
 	this.map = map
 	this.metadata = metadata
-	this.onOutput = onOutput
-	this.onChips = onChips
+	
+	this.handlers = {
+		onOutput: [],
+		onChips: [],
+		onEnterState: [],
+		onExitState: [],
+		onActivateExit: []
+	}
+
+	for (var key in handlers) {
+		this.handlers[key].push(handlers[key])
+	}
+
 	this.id = utilities.words.getRandomSeed(6)
 	this.errorLog = []
 
@@ -49,6 +60,12 @@ function Chancery({map, metadata, onOutput, onChips,transitionSpeed=0}) {
 	this.stateID = undefined
 	this.exitMap = []
 
+	// Keep the currently active input
+	// We can only match inputs that were sent since the last exit happened
+	// (ie, don't re-match on old stuff)
+	this.activeInput = []
+	
+	// Tracking actions
 	this.actionQueue = []
 	this.completedActions = []
 
@@ -99,15 +116,17 @@ Chancery.prototype.setAtPath = function(path, val) {
 }
 
 Chancery.prototype.getAtPath = function(path) {
+	
 	return this.blackboard.getAtPath(path)
+	
 }
 
 
 Chancery.prototype.input = function(msg) {
 	let text = msg.text.join("\n")
-	this.blackboard.setAtPath("INPUT", text)
-	this.lastInput = text
-	console.warn(`${this}: msg received`, msg)
+	
+	this.activeInput.push(text)
+	console.warn(`${this}: msg received '${text}'`)
 
 	this.updateExitMap()	
 }
@@ -142,20 +161,29 @@ Chancery.prototype.evaluateExpression = function(expression) {
 				return fxn.apply(this, parameters)
 			}
 		}
-		else
-			return this.getAtPath(finishedPath)
+		else {
+			try {
+				return this.getAtPath(finishedPath)
+			} catch(err) {
+				console.log(expression)
+				console.warn(`No value at path '${expression.raw}'`, expression.raw)
+				console.warn(err)
+				return undefined
+			}
+		
+		}
 	}
 
 	if (expression.op !== undefined) {
 		let lhs = this.evaluateExpression(expression.lhs)
 		let rhs = this.evaluateExpression(expression.rhs)
-		if (lhs === undefined) {
-			console.log("LEFT UNARY", expression)
-		}
+		// if (lhs === undefined) {
+		// 	console.log("LEFT UNARY", expression)
+		// }
 
-		if (rhs === undefined) {
-			console.log("RIGHT UNARY", expression)
-		}
+		// if (rhs === undefined) {
+		// 	console.log("RIGHT UNARY", expression)
+		// }
 
 		switch(expression.op) {
 			case "*":
@@ -189,33 +217,41 @@ Chancery.prototype.evaluateExpression = function(expression) {
 	console.warn("Unknown expression type", expression)
 }
 
-Chancery.prototype.calculateBid = function(template, input) {
-	console.log(`Does input '${input}' match template '${template}'`)
-	let bid = {
-		template: template,
-		input: input,
-		value: 0
-	}
-
-	if (template === "") {
-		console.log("This should match an empty string")
-		bid.value = .01
-		return bid
+Chancery.prototype.setBid = function(condition) {
+	if (!condition.inputBid) {
+		let template = condition.template.raw
+		// console.log(`Check conditions bid for template '${template}', \nwith current text${this.activeInput.map(s => "\n\t'" + s + "'").join("")}`)
+		
+		this.activeInput.forEach(input => {
+			// Deal with empty string, match-any
+			if (template === "") {
+				console.log(`Matched any input ('${input}')`)
+				condition.isFulfilled = true
+				condition.pctFulfilled = 1
+				condition.inputBid = {
+					input: input,
+					value: .01
+				}
+			} else {
+				let traceryMatch = tracery.calculateMatch(this.map.grammar, template, input)
+				if (traceryMatch) {
+					// We have a match!
+					console.log(`Matched an input template '${template}' with '${input}'`)
+			
+					condition.isFulfilled = true
+					condition.pctFulfilled = 1
+					condition.inputBid = {
+						input: input,
+						match: traceryMatch,
+						// save the longest template, 
+						// in case we want to prioritize "#color# #colothing#" over "#clothing#"
+						value: template.length 
+					}
+				}
+			}
+		})
 	}
 	
-	if (input.includes(template)) {
-		bid.value = (template.length + 1)/(input.length + 1)
-		console.log("Bid", bid.value)
-	}
-
-	let traceryBid = tracery.getMatchBid(this.map.grammar, template, input)
-	if (traceryBid) {
-		console.log(traceryBid)
-		bid.value = traceryBid.bid
-		if (traceryBid.matches)
-			traceryBid.matches.forEach((match, index) => this.setAtPath("MATCH" + index, match))
-	}
-	return bid
 }
 
 
@@ -233,15 +269,9 @@ Chancery.prototype.updateExitMap = function() {
 
 			switch(condition.template.subtype) {
 				case "say": 
-					condition.pctFulfilled = 0
-					if (this.lastInput) {
-						Vue.set(condition, "bid", this.calculateBid(condition.template.output, this.lastInput))
-
-						if (condition.bid.value > 0) {
-							condition.pctFulfilled = 1
-						}
-						condition.isFulfilled = condition.pctFulfilled >= 1
-					
+					if (this.activeInput.length > 0) {
+						// calculate the maximum current bit for any available input
+						this.setBid(condition)
 					}
 					
 
@@ -274,8 +304,8 @@ Chancery.prototype.updateExitMap = function() {
 	let openExits = this.exitMap.filter(ex => ex.isOpen)
 
 	if (openExits.length > 0 && !this.activeExit) {
-
-		console.log(" exit is open:", openExits[0].template.raw)
+		console.log("Active exits:")
+		console.log(openExits.map(ex => ex.template.raw).join("\n\t"))
 		this.activateExit(openExits[0])
 	}
 	
@@ -342,6 +372,9 @@ Chancery.prototype.doExpression = function(expression) {
 	
 }
 
+Chancery.prototype.on = function(eventID, fxn) {
+	this.handlers[eventID].push(fxn)
+}
 
 Chancery.prototype.enqueueActions = function(actions, {sourceID, sourceType, type, direction}) {
 	if (actions === undefined) {
@@ -377,7 +410,7 @@ Chancery.prototype.checkActions = function() {
 	if (this.currentAction === undefined && this.actionQueue.length > 0) {
 		this.currentAction = this.actionQueue.shift()
 
-		console.log("Start action:", this.currentAction.template.subtype)
+		console.log(`Start action: '${this.currentAction.template.raw}' (${this.currentAction.template.subtype})` )
 		// DO ACTIONS
 		switch(this.currentAction.template.subtype) {
 
@@ -392,13 +425,20 @@ Chancery.prototype.checkActions = function() {
 				let expanded = this.context.flatten(rawOutput)	
 				
 				// Send this to be said 
-				this.onOutput({
-					output:expanded,
-					progress:this.currentAction.progress
-				}).then(() => {
-					this.currentAction = undefined
-					this.checkActions()
-				})
+				// Saying things will return a promise
+				
+				if (this.handlers.onOutput.length > 0) {
+					let outputData = {
+						output: expanded,
+						progress:this.currentAction.progress
+					}
+					this.handlers.onOutput[0](outputData).then(() => {
+						this.currentAction = undefined
+						this.checkActions()
+					})
+
+					this.handlers.onOutput.slice(1).forEach(fxn => fxn(outputData))
+				}
 				break;
 
 
@@ -414,8 +454,7 @@ Chancery.prototype.checkActions = function() {
 						this.chips = chipTemplate.map(template => this.context.flatten(template.pattern))
 					}
 
-					
-					this.onChips(this.chips)
+					this.callHandlers("onChips", this.chips)
 				}
 
 
@@ -475,7 +514,43 @@ Chancery.prototype.createExitMap = function() {
 }
 
 Chancery.prototype.activateExit = function(exit) {
-	this.lastInput = undefined
+
+	// Activate this exit!  
+	// This is the one we'll take so store any matched strings as input,
+	// and erase the current input
+	this.activeInput = []
+	this.chips = []
+	this.callHandlers("onChips", this.chips)
+
+	// Store current matched text
+	exit.conditionMap.forEach(condition => {
+		if (condition.inputBid) {
+			this.blackboard.setAtPath("INPUT", condition.inputBid.input)
+
+			let match = condition.inputBid.match
+			// Store!
+			// Clear all existing inputs
+			// this.blackboard.clearPath("MATCH_0")
+			// this.blackboard.clearPath("MATCH_1")
+			// this.blackboard.clearPath("MATCH_2")
+			// this.blackboard.clearPath("MATCH_3")
+			// this.blackboard.clearPath("MATCH_BEFORE")
+			// this.blackboard.clearPath("MATCH_AFTER")
+			
+			if (match) {
+				let pre = match.input.substring(0, match.index)
+				let post = match.input.substring(match.index + match[0].length)
+
+				match.slice(1).forEach((matchText, index) => {
+					this.blackboard.setAtPath("MATCH_" + index, matchText)
+				})
+
+				this.blackboard.setAtPath("MATCH_BEFORE", pre)
+				this.blackboard.setAtPath("MATCH_AFTER", post)
+			}
+		
+		}
+	})
 	
 	this.enqueueActions(exit.template.actions, {sourceType:'exit',sourceID:exit.id,direction:"useExit", type:"action"})
 
@@ -491,7 +566,8 @@ Chancery.prototype.enterState = function(stateID) {
 		return
 	}
 
-	let lastState = this.map.states[this.stateID]
+	let lastID = this.stateID
+	let lastState = this.map.states[lastID]
 
 	this.activeExit = undefined
 	this.timeEnteredState = this.currentTime
@@ -508,21 +584,24 @@ Chancery.prototype.enterState = function(stateID) {
 
 	let state = this.map.states[this.stateID]
 	if (state === undefined) {
-		console.warn("No such state", state)
+		console.warn(`No state called '${this.stateID}'`)
 		this.error(`No state named '${this.stateID}'` )
 		this.exitMap = []
 		return
 	}
 
+	// Call the event handler
+	this.callHandlers("onEnterState", this.stateID, lastID)
+
 	// Clear the chips
 	this.chips = []
-	this.onChips(this.chips)
+	this.callHandlers("onChips", this.chips)
+
 
 	this.createExitMap()
 
 
 	// Do all the state's actions
-	console.log("Enter state")
 	if (lastState) {
 		this.enqueueActions(lastState.onExit, {sourceType:"state",sourceID:stateID,direction:"exit",type:"action"})
 		this.enqueueActions(lastState.onExitPlay, {sourceType:"state",sourceID:stateID,direction:"exit",type:"play"})
@@ -542,4 +621,8 @@ Chancery.prototype.enterState = function(stateID) {
 	}], {sourceType:"state",sourceID:stateID,direction:"enter",type:"completeTransition"})
 	
 
+}
+
+Chancery.prototype.callHandlers = function(type, ...args) {
+	this.handlers[type].forEach(fxn => fxn(...args))
 }

@@ -28,8 +28,8 @@ function parseChancery(raw) {
 	}
 
 
-	console.log(parsed)
-	console.log(JSON.stringify(parsed.states, null, 2))
+	// console.log(parsed)
+	// console.log(JSON.stringify(parsed.states, null, 2))
 	return parsed
 }
 
@@ -38,29 +38,46 @@ function parseChanceryState(raw, stateID) {
 	let state = {
 		id: stateID,
 		raw: raw,
+		onEnter: [],
+		onExit: [],
+		onTick: [],
+		onEnterSay: [],
+		onExitSay: [],
+		onTickSay: [],
+		onEnterPlay: [],
+		onExitPlay: [],
+		onTickPlay: []
 	}
 
 	let modes = ["onEnter", "onExit", "onTick"]
 	
+
+	function addActions(key,actions) {
+		// console.log("add actions", key, actions)
+		if (Array.isArray(actions))
+			state[key] = state[key].concat(actions)
+		else 
+			state[key].push(actions)
+	}
+
 	mapObject(raw, (val, key) => {
 
 		
 		// Is this one of the known array properties?
 		if (modes.includes(key)) {
-			if (typeof val === "string") {
-
-				// Split on unprotected " ", skipping any double spaces or empty strings
-				val = splitProtected({
-					s:val, 
-					startContext:"exit", 
-					contextMap:chanceryMap, 
-					splitters:[" "]}).map(s => s.trim()).filter(s => s.length > 0)
-				
-			}
-
+			
+			if (typeof val === "string")
+				val = [val]
 
 			// Parse the actions for this
-			state[key] = val.map(section => parseChanceryConAct(section))
+			if (Array.isArray(val)) {
+				val.forEach(item => {
+					let actions = parseChanceryConActMulti(item)
+					addActions(key, actions)
+				})
+			}
+			else
+				throw(`Weird non-string value for '${key}' in state ${stateID}:`, val)
 			return
 		} 
 
@@ -69,8 +86,7 @@ function parseChanceryState(raw, stateID) {
 		// Speech/text syntactic sugar
 		if (key.substring(key.length - 3) === "Say") {
 			let mode = key.substring(0, key.length - 3)
-			state[key] = val.map(s => parseChancerySay(s))
-			console.log(key, state[key])
+			addActions(key, val.map(s => parseChancerySay(s)))
 		} 
 
 		// Music/sound syntactic sugar
@@ -78,7 +94,7 @@ function parseChanceryState(raw, stateID) {
 			let mode = key.substring(0, key.length - 4)
 
 			// Fluff into regular syntax
-			state[key] = val.map(s => {
+			addActions(key, val.map(s => {
 				let exp = `"${s}"`
 		
 				return {
@@ -87,8 +103,7 @@ function parseChanceryState(raw, stateID) {
 					raw: `play:` + exp,
 					expression: parseChanceryExpression(exp)
 				}
-			})
-			console.log(key, state[key])
+			}))
 		} 
 
 		// Exits
@@ -190,6 +205,17 @@ function parseChanceryExit(raw) {
 
 	
 	return exit
+}
+
+function parseChanceryConActMulti(s) {
+	let sections = splitProtected({
+			s:s, 
+			startContext:"exit", 
+			contextMap:chanceryMap, 
+			splitters:[" "]}).map(s => s.trim())
+
+	return sections.map(section => parseChanceryConAct(section))
+
 }
 
 
@@ -311,6 +337,7 @@ function parseChanceryTarget(s) {
 }
 
 function parseChanceryConAct(s, isCondition) {
+
 	if (isInQuotes(s)) {
 		return parseChancerySay(s.substring(1, s.length - 1), isCondition)
 	}
@@ -341,7 +368,6 @@ function parseChanceryConAct(s, isCondition) {
 		actcon.subtype = "command"
 		actcon.command = tree.lhs
 		// Is this a normal, non-weird path? Like..."wait"
-		console.log(actcon.command)
 		actcon.expression = tree.rhs
 		return actcon
 	} else {

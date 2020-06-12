@@ -1,38 +1,115 @@
 #mima-app {
+	/*border: 1px solid green;*/
+	box-shadow: 0px 0px 15px hsla(190, 90%, 80%, 1), 0px 0px 0px 1px hsla(190, 0%, 80%, 1);
 	cursor:default;
-	flex: none;
 	overflow: hidden;
 	border-radius: 10px;
-	margin: 10px auto;
+	margin: auto auto;
 	background-color: black;
 	position: relative;
-	width: 400px;
-	height: 100%;
-	display: flex;
-	flex-direction: column;
+	width: 95%;
+	max-width: 500px;
+	max-height: 800px;
+	height: 90%;
 }
 
 div {
 	cursor: default;
 }
 
-.ui-tile {
+.chat-chip {
+	background-color: hsla(200, 50%, 95%, .7);
+	border-radius: 20px;
+	margin: 2px;
+	padding: 3px 4px;
+	border: none;
 	cursor: pointer;
+}
+.chat-chip:hover {
+	box-shadow: inset 0px 0px 3px hsla(190, 90%, 80%, 1);
+	transform: translate(0px, -1px);
 }
 
 #bot {
+	/*border: 1px solid magenta;*/
 	position: relative;
-	height: 60%;
+	width: 100%;
+	height: 100%;
 }
 
 #mima-app .chatwindow {
+	/*background: hsla(100, 40%, 70%, 1);*/
 	width: 100%;
-	height: 40%;
+	height: 100%;
 	position: absolute;
 	bottom: 0px;
-	background-color: hsla(200, 30%, 100%, .3);
+	
 }
 
+#mima-controls {
+	position: absolute;
+	width: 100%;
+	height: 100%;
+	/*border: 1px solid cyan;*/
+	display: flex;
+  justify-content: flex-end;
+  flex-direction: column;
+}
+
+#start-controls {
+	margin: 30px 0px;
+	text-align: center;
+}
+
+#start-controls button {
+	font-size: 30px;
+	border-radius: 30px;
+}
+
+
+#mima-app .chatwindow-messages {
+	/*background: hsla(300, 90%, 60%, .4);*/
+
+}
+
+#mima-app .chatwindow-input {
+	position: relative;
+	margin: auto 10px;
+}
+
+#mima-app input  {
+	background-color: hsla(100, 100%, 100%, .6);
+}
+
+#mima-app .chatwindow-controls {
+	text-align: center;
+	height: 12%;
+	min-height: 70px;
+	bottom: 0px;
+	/*background: hsla(100, 0%, 100%, .2);*/
+	display: flex;
+	flex-direction: column;
+  justify-content: flex-end;
+}
+
+
+#mima-app .chatwindow-message-body {
+		background-color: hsla(200, 0%, 100%, .8);
+
+}
+
+
+#mima-app .chatwindow-message-user {
+	text-align: right;
+		/*background-color: hsla(200, 0%, 100%, .8);*/
+
+}
+
+
+#mima-app .chatwindow-message-user .chatwindow-message-body{
+	background-color: hsla(200, 100%, 80%, .8);
+
+}
 .panel.section,.blackboard {
 	padding : 4px;
 	margin: 10px 30px;

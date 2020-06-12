@@ -202,7 +202,7 @@ function traceryRuleToRegex(rule, grammar) {
 		if (index % 2 == 0) {
 
 			// Allow any spaces or punctuation?
-			s = s.replace(" ", "\\s*");
+			// s = s.replace(" ", "\\s*");
 			// s = s.replace("?", "\\?");
 			// s = s.replace(".", "\\.");
 			// s = s.replace("!", "\\!");
@@ -224,40 +224,28 @@ function traceryRuleToRegex(rule, grammar) {
 function traceryTagToRegex(key, grammar) {
 	let tagReg = grammar[key].map(r => {
 		return traceryRuleToRegex(r, grammar);
+	}).sort((a, b) => {
+		return b.length - a.length
 	}).join("|")
 	return "(" + tagReg + ")";
 }
 
 
-function getMatchBid(grammar, matchRule, sample) {
-	console.log("Compute bid", grammar, matchRule, sample)
-	let reg = traceryToRegex(matchRule, grammar);
-	console.log(reg)
+	function calculateMatch(grammar, queryRule, sample) {
+		let reg = traceryToRegex(queryRule, grammar);
 
-	let match = reg.exec(sample);
+		// Specificity: how rarely does this match the sample?
+		let match = reg.exec(sample);
+		
+		if (match === null)
+			return undefined
 	
-	if (match === null)
-		return {
-			bid: 0
-		}
-
-	else {
-		// Calculate the match pct
-		return {
-			bid: 1,
-			matches: match.slice(0)
-		}
+		return match
 	}
 
-	// let found = sample.toLowerCase().indexOf(pattern.toLowerCase())
-
-	// if (found >= 0)
-	// 	return pattern.length / sample.length;
-	// return 0;
-}
 
 	return {
-		getMatchBid: getMatchBid,
+		calculateMatch: calculateMatch,
 		createContext(settings) {
 			return new Context(settings)
 		},

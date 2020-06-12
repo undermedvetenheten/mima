@@ -41,9 +41,9 @@ function Face() {
 	this.pixelW = this.width/this.columns
 	this.pixelH = this.height/this.rows
 
-	this.detailColor = new KColor(Math.random(), .6, .6)
-	this.faceColor = new KColor(Math.random(), .9, .8)
-	this.bgColor = new KColor(Math.random(), .9, .5)
+
+	this.detailColor = new KColor(.5, .6, .6)
+	this.faceColor = new KColor(.9, .9, .8)
 
 	this.particles = []
 }
@@ -127,7 +127,9 @@ Face.prototype.drawFaceDetails = function(g, t) {
 	for (var i = 0; i < 4; i++) {
 
 		// 
-		this.detailColor.hueShift(.1*fuzz*Math.sin(i + t)).fill(g, Math.sin(i) + detailShade - .5, .6)
+
+		let hueShift = .1*fuzz*Math.sin(i + t)
+		this.detailColor.hueShift(hueShift).fill(g, Math.sin(i) + detailShade - .5, .6)
 		offset.setToPolar(fuzz*i*utilities.noise(t), 20*utilities.noise(t*.02, i))
 		g.pushMatrix()
 		g.translate(offset.x, offset.y)
@@ -183,6 +185,7 @@ Face.prototype.drawFaceBG = function(g, t) {
 	
 
 	// Draw the static rectangle
+	this.faceColor.h = hue
 	this.faceColor.fill(g, rainbow, .4*faceOpacity)
 	g.rect(-w/2, -h/2, w, h)
 
@@ -228,7 +231,9 @@ Face.prototype.draw = function(g, time) {
 	}
 
 	g.pushMatrix()
+	g.translate(0, -g.height*.09)
 	g.scale(zoomScale, zoomScale)
+
 
 	this.drawFaceBG(g, t)
 	this.drawFaceDetails(g, t)

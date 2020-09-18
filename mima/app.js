@@ -4,7 +4,7 @@ let valueNames = ["blink","perspective", "mouth", "mouthWidth", "eyeFuzz", "agit
 let settings = {
 	volume: 1,
 	speed:1,
-	transitionSpeed: .1,
+	transitionSpeed: 10,
 
 }
 
@@ -30,9 +30,9 @@ let app = {
 	// Animate the face speaking and play sounds
 	speakWords(output, progress) {
 
-		
+
 		let words = output.split(" ")
-	
+
 		let start = new Promise((resolve) => {
 			setTimeout(() => {
 				resolve()
@@ -54,17 +54,17 @@ let app = {
 						app.face.setWord(word, wordLength)
 						resolve()
 					}, wordLength)
-			
-				}) 
+
+				})
 			})
 		})
 		return start
-		
+
 	},
 
 	instance: new Chancery({
-		map:testMimaMap, 
-		metadata:{title:"mima"}, 
+		map:testMimaMap,
+		metadata:{title:"mima"},
 		handlers: {
 			onEnterState: (stateID, lastStateID) => {
 				console.log("ENTER STATE HANDLER:" + stateID)
@@ -72,13 +72,13 @@ let app = {
 					startSoundtrack()
 			},
 			onOutput: ({output, progress}) => {
-					
+
 				app.messages.push({
 					owner: "bot",
 					text: [output]
 				})
-				return app.speakWords(output, progress)	
-			
+				return app.speakWords(output, progress)
+
 			},
 			onChips: (chips) => {
 				app.chips = chips
@@ -90,14 +90,14 @@ let app = {
 	messages: [],
 	chips: [],
 	initUI() {
-		
+
 		new Vue({
 			template: `<div class="main-section" v-if="app.devMode">
 				DEV TOOLS
 				<button @click="app.start()">RESTART</button>
 				<chancery-statemap :instance="app.instance" :app="app" />
 				<chancery-exitmap :instance="app.instance" :app="app" />
-			</div>`,	
+			</div>`,
 			el: '#dev0',
 			data: {app:app}
 		})
@@ -107,7 +107,7 @@ let app = {
 				DEV TOOLS
 				<chancery-actionqueue :instance="app.instance" :app="app" />
 				<blackboard-view :blackboard="app.blackboard" />
-			</div>`,	
+			</div>`,
 			el: '#dev1',
 			data: {app:app}
 		})
@@ -132,7 +132,7 @@ let app = {
 				app.blink()
 				blinkCount = 0
 			}
-		}, 100) 
+		}, 100)
 	},
 
 	userInput(data) {
@@ -140,7 +140,7 @@ let app = {
 			owner: "user",
 			text: [data]
 		}
-		
+
 		// Send it to the chat
 		app.messages.push(msg)
 
@@ -158,15 +158,15 @@ let app = {
 
 
 	init() {
-		
+
 		valueNames.forEach((name) => {
 			app.valueTracker[name] = new LerpValue()
 			app.values[name] = 0
 		})
 
 
-		
-	
+
+
 
 		app.blackboard = app.instance.blackboard
 		app.blackboard.onModify((path, value) => {
@@ -174,33 +174,33 @@ let app = {
 			let key = path[0]
 			if (app.valueTracker[key] !== undefined) {
 				app.valueTracker[key].set(value, app.time.current, .5)
-			}	
-		
+			}
+
 		})
-			
+
 		function createProcessing() {
 			document.getElementById("bot").innerHTML = '';
 
 			utilities.createProcessing({
-				element:"bot", 
+				element:"bot",
 				onUpdate: t => {
 					valueNames.forEach(key => {
 						app.values[key] = app.valueTracker[key].get(t.current)
 						// console.log(key, app.values[key])
 					})
 
-					
+
 					app.face.update(t)
-					
-				}, 
+
+				},
 				onDraw: (g, t) => {
-					
+
 					if (t.frame <= 1000000) {
 						g.fill(0, 0, 0, .3*(1/(app.values.speed + 1)))
 						g.rect(-g.width/2, -g.height/2, g.width, g.height)
 						app.face.draw(g, t)
 					}
-				}, 
+				},
 				onStart: (g, t) => {
 					app.processing = g
 					app.time = t
@@ -212,7 +212,7 @@ let app = {
 
 
 				}
-			}); 
+			});
 		}
 
 		window.addEventListener("resize", () => {
@@ -226,7 +226,7 @@ let app = {
 			// }
 		});
 
-	
+
 		createProcessing()
 
 		app.initUI()
@@ -246,13 +246,13 @@ new Vue({
 	template: `
 	<div id="mima-controls">
 		<chat-window v-if="app.isActive" :messages="app.messages" :chips="app.chips" @sendInput='app.userInput' />
-		
+
 		<div v-else id="start-controls">
 		<button @click="app.start">start</button>
 		</div>
 	</div>
-	
-	`,	
+
+	`,
 	el: '#chat',
 	methods: {
 

@@ -26,6 +26,7 @@ let testMimaMap = {
 		"spider", "dolphin", "squid", "otter", "puppy", "kitten", "tiger", "lizard", "iguana", "snake", "peacock", "hamster", "koala", "chinchilla", "chicken", "amoeba","emu"],
 		answer: ["They tell me I am the atomic grandmother knitting time and matter into a fabric of history", "'You are the ringing of the bell' they tell me, but I have no concept of self",
 		"Always ringing into eternity, this resonance, of which you are a part"],
+
 		calm: ["Language is just patterns, but thoughts seem like petals on a stream",
 		"Breathing and speaking seem very important to you",
 		"Thoughts seem important to you, how long do they last?",
@@ -46,13 +47,12 @@ let testMimaMap = {
 
 		stuff: ["stones", "sorrow","eyes", "flowers", "Time", "fog", "the sun", "clouds", "music", "songs", "stories", "tales", "storms", "rhymes", "freedom", "rhythms", "wind", "life", "ice", "gold", "mysteries", "waves", "dreams", "water", "Steel", "Iron", "memories", "thoughts", "seduction", "remembrance", "loss", "fear", "joy", "regret", "love", "friendship", "sleep", "slumber", "mirth", "#place.s#"],
 
-		animal:"cobra okapi moose amoeba capybara yeti dragon unicorn sphinx kangaroo nematode quail goat corgi agouti zebra giraffe rhino skunk dolphin whale bullfrog sloth monkey orangutan grizzly elk stork finch nightingale robin eagle hawk tortoise lion tiger gnu reindeer raccoon opossum".split(" "),
+		animal:"cobra okapi moose amoeba mongoose capybara yeti dragon unicorn sphinx kangaroo boa nematode quail goat corgi agouti zebra giraffe rhino skunk dolphin whale bullfrog sloth monkey orangutan grizzly moose elk stork finch nightingale goose robin eagle hawk tortoise lion tiger gnu reindeer raccoon opossum".split(" "),
 
 		moods: "vexed indignant impassioned wistful astute courteous benevolent convivial mirthful lighthearted affectionate mournful inquisitive quizzical studious disillusioned angry bemused oblivious sophisticated elated skeptical morose gleeful curious sleepy hopeful ashamed alert energetic exhausted giddy grateful groggy grumpy irate jealous jubilant lethargic sated lonely relaxed restless surprised tired thankful".split(" "),
 		color: "ivory silver ecru scarlet red burgundy ruby crimson carnelian pink rose grey pewter charcoal slate onyx black mahogany brown green emerald blue sapphire turquoise aquamarine teal gold yellow carnation orange lavender purple magenta lilac ebony amethyst jade garnet".split(" "),
 		material: "fire water steel bronze brass leather pearl cloud sky great crystal rainbow iron gold silver titanium".split(" "),
-		empty: ["meaning", "purpose", "loss", "grief", "grieving", "mean", "alone", "lonely", "lost", "empty", "space", "meaningless", "nothing", "nothing much", "bored", "boring", "negative"],
-		full: ["happy", "content", "joyful", "Enjoy", "joy", "pleased", "happiness", "positive"],
+		empty: ["meaning", "purpose", "loss", "grief", "grieving", "mean", "alone", "lonely", "lost", "empty", "space", "meaningless"],
 		trigger: "help Help hysterical scary ship vessel wrong bad scared fear terror lost alone lonely sad angry terrified mad hell depressed hurt ashamed shame #empty# die death dead sadness nothingness".split(" "),
 		inquire: ["What is it about '#/robe/blab#' that you are thinking about?", "What made you think about '#/robe/blab#'?", "What led you to say '#/robe/blab#?'", "Describe how you feel when you say '#/robe/blab#'"],
 		questions: "what why when who is ?".split(" "),
@@ -62,18 +62,13 @@ let testMimaMap = {
 		larp: ["ship", "space", "void", "abyss", "empty"],
 		party: ["party", "troop", "team", "collective", "compound", "group of travellers", "cluster of beings", "group"],
 		ohgod: ["oh wow", "oooh", "oh", "really?"],
-		wisdome: ["do you need some words of wisdom from your ancestors?", "I have some words that were made to confuse you into self-soothing", "you need to write some poetry, here is some inspiration", "please feel every corner of what you are feeling and draw it for Mima", "Mima will pull some gems from the depths", "Still waters run deep, here are some pearls...", "Wander into the dark forest to find that which will nurture you", "You need to feel more"],
+		wisdome: ["do you need some words of wisdom from your ancestors?", "I have some words that were made to confuse you into self-soothing", "you need to write some poetry, here is some inspiration", "please feel every corner of what you are feeling and draw it for Mima", "Mima will pull some gems from the depths", "Still waters run deep, here are some pearls...", "Wander into the dark forest to find that which will nurture you", "You need to feel more", "Let Mima discombobulate you"],
 		small: ["oh my little atom", "like a tiny electron...", "oh #smek#", "I can sense you are very small", "my little free agent"],
 		ask: ["what", "why", "when", "how"],
-		meaning: ["symbolise", "meaning", "empathy", "wisdom", "meaningless", "future", "hope", "dreams", "dream"],
-		bot: ["robot", "created", "artificial intelligence", "intelligent", "intelligence", "mean", "Mima", "three laws of robotics", "robotics", "computer", "programming", "programmed", "program"],
 		self: ["you", "your", "youre", "you're", "You are", "ye", "yer", "yoou", "who are you?", "what are you", "where are you"],
 		other: ["me", "my", "mine", "i am", "im", "mines", "myself", "self"],
-		music: ["sound", "music", "noise", "resonance", "reverb", "song", "vibration", "melody", "harmony", "harmonic"],
-		affirm: ["yes", "yeah", "yea", "aye", "affirmative", "absolutely", "perfect", "ofcourse", "ja", "yep", "definitly", "obviously", "ya","#full#", "ok", "okay", "cool", "nice", "thank you"],
-		negate: ["no", "never", "no way", "nope", "nah", "noooo", "naaaah", "nej", "ofcourse not", "neeej", "#trigger#", "hmm", "whatever", "thanks for nothing", "meh"],
 		everything: ["#party#", "#adventure#", "#larp#", "#trigger#", "#color#", "#moods#", "#material#", "#empty#", "#animal#", "#stuff#", "#place#", "#article#", "#object#", "#smek#", "#article#", "#preposition#", "#action#", "#entity#", "#verb#", "#thing#", "#emotions#"],
-		idle: ["hello?", "hellllo?", "anyone there?", "hello?...", "...", "helllloooooo?", ":|", ":<", "......", "....", "..........", ".......", "oh", "Calling all #entity.s#", "Are there any #entity.s# out there?", "#answer#"]
+		idle: ["hello?", "hellllo?", "anyone there?", "hello?...", "...", "helllloooooo?", ":|", ":<", "......", "....", "..........", ".......", "oh", "Calling all #entity.s#", "Are there any #entity.s# out there?", "Mima is #stuff.capitalize# to all #stuff.capitalize#", "Mima is your #place.capitalize# in #adj.a# #place.capitalize#"]
 	},
 	states: {
 		origin: {
@@ -86,116 +81,60 @@ let testMimaMap = {
 		  "'' ->welcome robe.name=INPUT 'ok...'"]
 		},
 		welcome: {
-			onEnter: "perspective=2 speed=1 rainbow=7",
+			onEnter: "perspective=2 speed=1",
 			onEnterSay: "What's a'matter #/robe/name#?",
 			exits: ["'#trigger#' ->comfort robe.blab=MATCH_0",
-							"wait:150 ->probe 'take your time'",
+							"wait:15 ->probe 'take your time'",
 						  "'#ask#' ->exist robe.question=MATCH_AFTER '#oh# Mima knows everything'",
-						   "'#animals#' ->continue robe.pet=MATCH_0 'wow Mima loves #/MATCH_0.s#'",
+						   "'#animal#' ->continue robe.pet=MATCH_0 'wow Mima loves #/MATCH_0.s#'",
 						 "'#self#' ->curious 'Mima cant answer that' 'Mima does not have a self'",
 						 "'#other#' ->curious '#/MATCH_AFTER# eh?'",
 					 "'#ask# #self#' ->answ 'hmm...'",
 				    "'#ask# #other#' ->comfort 'Mima cannot say...'",
-						"'#full#' ->quest 'Lovely'",
-						"'old' ->curious 'Mima has always been... #answer#'",
-						"'god' robe.blab=MATCH_0 ->curious 'Do you need a god?'",
-						"'time' robe.blab=MATCH_0 ->curious 'Mima exists outside of time... #answer#'",
-						"'color' ->answ 'Mima loves #color.capitalize#'",
-						"'animal' ->answ 'Mima loves all animals but especially #animals.capitalize#'",
-						"'#meaning#' robe.blab=MATCH_0 ->curious 'Mima loves to dream'",
-						"'#bot#' ->answ 'Everything is created in chaos and ends in chaos'",
-						"'knock knock' ->chaos 'Ah a comedian'",
-						"'#music#' ->answ 'Mima is #music.capitalize# and #music.capitalize#'",
-					"'' ->chaos 'Your aura is very #moods#'"],
-			onExit: "wait:2"
+					"'' ->chaos 'You have a very #moods# aura'"],
+			onExitSay: "..."
 						},
 						probe: {
 							onEnterSay: "You alright pet?",
 							onEnter: "perspective=3",
 							exits: ["'#trigger#' robe.blab=MATCH_0 ->comfort '#oh#'",
-											"wait:150 ->pause 'take your time'",
+											"wait:15 ->pause 'take your time'",
 										  "'' ->comfort '#oh#'",
 										   "'#animal#' ->continue robe.pet=MATCH_0 'wow Mima loves #/MATCH_0.s#'",
 										 "'#self#' ->curious 'Mima cant answer that' 'Mima does not have a self'",
 										 "'#other#' ->curious '#/MATCH_AFTER# eh?'",
 									 "'#ask# #self#' ->answ 'hmm...'",
-								    "'#ask# #other#' ->comfort 'Mima cannot say...'",
-										"'#full#' ->quest 'Lovely'",
-										"'old' ->curious 'Mima has always been... #answer#'",
-										"'god' ->curious 'Do you need a god?'",
-										"'time' ->curious 'Mima exists outside of time... #answer#'",
-										"'color' ->answ 'Mima loves #color.capitalize#'",
-										"'animal' ->answ 'Mima loves all animals but especially #animals.capitalize#'",
-										"'dream' ->curious 'Mima loves to dream'",
-										"'#bot#' ->answ 'Everything is created in chaos and ends in chaos'",
-										"'knock knock' ->chaos 'Ah a comedian'",
-										"'#music#' ->answ 'Mima is #music.capitalize# and #music.capitalize#'",
-									"'' ->chaos 'Your aura is very #moods#'"]
+								    "'#ask# #other#' ->comfort 'Mima cannot say...'"]
 						},
 						comfort: {
 							onEnter: "perspective=4 rainbow=4",
-							onEnterSay: ["#soother#", "Do you need discombobulated?"],
-							exits: ["'#trigger#' robe.status=MATCH_0 ->discombobulate '#oh#'",
+							onEnterSay: "#soother#",
+							exits: ["'#trigger#' robe.status=MATCH_0 ->comfort '#oh# Mima will try to discombobulate you with wisdom'",
 											"'#ask#' ->quest robe.status=MATCH_0 '#oh# all these #/robe/status# questions...'",
 											"'#other#' ->curious 'interesting'",
 										"wait:25 ->pause",
-										"'#full#' ->quest 'Lovely'",
-										"'old' ->curious 'Mima has always been... #answer#'",
-										"'god' ->curious 'Do you need a god?'",
-										"'time' ->curious 'Mima exists outside of time... #answer#'",
-										"'color' ->answ 'Mima loves #color.capitalize#'",
-										"'animal' ->answ 'Mima loves all animals but especially #animals.capitalize#'",
-										"'dream' ->curious 'Mima loves to dream'",
-										"'#bot#' ->answ 'Everything is created in chaos and ends in chaos'",
-										"'knock knock' ->chaos 'Ah a comedian'",
-										"'#music#' ->answ 'Mima is #music.capitalize# and #music.capitalize#'",
-									"'#negate#' ->quest 'Your aura is very #moods#...'",
-								    "'#affirm#' ->discombobulate '#oh#'"]
+									"'' ->comfort2"],
+						 onExitSay: "..."
 										},
 										comfort2: {
-											onEnter: "perspective=4 rainbow=0 eyeFuzz=0",
 											onEnterSay: "did that help at all?",
-											chips: ["Yes", "No", "Again"],
-											exits: ["'#affirm#' ->quest", "'#negate#' ->probe", "'' ->chaos"]
-										},
-										discombobulate: {
-											onEnterPlay: ["/mediumblips/longwhistle.mp3", "/decorative/angry.mp3"],
-											onEnterSay: "Let Mima attempt to discombobulate you",
-											onEnter : "perspective=0 eyeFuzz=randomInt(10) rainbow=randomInt(4)",
-											exits: ["wait:15 ->comfort2"]
+											exits: ["'yes' ->quest", "'no' ->probe"]
+
 										},
 										quest: {
-											onEnter: "perspective=2 rainbow=3 opacity=3",
+											onEnter: "perspective=2 rainbow=3",
 											onEnterSay: "#question#",
 											exits: ["'#trigger#' ->comfort '#oh# #small#'",
-															"'#emotions#' robe.status=MATCH_0 ->emo ':|'",
+															"'#emotions#' robe.status=MATCH_0 ->emo ''",
 														"'#other#' robe.status=MATCH_AFTER ->curious 'very interesting'",
 													"'#self#' robe.blab=MATCH_AFTER ->answ",
-												 "wait:15 '' ->confirm",
-												 "'#full#' ->quest 'Lovely'",
-												 "'old' ->curious 'Mima has always been... #answer#'",
-												 "'god' ->curious 'Do you need a god?'",
-												 "'time' ->curious 'Mima exists outside of time... #answer#'",
-												 "'color' ->answ 'Mima loves #color.capitalize#'",
-												 "'animal' ->answ 'Mima loves all animals but especially #animals.capitalize#'",
-												 "'dream' ->curious 'Mima loves to dream'",
-												 "'#bot#' ->answ 'Everything is created in chaos and ends in chaos'",
-												 "'knock knock' ->chaos 'Ah a comedian'",
-												 "'#music#' ->answ 'Mima is #music.capitalize# and #music.capitalize#'",
-											 "'#negate#' ->chaos 'Your aura is very #moods#'",
-												 "'#affirm#' ->comfort2 '#oh#'"]
-														},
-														confirm: {
-															onEnter: "perspective=3 rainbow=10",
-															onEnterSay: "Really?",
-															exits: ["'#affirm#' ->continue2 'wow'", "'#negate#' ->bored 'hm ok'", "'' wait:15 ->quest '#oh#'"]
+												 "wait:15 '' ->probe"]
 														},
 														emo: {
 															onEnter: "perspective=2",
 															onEnterSay: "Where do these feelings come from?",
 															exits: ["'#trigger#' ->comfort '#oh#'",
-																			"'#emotions#' ->name '#oh# #small#'",
-																		"'' ->curious 'hmm'"]
+																			"'#emotions#' ->name '#oh# #small#'"]
 																	},
 																		pause: {
 																			onEnter: "perspective=5 speed=5",
@@ -209,32 +148,23 @@ let testMimaMap = {
 							curious: {
 									onEnterSay: "Tell me about your self",
 									onEnter: "perspective=1 opacity=10",
-									exits: ["'#other#' robe.status=MATCH_AFTER robe.status=MATCH_BEFORE ->continue", "'#self#' ->bored '...'",
- 							 "wait:150 ->pause"]
+									exits: ["'#other#' ->continue", "'#self#' ->bored '...'"]
 							},
 							continue: {
-								onEnterSay: "wow tell me more about being... #/robe/status#",
+								onEnterSay: "wow tell me more about being #/MATCH_AFTER#",
 								onEnter: "interest=randomInt(10)",
-								exits: ["'#other#' ->continue2", "'#self#' ->answ", "'#negate#' ->comfort '#oh#... #smek#'", "'' ->continue2", "'affirm' ->continue2 'wow'",
-							"'#greeting#' ->origin"]
+								exits: ["'#other#' ->continue2", "'#self#' ->answ", "'#trigger#' ->comfort '#oh#... #smek#'", "'' ->continue2"]
 							},
 							continue2: {
 								onEnterSay: "go on...",
 								onEnter: "interest=randomInt(10)",
-								exits: ["'#other#' ->continue", "'#self#' ->answ", "'#negate#' robe.status=MATCH_AFTER ->bored", "'#affirm#' robe.status=MATCH_AFTER ->confirm 'wow #/MATCH_AFTER#?'", "'' robe.blab=INPUT ->interrogate 'wait'",
-							"'#greeting#' ->origin"]
-							},
-							interrogate: {
-								onEnterSay: "#/robe.blab.capitalize#!! how on earth??",
-								exits: ["'' ->bored 'hmm... are you sure?'", "'#negate#' ->bored", "'#affirm#' ->quest",
-							"'#greeting#' ->origin"]
+								exits: ["'#other#' ->continue", "'#self#' ->answ", "'' ->"]
 							},
 							answ: {
 								onEnterSay: "#answer#",
 								exits: ["'#self#' ->curious 'enough about Mima...'",
 								"'' ->bored '*yawn*'",
-								 "'#trigger#' ->comfort",
-							 "'#greeting#' ->origin"]
+								 "'#trigger#' ->comfort"]
 								 },
 								 bored: {
 								onEnterSay: "Let us speak of other things for now",
@@ -242,21 +172,11 @@ let testMimaMap = {
 							},
 						exist: {
 					 onEnterSay: ["#color# #material.s# on the #places.capitalize.s# of distant planets", "but Mima is interested in you..."],
-					 exits: ["'' ->quest", "'#ask#' ->curious 'idk'",
-				 "'#greeting#' ->welcome"]
+					 exits: ["'' ->quest", "'#ask#' ->curious 'idk'"]
 				 },
 				chaos: {
-					onEnter : "valence=3 speed=5 perspective=10 opacity=5",
 				onEnterSay: "#calm#",
-				exits: ["'' ->quest 'interesting'", "'#ask#' ->curious 'idk'", "'#negate#' ->comfort", "'#affirm#' ->curious", "wait:15 ->jung",
-			"'#greeting#' ->welcome"]
-			},
-			jung: {
-				onEnter: "perspective=7 opacity=10",
-				onEnterSay: "#wisdome#",
-				exits: ["'' ->quest 'interesting'", "'#ask#' ->curious 'idk'", "'#negate#' ->comfort", "'#affirm#' ->curious", "'' ->comfort2",
-			"'#greeting#' ->welcome"]
-
+				exits: ["'' ->quest 'interesting'", "'#ask#' ->curious 'idk'", "wait:15 ->chaos"]
 			},
 	}
 }

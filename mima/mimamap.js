@@ -1,4 +1,4 @@
-let testMimaMap = {
+uulet testMimaMap = {
 	initialBlackboard: {
 		robe: {name:"#smek.capitalize#",
 		blab: "",
@@ -77,7 +77,8 @@ let testMimaMap = {
 	},
 	states: {
 		origin: {
-	   	onEnter: "perspective=3",
+	   	onEnter: "perspective=3 hue=.01 rainbow=0 volume=0.5",
+			onEnterPlay: "blips/yes.wav",
 			onEnterSay: ["Mima is present", "What name do you prefer?"],
 		  chips: ["#adj.capitalize# #animal.capitalize#", "#smek.capitalize#"],
 		  exits: ["'#adj# #animal#' ->welcome robe.name=INPUT 'ok Mima will call you #/robe/name#'",
@@ -86,8 +87,9 @@ let testMimaMap = {
 		  "'' ->welcome robe.name=INPUT 'ok...'"]
 		},
 		welcome: {
-			onEnter: "perspective=2 speed=1 rainbow=7",
+			onEnter: "perspective=2 speed=1 rainbow=7 hue=0.01 volume=0.5",
 			onEnterSay: "What's a'matter #/robe/name#?",
+			onEnterPlay: "blips/yes.wav",
 			exits: ["'#trigger#' ->comfort robe.blab=MATCH_0",
 							"wait:150 ->probe 'take your time'",
 						  "'#ask#' ->exist robe.question=MATCH_AFTER '#oh# Mima knows everything'",
@@ -111,7 +113,8 @@ let testMimaMap = {
 						},
 						probe: {
 							onEnterSay: "You alright pet?",
-							onEnter: "perspective=3",
+										onEnterPlay: "blips/yes.wav",
+							onEnter: "perspective=3 hue=0.1",
 							exits: ["'#trigger#' robe.blab=MATCH_0 ->comfort '#oh#'",
 											"wait:150 ->pause 'take your time'",
 										  "'' ->comfort '#oh#'",
@@ -133,8 +136,10 @@ let testMimaMap = {
 									"'' ->chaos 'Your aura is very #moods#'"]
 						},
 						comfort: {
-							onEnter: "perspective=4 rainbow=4",
+							onEnter: "perspective=4 rainbow=4 hue=0.01",
+										onEnterPlay: "blips/yes.wav",
 							onEnterSay: ["#soother#", "Do you need discombobulated?"],
+							chips: ["yes", "no"],
 							exits: ["'#trigger#' robe.status=MATCH_0 ->discombobulate '#oh#'",
 											"'#ask#' ->quest robe.status=MATCH_0 '#oh# all these #/robe/status# questions...'",
 											"'#other#' ->curious 'interesting'",
@@ -149,24 +154,26 @@ let testMimaMap = {
 										"'#bot#' ->answ 'Everything is created in chaos and ends in chaos'",
 										"'knock knock' ->chaos 'Ah a comedian'",
 										"'#music#' ->answ 'Mima is #music.capitalize# and #music.capitalize#'",
-									"'#negate#' ->quest 'Your aura is very #moods#...'",
+									"'#negate#' ->quest",
 								    "'#affirm#' ->discombobulate '#oh#'"]
 										},
 										comfort2: {
 											onEnter: "perspective=4 rainbow=0 eyeFuzz=0",
+														onEnterPlay: "blips/yes.wav",
 											onEnterSay: "did that help at all?",
 											chips: ["Yes", "No", "Again"],
 											exits: ["'#affirm#' ->quest", "'#negate#' ->probe", "'' ->chaos"]
 										},
 										discombobulate: {
-											onEnterPlay: ["/mediumblips/longwhistle.mp3", "/decorative/angry.mp3"],
+											onEnterPlay: ["/mediumblips/longwhistle.wav", "/decorative/angry.wav"],
 											onEnterSay: "Let Mima attempt to discombobulate you",
 											onEnter : "perspective=0 eyeFuzz=randomInt(10) rainbow=randomInt(4)",
 											exits: ["wait:15 ->comfort2"]
 										},
 										quest: {
-											onEnter: "perspective=2 rainbow=3 opacity=3",
-											onEnterSay: "#question#",
+											onEnter: "perspective=2 rainbow=0 opacity=3",
+											onEnterSay: "Your aura is very #moods#... #question#",
+														onEnterPlay: "blips/yes.wav",
 											exits: ["'#trigger#' ->comfort '#oh# #small#'",
 															"'#emotions#' robe.status=MATCH_0 ->emo ':|'",
 														"'#other#' robe.status=MATCH_AFTER ->curious 'very interesting'",

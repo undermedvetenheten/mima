@@ -1,4 +1,4 @@
-uulet testMimaMap = {
+let testMimaMap = {
 	initialBlackboard: {
 		robe: {name:"#smek.capitalize#",
 		blab: "",

@@ -37,7 +37,7 @@ let effects = {
 
 function randomChirp(length) {
 
-	
+
 
 	let keys = Object.keys(soundLibrary.chirps)
 	if (keys.length !== 0) {
@@ -51,12 +51,12 @@ function randomChirp(length) {
 			sound.volume *= .1
 			sound.addEffect(effects.reverb)
 		} else {
-			 // sound.volume = settings.volume*(.5 + .05*app.values.volume)		
+			 // sound.volume = settings.volume*(.5 + .05*app.values.volume)
 		}
 
-		
+
 		sound.play()
-	
+
 		sound.sourceNode.playbackRate.value = (Math.pow(.92, app.values.speed + .01))*settings.speed / (length*.001 + 1 + Math.random())
 		sound.on('end', () => {
 			// console.log("done!")
@@ -76,7 +76,7 @@ function startSoundtrack() {
 		}
 	} else {
 		console.log("🎵: - soundtrack already playing -")
-		
+
 	}
 }
 
@@ -90,10 +90,10 @@ function initSounds() {
 		console.log("RESUME SOUND")
 	Pizzicato.context.resume();
 
-	let chirps = ["affirm", "hi", "iguess", "chirp", "sigh", "uh huh", "why", "yes", "yo"]
+	let chirps = ["affirm", "hi", "chirp", "uh huh", "why", "yes"]
 
 	chirps.forEach((name) => {
-		var sound = new Pizzicato.Sound({ 
+		var sound = new Pizzicato.Sound({
 			source: 'file',
 			options: { path: 'mima/sounds/blips/' + name + '.wav' }
 		}, ()  => {
@@ -102,14 +102,14 @@ function initSounds() {
 			//	sound.play();
 			soundLibrary.chirps[name] = sound
 		});
-		
+
 	})
 
 	// let soundtrackFiles = ["mimamed", "mimamax", "mimamin"]
 	// Just use this for now
 	let soundtrackFiles = ["mimamed"]
 	soundtrackFiles.forEach((name) => {
-		var sound = new Pizzicato.Sound({ 
+		var sound = new Pizzicato.Sound({
 			source: 'file',
 			loop: true,
 			options: { path: 'mima/sounds/' + name + '.mp3' }
@@ -120,7 +120,7 @@ function initSounds() {
 			if (playSoundtrackOnLoad)
 				startSoundtrack()
 		});
-		
+
 	})
 	}
 }

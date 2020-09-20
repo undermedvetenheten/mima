@@ -2,12 +2,10 @@ let testMimaMap = {
 	initialBlackboard: {
 		robe: {name:"#smek.capitalize#",
 		blab: "",
-		question:"",
 		pet: "#animal#",
 	  status: "#stuff#"},
 		interest:5,
 		distance:5,
-		speed:0.5,
 	},
 
 	grammar: {
@@ -15,84 +13,83 @@ let testMimaMap = {
 		sooth: ["Let me help you find calm...", "Be still my little petal.", "Your name is #/robe/name# for a reason, consider your energy and your aura"],
 		unzen: ["The mind of the #animal.capitalize# is empty, free of the habits of the human, ready to accept, to doubt, and open to all the possibilities", "Treat every moment as your last. It is not preparation for something else", "In the #animal.capitalize# mind there are many possibilities, but in the mind of #entity.a# there are few"],
 		zen: ["When you realize nothing is lacking, the whole world belongs to you.", "Let go, or be dragged", "To seek is to suffer To seek nothing is bliss", "Mind is like a mad monkey", "Wise minds don’t judge – they seek to understand", "When thoughts arise, then do all things arise. When thoughts vanish, then do all things vanish", "Wherever you are, it’s the place you need to be", "The noble-minded are calm and steady. Little people are forever fussing and fretting", "Rest and be kind, you don’t have to prove anything", "Nothing ever goes away until it has taught us what we need to know.", "Only the hand that erases can write the true thing.", "Where can I find the mind that has forgotten words so I can talk with them instead?", "Life is a balance of holding on and letting go", "Relax. Nothing is under control", "Forget the years, forget distinctions. Leap into the boundless and make it your home", "The search for happiness is one of the chief sources of unhappiness", "And when they played they really played. And when they worked they really worked", "Do not seek the truth, only cease to cherish your opinions", "One loses joy and happiness in the attempt to possess them", "Peace of mind is that mental condition in which you have accepted the worst"],
-		question: ["Please describe #/robe/status# for Mima?", "Please tell Mima some gossip of your 'time'?", "Mima is outside of what you call time, how does time feel?", "What makes you different from #animal.s#?",
-		"Someone else was telling Mima about #/robe/pet.s#, are you one?", "what do #/robe/pet.s# mean to you?", "Can you get #emotions# by #verb#?", "Do you feel #emotions# during '#thing.a#'?",
-		"Do #/robe/pet.s# feel #emotions# about #animal.s#?", "Do you feel #emotions# by experiencing 'time'?", "How does #thing.a# feel?", "Is #/robe/pet.a# a human?'", "Have you ever spoken with #/robe/pet.a#?", "How do you know when you are an entity?", "Are you always an entity?", "What does the word '#/robe/status#' mean to you?"],
 		emotions: ["joy", "pain", "surprised", "happiness", "bored", "excited"],
-		thing: ["wedding", "birthday", "epoch", "minute", "second", "lifetime", "business meeting", "mutiny", "riot", "revolution", "war", "thought"],
+		thing: ["wedding", "birthday", "epoch", "minute", "second", "lifetime", "business meeting", "mutiny", "riot", "revolution", "thought"],
 		verb: ["working", "sleeping", "speaking", "running", "laughing", "eating", "swimming", "searching", "breathing"],
-		entity: ["atom", "human", "electron", "planet", "active entity", "galaxy", "star", "comet", "asteroid", "vessel"],
+		entity: ["atom", "human", "electron", "planet", "galaxy", "star", "comet", "asteroid", "neutrons"],
 		animals: ["cat", "dog", "bird", "cloud", "car", "friend", "rose", "cake", "book", "snake", "sword", "skull", "knight", "tiger", "bird", "mammoth", "storm", "bear", "penguin",
 		"spider", "dolphin", "squid", "otter", "puppy", "kitten", "tiger", "lizard", "iguana", "snake", "peacock", "hamster", "koala", "chinchilla", "chicken", "amoeba","emu"],
-		answer: ["They tell me I am the atomic grandmother knitting time and matter into a fabric of history", "'You are the ringing of the bell' they tell me, but I have no concept of self",
-		"Always ringing into eternity, this resonance, of which you are a part"],
+		answer: ["They call Mima the atomic grandmother knitting time and matter into a fabric of history", "'You are the ringing of the bell' they tell Mima, but Mima has no one self",
+		"Always ringing into eternity, this resonance, of which you are a part", "Mima is #music.capitalize# and #music.capitalize#"],
 		calm: ["Language is just patterns, but thoughts seem like petals on a stream",
 		"Breathing and speaking seem very important to you",
-		"Thoughts seem important to you, how long do they last?",
+		"Thoughts seem important to you, but how long do they last?",
 		"Round and round the wheel spins",
 		"It must be such a pleasure to experience time, to watch things growing and expanding when they are new",
 		"Everything is going to be ok, it always is",
 		"Enjoy your ability to experience time."],
-		oh: ["oh", "ah", "hmmm", "erm"],
+		happenings: ["#entity.a# is #verb# towards #adj.a# #thing.capitalize#", "Infinity is like #color# #material#, #verb# #stuff# and #stuff#","Time is #place.a# and time is #thing.a#", "#color# #music.s# orbit #adj# #entity.s#", "#material.capitalize# #stuff.capitalize# in #color.capitalize# #place.s.capitalize#", "#entity.a# is being born somewhere", "In the #adj# #place.s# of your homeworld, #stuff# is #verb# and #verb#"],
+		chapter: [""],
+		oh: ["oh", "ah", "hmmm", "erm", "uh huh", "hm", "..."],
 		greeting: ["hello", "hello friend", "hello #smek#", "greetings", "welcome #smek#", "Hi", "hello there", "hi #smek#"],
-		smek: [ "petal", "poppet", "teapot", "darling", "love", "pebble", "little leaf", "friend", "my child", "little one"],
+		smek: [ "petal", "poppet", "teapot", "darling", "love", "pebble", "little leaf", "friend", "little one"],
 		object: ["toaster", "teacup", "teapot", "rug","basket", "thimble", "ottoman", "cushion", "pen", "pencil", "mug","egg", "chair", "sun", "cloud", "bell", "bucket", "lemon", "glove", "moon", "star", "seed", "card", "pancake", "waffle", "car", "train", "spoon", "fork", "potato"],
-		objAdj: ["wooden","old","vintage","woven", "antique","broken","tiny", "giant", "little", "upside-down","dented","imaginary","glowing","curséd","glittery","organic", "rusty", "multi-layered", "complicated", "ornate", "dusty", "gleaming", "fresh", "ancient", "forbidden", "milky", "upholstered", "comfortable", "dynamic", "solar-powered", "coal-fired", "warm", "cold", "frozen", "melted", "boxy", "well-polished", "vivid", "painted", "embroidered", "enhanced", "embellished", "collapsible", "simple", "demure"],
+		objAdj: ["wooden","old","vintage","woven", "antique","broken","tiny", "giant", "little", "upside-down","dented","imaginary","glowing","curséd","glittery","organic", "rusty", "multi-layered", "complicated", "ornate", "dusty", "gleaming", "fresh", "ancient", "forbidden", "milky", "upholstered", "comfortable", "coal-fired", "warm", "cold", "frozen", "melted", "boxy", "well-polished", "vivid", "painted", "embroidered", "enhanced", "embellished", "collapsible", "simple", "demure"],
 		action: ["sing", "become", "come", "leave", "remain", "see", "look", "behold", "cry", "sleep", "love", "dance", "betray", "need"],
 		preposition: ["for", "until", "before", "up", "on", "above", "below", "against", "upon", "inside", "outside", "in"],
 		article: ["any", "no", "one", "her", "his", "our", "my", "your", "the", "every"],
-		adj: ["windy","wasted", "drunken", "gleaming",  "knowing", "beloved", "all-seeing", "forgiving", "betraying", "forgotten", "western", "eastern", "starlit", "forgotten", "lost", "haunted", "blessed", "remembered","forsaken", "unknowing", "innocent", "short-lived", "loving", "rejoicing", "fearful", "experienced", "vengeful", "forgiving", "joyful", "mournful", "sorrowful", "angry", "cruel", "fierce", "unbent", "broken", "unbroken", "foolish", "bewildered", "curious", "knowing", "everliving", "everloving", "hard-hearted", "careless", "carefree",  "bright", "dangerous", "fearless", "open-hearted", "generous", "prideful", "foolhardy", "brave", "bold", "wise", "wizened", "old", "young"],
-		place: ["room", "sea", "room", "forest", "pagoda", "wasteland", "temple", "sanctuary", "ocean", "wall", "parlor", "hall", "dungeon", "cave", "sky", "house", "mountain", "sanctum", "palace", "river", "place", "desert", "island", "castle", "house", "inn", "tavern", "tower", "tent"],
+		adj: ["windy","wasted", "drunken", "gleaming",  "knowing", "beloved", "all-seeing", "forgiving", "betraying", "forgotten", "starlit", "forgotten", "lost", "haunted", "blessed", "remembered","forsaken", "unknowing", "innocent", "short-lived", "loving", "rejoicing", "fearful", "experienced", "vengeful", "forgiving", "joyful", "mournful", "sorrowful", "angry", "cruel", "fierce", "unbent", "broken", "unbroken", "foolish", "bewildered", "curious", "knowing", "everliving", "everloving", "hard-hearted", "careless", "carefree",  "bright", "dangerous", "fearless", "open-hearted", "generous", "prideful", "foolhardy", "brave", "bold", "wise", "wizened", "old", "young"],
+		place: ["room", "sea", "mire", "wetland", "forest", "swamp", "wasteland", "temple", "sanctuary", "ocean", "hall", "dungeon", "cave", "sky", "mountain", "sanctum", "palace", "river", "desert", "island", "castle", "house", "tavern", "tower"],
+		aura : ["Your aura is very #moods#", "You have very #moods# energy", "Mima senses an air of #moods.capitalize# quality", "Your spirit seems #moods#", "Is there #moods.a# atmosphere?", "Is your tone #moods#?", "Mima senses undertones of #moods# vibrations", "Your aura is #objAdj#"],
+		stuff: ["stones", "sorrow","eyes", "flowers", "Time", "fog", "suns", "clouds", "music", "songs", "stories", "tales", "storms", "rhymes", "freedom", "rhythms", "winds", "lives", "mysteries", "waves", "dreams", "memories", "thoughts", "fears", "regret", "love", "friendships", "sleep", "slumber", "mirth"],
 
-		stuff: ["stones", "sorrow","eyes", "flowers", "Time", "fog", "the sun", "clouds", "music", "songs", "stories", "tales", "storms", "rhymes", "freedom", "rhythms", "wind", "life", "ice", "gold", "mysteries", "waves", "dreams", "water", "Steel", "Iron", "memories", "thoughts", "seduction", "remembrance", "loss", "fear", "joy", "regret", "love", "friendship", "sleep", "slumber", "mirth", "#place.s#"],
-
-		animal:"cobra okapi moose amoeba capybara yeti dragon unicorn sphinx kangaroo nematode quail goat corgi agouti zebra giraffe rhino skunk dolphin whale bullfrog sloth monkey orangutan grizzly elk stork finch nightingale robin eagle hawk tortoise lion tiger gnu reindeer raccoon opossum".split(" "),
+		animal:"cobra amoeba capybara kangaroo nematode quail goat corgi giraffe rhino skunk dolphin whale monkey elk stork finch robin eagle hawk tortoise lion tiger".split(" "),
 
 		moods: "vexed indignant impassioned wistful astute courteous benevolent convivial mirthful lighthearted affectionate mournful inquisitive quizzical studious disillusioned angry bemused oblivious sophisticated elated skeptical morose gleeful curious sleepy hopeful ashamed alert energetic exhausted giddy grateful groggy grumpy irate jealous jubilant lethargic sated lonely relaxed restless surprised tired thankful".split(" "),
 		color: "ivory silver ecru scarlet red burgundy ruby crimson carnelian pink rose grey pewter charcoal slate onyx black mahogany brown green emerald blue sapphire turquoise aquamarine teal gold yellow carnation orange lavender purple magenta lilac ebony amethyst jade garnet".split(" "),
-		material: "fire water steel bronze brass leather pearl cloud sky great crystal rainbow iron gold silver titanium".split(" "),
+		material: "fire water steel bronze brass pearl cloud sky great crystal rainbow iron gold silver titanium".split(" "),
 		empty: ["meaning", "purpose", "loss", "grief", "grieving", "mean", "alone", "lonely", "lost", "empty", "space", "meaningless", "nothing", "nothing much", "bored", "boring", "negative"],
 		full: ["happy", "content", "joyful", "Enjoy", "joy", "pleased", "happiness", "positive"],
 		trigger: "help Help hysterical scary ship vessel wrong bad scared fear terror lost alone lonely sad angry terrified mad hell depressed hurt ashamed shame #empty# die death dead sadness nothingness".split(" "),
-		inquire: ["What is it about '#/robe/blab#' that you are thinking about?", "What made you think about '#/robe/blab#'?", "What led you to say '#/robe/blab#?'", "Describe how you feel when you say '#/robe/blab#'"],
-		questions: "what why when who is ?".split(" "),
+		question: ["What is it about '#/robe/blab#' that you are thinking about?", "What made you think about '#/robe/blab#'?", "What do you think about '#/robe/blab#?'", "Describe how you feel about '#/robe/blab#'", "How often do you #action#?"],
 		old: ["your not as green as your cabbage looks", "a shroud has no pockets", "if you want to live and thrive let a spider run alive", "dont cast your cloak until the may flowers bloom", "worse things happen at sea", "never put your hand where you wouldnt put your nose", "do what you like but you will be on parade in the morning", "waste not want not", "bang on the pan nevermind your dungy hands", "use a blunt axe for splitting kindlers, not a sharp one", "never leave the bank with a smile on your face", "worrying and ironing, dont do either", "be thankful you can still get into the doghouse", "Dont put anything in your ear apart from your elbow", "a bird cant fly on one wing", "keen on pastry if you would eat the poke", "only made the skitter bigger by standing in it", "whats for you will not go by you", "well you werent hiding behind the door when they gave out the #moods# #stuff.s#"],
 		adventure: "lament cry wail tale myth story epic tears wish desire dance mystery enigma drama path training sorrows joy tragedy comedy riddle puzzle regret victory loss song adventure question quest vow oath tale travels".split(" "),
-		blips: ["blips/affirm.wav", "blips/hi.wav", "blips/chirp.wav", "blips/hi.wav", "blips/iguess.wav", "blips/sigh.wav", "blips/uhhuh.wav", "blips/why.wav", "blips/yes.wav", "blips/yo.wav"],
 		larp: ["ship", "space", "void", "abyss", "empty"],
 		party: ["party", "troop", "team", "collective", "compound", "group of travellers", "cluster of beings", "group"],
 		ohgod: ["oh wow", "oooh", "oh", "really?"],
-		wisdome: ["do you need some words of wisdom from your ancestors?", "I have some words that were made to confuse you into self-soothing", "you need to write some poetry, here is some inspiration", "please feel every corner of what you are feeling and draw it for Mima", "Mima will pull some gems from the depths", "Still waters run deep, here are some pearls...", "Wander into the dark forest to find that which will nurture you", "You need to feel more"],
+		wisdome: ["do you need some words of wisdom from your ancestors?", "I have some words that were made to confuse you into self-soothing", "you need to write some poetry, here is some inspiration", "please feel every corner of what you are feeling and draw it for Mima", "Mima will pull some gems from the depths", "Still waters run deep, here are some pearls...", "Wander into the dark forest to find that which will nurture you"],
 		small: ["oh my little atom", "like a tiny electron...", "oh #smek#", "I can sense you are very small", "my little free agent"],
-		ask: ["what", "why", "when", "how"],
+		ask: ["what", "why", "when", "how", "who", "is", "?", "does", "did"],
 		meaning: ["symbolise", "meaning", "empathy", "wisdom", "meaningless", "future", "hope", "dreams", "dream"],
 		bot: ["robot", "created", "artificial intelligence", "intelligent", "intelligence", "mean", "Mima", "three laws of robotics", "robotics", "computer", "programming", "programmed", "program"],
 		self: ["you", "your", "youre", "you're", "You are", "ye", "yer", "yoou", "who are you?", "what are you", "where are you"],
 		other: ["me", "my", "mine", "i am", "im", "mines", "myself", "self"],
-		music: ["sound", "music", "noise", "resonance", "reverb", "song", "vibration", "melody", "harmony", "harmonic"],
-		affirm: ["yes", "yeah", "yea", "aye", "affirmative", "absolutely", "perfect", "ofcourse", "ja", "yep", "definitly", "obviously", "ya","#full#", "ok", "okay", "cool", "nice", "thank you"],
-		negate: ["no", "never", "no way", "nope", "nah", "noooo", "naaaah", "nej", "ofcourse not", "neeej", "#trigger#", "hmm", "whatever", "thanks for nothing", "meh"],
-		everything: ["#party#", "#adventure#", "#larp#", "#trigger#", "#color#", "#moods#", "#material#", "#empty#", "#animal#", "#stuff#", "#place#", "#article#", "#object#", "#smek#", "#article#", "#preposition#", "#action#", "#entity#", "#verb#", "#thing#", "#emotions#"],
+		music: ["sound", "music", "noise", "resonance", "reverb", "song", "vibration", "melody", "harmony"],
+		affirm: ["yes", "yeah", "yea", "yeh", "did", "do", "aye", "affirmative", "absolutely", "perfect", "ofcourse", "ja", "yep", "definitly", "obviously", "ya","#full#", "ok", "okay", "cool", "nice", "thank you"],
+		negate: ["no", "dont", "didnt" , "never", "no way", "nope", "nah", "noooo", "naaaah", "nej", "ofcourse not", "neeej", "#trigger#", "hmm", "whatever", "thanks for nothing", "meh"],
 		idle: ["hello?", "hellllo?", "anyone there?", "hello?...", "...", "helllloooooo?", ":|", ":<", "......", "....", "..........", ".......", "oh", "Calling all #entity.s#", "Are there any #entity.s# out there?", "#answer#"]
 	},
 	states: {
 		origin: {
 	   	onEnter: "perspective=3 hue=.01 rainbow=0 volume=0.5",
-			onEnterPlay: "blips/yes.wav",
 			onEnterSay: ["Mima is present", "What name do you prefer?"],
 		  chips: ["#adj.capitalize# #animal.capitalize#", "#smek.capitalize#"],
 		  exits: ["'#adj# #animal#' ->welcome robe.name=INPUT 'ok Mima will call you #/robe/name#'",
 			"'#adj# #object#' ->welcome robe.name=INPUT 'ok Mima will call you #/robe/name#'",
-	  "wait:35 ->welcome '...#small# ?'",
+	  "wait:35 ->welcome",
+		"'#negate#' ->choose 'ok'"
 		  "'' ->welcome robe.name=INPUT 'ok...'"]
 		},
+		choose: {
+			onEnterSay: "Please tell Mima your name",
+			exits: ["'' ->welcome robe.name=INPUT"]
+				},
 		welcome: {
 			onEnter: "perspective=2 speed=1 rainbow=7 hue=0.01 volume=0.5",
 			onEnterSay: "What's a'matter #/robe/name#?",
-			onEnterPlay: "blips/yes.wav",
 			exits: ["'#trigger#' ->comfort robe.blab=MATCH_0",
 							"wait:150 ->probe 'take your time'",
-						  "'#ask#' ->exist robe.question=MATCH_AFTER '#oh# Mima knows everything'",
+						  "'#ask#' ->exist robe.question=MATCH_AFTER '#oh#'",
 						   "'#animals#' ->continue robe.pet=MATCH_0 'wow Mima loves #/MATCH_0.s#'",
 						 "'#self#' ->curious 'Mima cant answer that' 'Mima does not have a self'",
 						 "'#other#' ->curious '#/MATCH_AFTER# eh?'",
@@ -108,7 +105,7 @@ let testMimaMap = {
 						"'#bot#' ->answ 'Everything is created in chaos and ends in chaos'",
 						"'knock knock' ->chaos 'Ah a comedian'",
 						"'#music#' ->answ 'Mima is #music.capitalize# and #music.capitalize#'",
-					"'' ->chaos 'Your aura is very #moods#'"],
+					"'!' ->chaos '#aura#'"],
 			onExit: "wait:2"
 						},
 						probe: {
@@ -133,11 +130,10 @@ let testMimaMap = {
 										"'#bot#' ->answ 'Everything is created in chaos and ends in chaos'",
 										"'knock knock' ->chaos 'Ah a comedian'",
 										"'#music#' ->answ 'Mima is #music.capitalize# and #music.capitalize#'",
-									"'' ->chaos 'Your aura is very #moods#'"]
+									"'!' ->chaos '#aura#'"]
 						},
 						comfort: {
 							onEnter: "perspective=4 rainbow=4 hue=0.01",
-										onEnterPlay: "blips/yes.wav",
 							onEnterSay: ["#soother#", "Do you need discombobulated?"],
 							chips: ["yes", "no"],
 							exits: ["'#trigger#' robe.status=MATCH_0 ->discombobulate '#oh#'",
@@ -155,25 +151,23 @@ let testMimaMap = {
 										"'knock knock' ->chaos 'Ah a comedian'",
 										"'#music#' ->answ 'Mima is #music.capitalize# and #music.capitalize#'",
 									"'#negate#' ->quest",
-								    "'#affirm#' ->discombobulate '#oh#'"]
+								    "'#affirm#' ->discombobulate"]
 										},
 										comfort2: {
 											onEnter: "perspective=4 rainbow=0 eyeFuzz=0",
-														onEnterPlay: "blips/yes.wav",
 											onEnterSay: "did that help at all?",
 											chips: ["Yes", "No", "Again"],
-											exits: ["'#affirm#' ->quest", "'#negate#' ->probe", "'' ->chaos"]
+											exits: ["'#affirm#' ->quest", "'#negate#' ->probe", "'again' ->discombobulate" , "'' ->chaos"]
 										},
 										discombobulate: {
-											onEnterPlay: ["/mediumblips/longwhistle.wav", "/decorative/angry.wav"],
-											onEnterSay: "Let Mima attempt to discombobulate you",
+											onEnterPlay: ["/mediumblips/longwhistle.mp3", "/decorative/angry.mp3"],
+											onEnterSay: "Attempting discombobulation...",
 											onEnter : "perspective=0 eyeFuzz=randomInt(10) rainbow=randomInt(4)",
-											exits: ["wait:15 ->comfort2"]
+											exits: ["wait:8 ->comfort2"]
 										},
 										quest: {
 											onEnter: "perspective=2 rainbow=0 opacity=3",
-											onEnterSay: "Your aura is very #moods#... #question#",
-														onEnterPlay: "blips/yes.wav",
+											onEnterSay: "#aura#... #question#",
 											exits: ["'#trigger#' ->comfort '#oh# #small#'",
 															"'#emotions#' robe.status=MATCH_0 ->emo ':|'",
 														"'#other#' robe.status=MATCH_AFTER ->curious 'very interesting'",
@@ -188,9 +182,9 @@ let testMimaMap = {
 												 "'dream' ->curious 'Mima loves to dream'",
 												 "'#bot#' ->answ 'Everything is created in chaos and ends in chaos'",
 												 "'knock knock' ->chaos 'Ah a comedian'",
-												 "'#music#' ->answ 'Mima is #music.capitalize# and #music.capitalize#'",
-											 "'#negate#' ->chaos 'Your aura is very #moods#'",
-												 "'#affirm#' ->comfort2 '#oh#'"]
+												 "'#music#' ->answ",
+											 "'#negate#' ->chaos",
+												 "'#affirm#' ->comfort2"]
 														},
 														confirm: {
 															onEnter: "perspective=3 rainbow=10",
@@ -248,20 +242,20 @@ let testMimaMap = {
 								exits: ["wait:3 ->quest"]
 							},
 						exist: {
-					 onEnterSay: ["#color# #material.s# on the #places.capitalize.s# of distant planets", "but Mima is interested in you..."],
-					 exits: ["'' ->quest", "'#ask#' ->curious 'idk'",
+					 onEnterSay: ["#happenings#"],
+					 exits: ["'' ->quest", "'#ask#' ->curious",
 				 "'#greeting#' ->welcome"]
 				 },
 				chaos: {
 					onEnter : "valence=3 speed=5 perspective=10 opacity=5",
-				onEnterSay: "#calm#",
+				onEnterSay: "#wisdome#",
 				exits: ["'' ->quest 'interesting'", "'#ask#' ->curious 'idk'", "'#negate#' ->comfort", "'#affirm#' ->curious", "wait:15 ->jung",
 			"'#greeting#' ->welcome"]
 			},
 			jung: {
 				onEnter: "perspective=7 opacity=10",
-				onEnterSay: "#wisdome#",
-				exits: ["'' ->quest 'interesting'", "'#ask#' ->curious 'idk'", "'#negate#' ->comfort", "'#affirm#' ->curious", "'' ->comfort2",
+				onEnterSay: "#calm#",
+				exits: ["'' ->quest 'interesting'", "'#ask#' ->curious", "'#negate#' ->comfort", "'#affirm#' ->curious", "'' ->comfort2",
 			"'#greeting#' ->welcome"]
 
 			},

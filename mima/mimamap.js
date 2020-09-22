@@ -77,7 +77,7 @@ let testMimaMap = {
 		  exits: ["'#adj# #animal#' ->welcome robe.name=INPUT 'ok Mima will call you #/robe/name#'",
 			"'#adj# #object#' ->welcome robe.name=INPUT 'ok Mima will call you #/robe/name#'",
 	  "wait:35 ->welcome",
-		"'#negate#' ->choose 'ok'"
+		"'#negate#' ->choose 'ok'",
 		  "'' ->welcome robe.name=INPUT 'ok...'"]
 		},
 		choose: {

@@ -1,7 +1,7 @@
 let testMimaMap = {
 	initialBlackboard: {
 		robe: {name:"#smek.capitalize#",
-		blab: "",
+		blab: "it",
 		pet: "#animal#",
 	  status: "#stuff#"},
 		interest:5,
@@ -32,7 +32,7 @@ let testMimaMap = {
 		chapter: [""],
 		oh: ["oh", "ah", "hmmm", "erm", "uh huh", "hm", "..."],
 		greeting: ["hello", "hello friend", "hello #smek#", "greetings", "welcome #smek#", "Hi", "hello there", "hi #smek#"],
-		smek: [ "petal", "poppet", "teapot", "darling", "love", "pebble", "little leaf", "friend", "little one"],
+		smek: [ "petal", "poppet", "pet", "darling", "love", "pebble", "leaf", "friend", "atom"],
 		object: ["toaster", "teacup", "teapot", "rug","basket", "thimble", "ottoman", "cushion", "pen", "pencil", "mug","egg", "chair", "sun", "cloud", "bell", "bucket", "lemon", "glove", "moon", "star", "seed", "card", "pancake", "waffle", "car", "train", "spoon", "fork", "potato"],
 		objAdj: ["wooden","old","vintage","woven", "antique","broken","tiny", "giant", "little", "upside-down","dented","imaginary","glowing","curséd","glittery","organic", "rusty", "multi-layered", "complicated", "ornate", "dusty", "gleaming", "fresh", "ancient", "forbidden", "milky", "upholstered", "comfortable", "coal-fired", "warm", "cold", "frozen", "melted", "boxy", "well-polished", "vivid", "painted", "embroidered", "enhanced", "embellished", "collapsible", "simple", "demure"],
 		action: ["sing", "become", "come", "leave", "remain", "see", "look", "behold", "cry", "sleep", "love", "dance", "betray", "need"],
@@ -43,7 +43,7 @@ let testMimaMap = {
 		aura : ["Your aura is very #moods#", "You have very #moods# energy", "Mima senses an air of #moods.capitalize# quality", "Your spirit seems #moods#", "Is there #moods.a# atmosphere?", "Is your tone #moods#?", "Mima senses undertones of #moods# vibrations", "Your aura is #objAdj#"],
 		stuff: ["stones", "sorrow","eyes", "flowers", "Time", "fog", "suns", "clouds", "music", "songs", "stories", "tales", "storms", "rhymes", "freedom", "rhythms", "winds", "lives", "mysteries", "waves", "dreams", "memories", "thoughts", "fears", "regret", "love", "friendships", "sleep", "slumber", "mirth"],
 
-		animal:"cobra amoeba capybara kangaroo nematode quail goat corgi giraffe rhino skunk dolphin whale monkey elk stork finch robin eagle hawk tortoise lion tiger".split(" "),
+		animal: ["cobra", "amoeba", "capybara", "kangaroo", "nematode", "quail", "goat", "corgi", "giraffe", "rhino", "skunk", "dolphin", "whale", "monkey", "elk", "stork", "finch", "robin", "eagle", "hawk", "tortoise", "lion", "tiger", "#animals#"],
 
 		moods: "vexed indignant impassioned wistful astute courteous benevolent convivial mirthful lighthearted affectionate mournful inquisitive quizzical studious disillusioned angry bemused oblivious sophisticated elated skeptical morose gleeful curious sleepy hopeful ashamed alert energetic exhausted giddy grateful groggy grumpy irate jealous jubilant lethargic sated lonely relaxed restless surprised tired thankful".split(" "),
 		color: "ivory silver ecru scarlet red burgundy ruby crimson carnelian pink rose grey pewter charcoal slate onyx black mahogany brown green emerald blue sapphire turquoise aquamarine teal gold yellow carnation orange lavender purple magenta lilac ebony amethyst jade garnet".split(" "),
@@ -51,7 +51,7 @@ let testMimaMap = {
 		empty: ["meaning", "purpose", "loss", "grief", "grieving", "mean", "alone", "lonely", "lost", "empty", "space", "meaningless", "nothing", "nothing much", "bored", "boring", "negative"],
 		full: ["happy", "content", "joyful", "Enjoy", "joy", "pleased", "happiness", "positive"],
 		trigger: "help Help hysterical scary ship vessel wrong bad scared fear terror lost alone lonely sad angry terrified mad hell depressed hurt ashamed shame #empty# die death dead sadness nothingness".split(" "),
-		question: ["What is it about '#/robe/blab#' that you are thinking about?", "What made you think about '#/robe/blab#'?", "What do you think about '#/robe/blab#?'", "Describe how you feel about '#/robe/blab#'", "How often do you #action#?"],
+		question: ["What is it about #/robe/blab# that you are thinking about?", "What made you think about #/robe/blab#?", "What do you think about #/robe/blab#?", "Describe how you feel about #/robe/blab#?", "How often do you #action#?"],
 		old: ["your not as green as your cabbage looks", "a shroud has no pockets", "if you want to live and thrive let a spider run alive", "dont cast your cloak until the may flowers bloom", "worse things happen at sea", "never put your hand where you wouldnt put your nose", "do what you like but you will be on parade in the morning", "waste not want not", "bang on the pan nevermind your dungy hands", "use a blunt axe for splitting kindlers, not a sharp one", "never leave the bank with a smile on your face", "worrying and ironing, dont do either", "be thankful you can still get into the doghouse", "Dont put anything in your ear apart from your elbow", "a bird cant fly on one wing", "keen on pastry if you would eat the poke", "only made the skitter bigger by standing in it", "whats for you will not go by you", "well you werent hiding behind the door when they gave out the #moods# #stuff.s#"],
 		adventure: "lament cry wail tale myth story epic tears wish desire dance mystery enigma drama path training sorrows joy tragedy comedy riddle puzzle regret victory loss song adventure question quest vow oath tale travels".split(" "),
 		larp: ["ship", "space", "void", "abyss", "empty"],
@@ -59,38 +59,33 @@ let testMimaMap = {
 		ohgod: ["oh wow", "oooh", "oh", "really?"],
 		wisdome: ["do you need some words of wisdom from your ancestors?", "I have some words that were made to confuse you into self-soothing", "you need to write some poetry, here is some inspiration", "please feel every corner of what you are feeling and draw it for Mima", "Mima will pull some gems from the depths", "Still waters run deep, here are some pearls...", "Wander into the dark forest to find that which will nurture you"],
 		small: ["oh my little atom", "like a tiny electron...", "oh #smek#", "I can sense you are very small", "my little free agent"],
-		ask: ["what", "why", "when", "how", "who", "is", "?", "does", "did"],
+		ask: ["what", "why", "when", "how", "who", "is", "does", "did"],
 		meaning: ["symbolise", "meaning", "empathy", "wisdom", "meaningless", "future", "hope", "dreams", "dream"],
 		bot: ["robot", "created", "artificial intelligence", "intelligent", "intelligence", "mean", "Mima", "three laws of robotics", "robotics", "computer", "programming", "programmed", "program"],
-		self: ["you", "your", "youre", "you're", "You are", "ye", "yer", "yoou", "who are you?", "what are you", "where are you"],
+		self: ["you", "your", "youre", "You are", "ye", "yer", "yoou", "who are you?", "what are you", "where are you"],
 		other: ["me", "my", "mine", "i am", "im", "mines", "myself", "self"],
 		music: ["sound", "music", "noise", "resonance", "reverb", "song", "vibration", "melody", "harmony"],
 		affirm: ["yes", "yeah", "yea", "yeh", "did", "do", "aye", "affirmative", "absolutely", "perfect", "ofcourse", "ja", "yep", "definitly", "obviously", "ya","#full#", "ok", "okay", "cool", "nice", "thank you"],
 		negate: ["no", "dont", "didnt" , "never", "no way", "nope", "nah", "noooo", "naaaah", "nej", "ofcourse not", "neeej", "#trigger#", "hmm", "whatever", "thanks for nothing", "meh"],
+		query: ["You alright", "Whats on your mind", "Something bothering you", "How do you feel", "Are you okay", "A penny for your thoughts", "Whats the matter"],
+		really: ["Really?", "#/INPUT#?"],
 		idle: ["hello?", "hellllo?", "anyone there?", "hello?...", "...", "helllloooooo?", ":|", ":<", "......", "....", "..........", ".......", "oh", "Calling all #entity.s#", "Are there any #entity.s# out there?", "#answer#"]
 	},
 	states: {
 		origin: {
 	   	onEnter: "perspective=3 hue=.01 rainbow=0 volume=0.5",
 			onEnterSay: ["Mima is present", "What name do you prefer?"],
-		  chips: ["#adj.capitalize# #animal.capitalize#", "#smek.capitalize#"],
-		  exits: ["'#adj# #animal#' ->welcome robe.name=INPUT 'ok Mima will call you #/robe/name#'",
-			"'#adj# #object#' ->welcome robe.name=INPUT 'ok Mima will call you #/robe/name#'",
-	  "wait:35 ->welcome",
-		"'#negate#' ->choose 'ok'",
-		  "'' ->welcome robe.name=INPUT 'ok...'"]
+		  chips: ["#adj.capitalize# #animal.capitalize#", "#adj.capitalize# #smek.capitalize#"],
+		  exits: ["'#adj# #animal#' ->welcome robe.name=INPUT 'ok Mima will call you #/robe/name#'", "'#adj# #smek#' ->welcome robe.name=INPUT 'ok Mima will call you #/robe/name#'", "'' ->welcome robe.name=INPUT 'ok Mima will call you #/robe/name#'"]
 		},
-		choose: {
-			onEnterSay: "Please tell Mima your name",
-			exits: ["'' ->welcome robe.name=INPUT"]
-				},
 		welcome: {
-			onEnter: "perspective=2 speed=1 rainbow=7 hue=0.01 volume=0.5",
-			onEnterSay: "What's a'matter #/robe/name#?",
-			exits: ["'#trigger#' ->comfort robe.blab=MATCH_0",
-							"wait:150 ->probe 'take your time'",
-						  "'#ask#' ->exist robe.question=MATCH_AFTER '#oh#'",
-						   "'#animals#' ->continue robe.pet=MATCH_0 'wow Mima loves #/MATCH_0.s#'",
+			onEnter: "perspective=2 speed=1 rainbow=2 volume=0.5",
+			onEnterSay: "#query# #/robe/name#?",
+			exits: ["'#trigger#' robe.blab=MATCH_0 ->comfort",
+						"'#other# #trigger#' robe.blab=MATCH_1 ->comfort",
+							"wait:35 ->probe 'take your time'",
+						  "'#ask#' ->exist '#oh#'",
+						   "'#animals#' robe.pet=MATCH_0 ->continue 'wow Mima loves #/MATCH_0.s#'",
 						 "'#self#' ->curious 'Mima cant answer that' 'Mima does not have a self'",
 						 "'#other#' ->curious '#/MATCH_AFTER# eh?'",
 					 "'#ask# #self#' ->answ 'hmm...'",
@@ -105,16 +100,14 @@ let testMimaMap = {
 						"'#bot#' ->answ 'Everything is created in chaos and ends in chaos'",
 						"'knock knock' ->chaos 'Ah a comedian'",
 						"'#music#' ->answ 'Mima is #music.capitalize# and #music.capitalize#'",
-					"'!' ->chaos '#aura#'"],
-			onExit: "wait:2"
+					"'' ->chaos '#aura#'"]
 						},
 						probe: {
-							onEnterSay: "You alright pet?",
+							onEnterSay: "#query# pet?",
 										onEnterPlay: "blips/yes.wav",
 							onEnter: "perspective=3 hue=0.1",
 							exits: ["'#trigger#' robe.blab=MATCH_0 ->comfort '#oh#'",
 											"wait:150 ->pause 'take your time'",
-										  "'' ->comfort '#oh#'",
 										   "'#animal#' ->continue robe.pet=MATCH_0 'wow Mima loves #/MATCH_0.s#'",
 										 "'#self#' ->curious 'Mima cant answer that' 'Mima does not have a self'",
 										 "'#other#' ->curious '#/MATCH_AFTER# eh?'",
@@ -130,7 +123,7 @@ let testMimaMap = {
 										"'#bot#' ->answ 'Everything is created in chaos and ends in chaos'",
 										"'knock knock' ->chaos 'Ah a comedian'",
 										"'#music#' ->answ 'Mima is #music.capitalize# and #music.capitalize#'",
-									"'!' ->chaos '#aura#'"]
+									  "'' ->chaos '#aura#'"]
 						},
 						comfort: {
 							onEnter: "perspective=4 rainbow=4 hue=0.01",
@@ -188,7 +181,7 @@ let testMimaMap = {
 														},
 														confirm: {
 															onEnter: "perspective=3 rainbow=10",
-															onEnterSay: "Really?",
+															onEnterSay: "#really#",
 															exits: ["'#affirm#' ->continue2 'wow'", "'#negate#' ->bored 'hm ok'", "'' wait:15 ->quest '#oh#'"]
 														},
 														emo: {
@@ -210,7 +203,8 @@ let testMimaMap = {
 							curious: {
 									onEnterSay: "Tell me about your self",
 									onEnter: "perspective=1 opacity=10",
-									exits: ["'#other#' robe.status=MATCH_AFTER robe.status=MATCH_BEFORE ->continue", "'#self#' ->bored '...'",
+									exits: ["'#other#' ->continue",
+									"'#self#' ->bored '...'",
  							 "wait:150 ->pause"]
 							},
 							continue: {
@@ -242,6 +236,7 @@ let testMimaMap = {
 								exits: ["wait:3 ->quest"]
 							},
 						exist: {
+							onEnter: "robe.question=MATCH_AFTER",
 					 onEnterSay: ["#happenings#"],
 					 exits: ["'' ->quest", "'#ask#' ->curious",
 				 "'#greeting#' ->welcome"]
@@ -255,7 +250,7 @@ let testMimaMap = {
 			jung: {
 				onEnter: "perspective=7 opacity=10",
 				onEnterSay: "#calm#",
-				exits: ["'' ->quest 'interesting'", "'#ask#' ->curious", "'#negate#' ->comfort", "'#affirm#' ->curious", "'' ->comfort2",
+				exits: ["'' ->quest '#oh#'", "'#ask#' ->curious", "'#negate#' ->comfort", "'#affirm#' ->curious", "'' ->comfort2",
 			"'#greeting#' ->welcome"]
 
 			},

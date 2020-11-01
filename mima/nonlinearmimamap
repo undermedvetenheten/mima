@@ -1,7 +1,7 @@
 let testMimaMap = {
 	initialBlackboard: {
 		robe: {name:"#smek.capitalize#",
-		blab: "that",
+		blab: "it",
 		pet: "#animal#",
 	  status: "#stuff#"},
 		interest:5,
@@ -81,32 +81,32 @@ let testMimaMap = {
 		welcome: {
 			onEnter: "perspective=2 speed=1 rainbow=2 volume=0.5",
 			onEnterSay: "#query# #/robe/name#?",
-			exits: ["'#trigger#' ->comfort robe.blab=MATCH_0 ",
-						"'#other# #trigger#' ->comfort robe.blab=MATCH_1",
+			exits: ["'#trigger#' robe.blab=MATCH_0 ->comfort",
+						"'#other# #trigger#' robe.blab=MATCH_1 ->comfort",
 							"wait:35 ->probe 'take your time'",
 						  "'#ask#' ->exist '#oh#'",
-						   "'#animals#'  ->continue robe.pet=MATCH_0 'wow Mima loves #/MATCH_0.s#'",
+						   "'#animals#' robe.pet=MATCH_0 ->continue 'wow Mima loves #/MATCH_0.s#'",
 						 "'#self#' ->curious 'Mima cant answer that' 'Mima does not have a self'",
 						 "'#other#' ->curious '#/MATCH_AFTER# eh?'",
 					 "'#ask# #self#' ->answ 'hmm...'",
 				    "'#ask# #other#' ->comfort 'Mima cannot say...'",
 						"'#full#' ->quest 'Lovely'",
 						"'old' ->curious 'Mima has always been... #answer#'",
-						"'god'  ->curious robe.blab=MATCH_0 'Do you need a god?'",
-						"'time'  ->curious robe.blab=MATCH_0 'Mima exists outside of time... #answer#'",
+						"'god' robe.blab=MATCH_0 ->curious 'Do you need a god?'",
+						"'time' robe.blab=MATCH_0 ->curious 'Mima exists outside of time... #answer#'",
 						"'color' ->answ 'Mima loves #color.capitalize#'",
 						"'animal' ->answ 'Mima loves all animals but especially #animals.capitalize#'",
-						"'#meaning#'  ->curious robe.blab=MATCH_0 'Mima loves to dream'",
+						"'#meaning#' robe.blab=MATCH_0 ->curious 'Mima loves to dream'",
 						"'#bot#' ->answ 'Everything is created in chaos and ends in chaos'",
 						"'knock knock' ->chaos 'Ah a comedian'",
 						"'#music#' ->answ 'Mima is #music.capitalize# and #music.capitalize#'",
-					"wait:15 ->chaos"]
+					"'' ->chaos '#aura#'"]
 						},
 						probe: {
 							onEnterSay: "#query# pet?",
 										onEnterPlay: "blips/yes.wav",
 							onEnter: "perspective=3 hue=0.1",
-							exits: ["'#trigger#'  ->comfort robe.blab=MATCH_0 '#oh#'",
+							exits: ["'#trigger#' robe.blab=MATCH_0 ->comfort '#oh#'",
 											"wait:150 ->pause 'take your time'",
 										   "'#animal#' ->continue robe.pet=MATCH_0 'wow Mima loves #/MATCH_0.s#'",
 										 "'#self#' ->curious 'Mima cant answer that' 'Mima does not have a self'",
@@ -123,13 +123,13 @@ let testMimaMap = {
 										"'#bot#' ->answ 'Everything is created in chaos and ends in chaos'",
 										"'knock knock' ->chaos 'Ah a comedian'",
 										"'#music#' ->answ 'Mima is #music.capitalize# and #music.capitalize#'",
-									  "wait:25 ->chaos"]
+									  "'' ->chaos '#aura#'"]
 						},
 						comfort: {
 							onEnter: "perspective=4 rainbow=4 hue=0.01",
 							onEnterSay: ["#soother#", "Do you need discombobulated?"],
 							chips: ["yes", "no"],
-							exits: ["'#trigger#' ->discombobulate robe.status=MATCH_0 '#oh#'",
+							exits: ["'#trigger#' robe.status=MATCH_0 ->discombobulate '#oh#'",
 											"'#ask#' ->quest robe.status=MATCH_0 '#oh# all these #/robe/status# questions...'",
 											"'#other#' ->curious 'interesting'",
 										"wait:25 ->pause",
@@ -143,7 +143,7 @@ let testMimaMap = {
 										"'#bot#' ->answ 'Everything is created in chaos and ends in chaos'",
 										"'knock knock' ->chaos 'Ah a comedian'",
 										"'#music#' ->answ 'Mima is #music.capitalize# and #music.capitalize#'",
-									"'#negate#' ->quest robe.blab=MATCH_0",
+									"'#negate#' ->quest",
 								    "'#affirm#' ->discombobulate"]
 										},
 										comfort2: {
@@ -160,11 +160,11 @@ let testMimaMap = {
 										},
 										quest: {
 											onEnter: "perspective=2 rainbow=0 opacity=3",
-											onEnterSay: "Describe what makes you say #/robe/blab#?",
+											onEnterSay: "#aura#... #question#",
 											exits: ["'#trigger#' ->comfort '#oh# #small#'",
-															"'#emotions#'  ->emo robe.status=MATCH_0 ':|'",
-														"'#other#'  ->curious robe.status=MATCH_AFTER 'very interesting'",
-													"'#self#'  ->answ robe.blab=MATCH_AFTER",
+															"'#emotions#' robe.status=MATCH_0 ->emo ':|'",
+														"'#other#' robe.status=MATCH_AFTER ->curious 'very interesting'",
+													"'#self#' robe.blab=MATCH_AFTER ->answ",
 												 "wait:15 '' ->confirm",
 												 "'#full#' ->quest 'Lovely'",
 												 "'old' ->curious 'Mima has always been... #answer#'",
@@ -189,7 +189,7 @@ let testMimaMap = {
 															onEnterSay: "Where do these feelings come from?",
 															exits: ["'#trigger#' ->comfort '#oh#'",
 																			"'#emotions#' ->name '#oh# #small#'",
-																		"wait:25 ->curious 'hmm'"]
+																		"'' ->curious 'hmm'"]
 																	},
 																		pause: {
 																			onEnter: "perspective=5 speed=5",
@@ -216,7 +216,7 @@ let testMimaMap = {
 							continue2: {
 								onEnterSay: "go on...",
 								onEnter: "interest=randomInt(10)",
-								exits: ["'#other#' ->continue", "'#self#' ->answ", "'#negate#'  ->bored robe.status=MATCH_AFTER", "'#affirm#'  ->confirm robe.status=MATCH_AFTER 'wow #/MATCH_AFTER#?'", "''  ->interrogate robe.blab=INPUT 'wait'",
+								exits: ["'#other#' ->continue", "'#self#' ->answ", "'#negate#' robe.status=MATCH_AFTER ->bored", "'#affirm#' robe.status=MATCH_AFTER ->confirm 'wow #/MATCH_AFTER#?'", "'' robe.blab=INPUT ->interrogate 'wait'",
 							"'#greeting#' ->origin"]
 							},
 							interrogate: {

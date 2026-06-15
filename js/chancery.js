@@ -84,7 +84,9 @@ function Chancery({map, metadata, handlers, transitionSpeed=0}) {
 			state: transitionSpeed,
 			exit: transitionSpeed,
 			expression: transitionSpeed
-		}
+		},
+		// Seconds Mima holds after a match before replying (the "listening" beat)
+		responseDelay: 2
 	}
 
 	this.blackboard = new Blackboard(map.initialBlackboard)
@@ -205,7 +207,7 @@ Chancery.prototype.evaluateExpression = function(expression) {
 			case "<":
 				return lhs<rhs
 			case "==":
-				return lhs==hs
+				return lhs==rhs
 			case "!=":
 				return lhs!=rhs
 
@@ -304,15 +306,27 @@ Chancery.prototype.updateExitMap = function() {
 	let openExits = this.exitMap.filter(ex => ex.isOpen)
 
 	if (openExits.length > 0 && !this.activeExit) {
-		console.log("Active exits:")
-		console.log(openExits.map(ex => ex.template.raw).join("\n\t"))
-		this.activateExit(openExits[0])
+		// Considering beat: once a reply is available, hold for responseDelay
+		// before committing to it, so Mima seems to listen and weigh her answer
+		// rather than firing the instant the user hits enter. This gates the
+		// exit's own inline speech too (e.g. 'hello #smek#'), not just the
+		// transition into the next state.
+		if (this.pendingExit !== openExits[0]) {
+			this.pendingExit = openExits[0]
+			this.pendingExitSince = this.currentTime
+			console.log("Considering exits:")
+			console.log(openExits.map(ex => ex.template.raw).join("\n\t"))
+		}
+		if (this.currentTime - this.pendingExitSince >= this.tuning.responseDelay) {
+			this.activateExit(openExits[0])
+			this.pendingExit = undefined
+		}
 	}
-	
+
 
 	if (this.activeExit) {
 		let time =  this.currentTime - this.activeExit.activatedOn
-		if (time > 1)
+		if (time > this.tuning.transitionTime.exit)
 			this.enterState(this.activeExit.template.target)
 	}
 

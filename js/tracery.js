@@ -187,7 +187,9 @@ function traceryToRegex(rule, grammar) {
 
 
 	let regRaw = traceryRuleToRegex(rule, grammar);
-	return new RegExp(regRaw, "g");
+	// "i": match user input regardless of case ("How long" vs "how long"),
+	// so natural typing reaches the chapter triggers.
+	return new RegExp(regRaw, "gi");
 
 
 
@@ -227,7 +229,10 @@ function traceryTagToRegex(key, grammar) {
 	}).sort((a, b) => {
 		return b.length - a.length
 	}).join("|")
-	return "(" + tagReg + ")";
+	// Word boundaries: keywords match whole words only, so "hell" no longer
+	// matches "hello", "red" doesn't match "scared", "no" doesn't match "nothing".
+	// (Only affects input matching via calculateMatch, not output expansion.)
+	return "\\b(" + tagReg + ")\\b";
 }
 
 

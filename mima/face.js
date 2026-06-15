@@ -43,7 +43,10 @@ function Face() {
 
 
 	this.detailColor = new KColor(.5, .6, .6)
-	this.faceColor = new KColor(.9, .9, .8)
+	// Start colour: #f1dddc / rgb(241,221,220) ≈ HSL(0.01, 0.43, 0.90) — a pale blush.
+	// h is overridden each frame by the state's `hue`; s by the rainbow formula in
+	// drawFaceBG; l (lightness) persists from here.
+	this.faceColor = new KColor(0.01, 0.43, 0.90)
 
 	this.particles = []
 }
@@ -141,10 +144,10 @@ Face.prototype.drawFaceDetails = function(g, t) {
 			g.pushMatrix()
 			g.scale(scaleX,1)
 			g.translate(pw*1.5, ph*-3)
-			// eyebrows
-			g.scale(1, 1 - blink*.2)
+			// eyebrows — static, do not move when blinking
 			g.rect(0, -ph, pw*4, ph*1)
 
+			// eye — blinks
 			g.scale(1, 1 - .9*blink)
 			g.rect(0, 0, pw*2, ph*1)
 
@@ -189,7 +192,8 @@ Face.prototype.drawFaceBG = function(g, t) {
 	this.faceColor.fill(g, rainbow, .4*faceOpacity)
 	g.rect(-w/2, -h/2, w, h)
 
-	this.faceColor.s = 1 - rainbow/11
+	// Calm (low rainbow) stays a pale blush ~0.43; agitation (high rainbow) saturates.
+	this.faceColor.s = Math.min(1, 0.43 + rainbow*0.05)
 	
 	// Draw the face squares	
 	for (var i = 0; i < this.columns; i++) {

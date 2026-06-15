@@ -68,7 +68,10 @@ let app = {
 		handlers: {
 			onEnterState: (stateID, lastStateID) => {
 				console.log("ENTER STATE HANDLER:" + stateID)
-				if (stateID === "welcome")
+				// "origin" is the first state Chancery enters (see Chancery.start);
+				// the old "welcome" state was removed in the mimamap rewrite.
+				// startSoundtrack() guards against double-play, so re-entering origin is safe.
+				if (stateID === "origin")
 					startSoundtrack()
 			},
 			onOutput: ({output, progress}) => {

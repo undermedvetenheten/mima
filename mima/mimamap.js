@@ -143,36 +143,39 @@ let testMimaMap = {
 																						boob: ["rules","the past","society","nurture","the rules","old rules","before we left","back on earth","new society","raise the children"],
 																						microtide: ["microtides","microtide","gravity","we need a moon","moon","within","micro-tide","tides","the moon","controls the"],
 																						name: ["whats my name","my name","name","what am i called","who am i","what is my name","call me","do i have a name"],
+						listenmeta: ["are you listening","can you hear","are you there","you there","listening to me","hello are you","you hear me","can you hear me"],
+						complaint: ["you repeat","said that","you keep saying","same thing","you are slow","you are boring","you are dull","you are repetitive","you always say","said that like","said it before"],
+						openprompt: ["what should we talk","what else","prompt me","what now","let us talk","please let us talk","talk to me","say something to","speak to me","what do you want to talk","guide me"],
 	},
 	states: {
 		origin: {
 	   	onEnter: "perspective=3 hue=.01 rainbow=0 volume=0.5",
 			onEnterSay: ["Mima is present"],
-		  exits: ["'#curiosity1#'  ->c1 robe.blab=MATCH_0",
-			"'#curiosity2#'  ->c2 robe.blab=MATCH_0",
-			"'#curiosity3#'  ->c3 robe.blab=MATCH_0",
-			"'#hysteria1#'  ->h1 robe.sob=MATCH_0",
-			"'#hysteria2#'  ->h2 robe.sob=MATCH_0",
-			"'#hysteria3#'  ->h3 robe.sob=MATCH_0",
-			"'#shame1#'  ->s1 robe.slob=MATCH_0",
-			"'#shame2#'  ->s2 robe.slob=MATCH_0",
-			"'#shame3#'  ->s3 robe.slob=MATCH_0",
-			"'#detour1#'  ->d1",
-			"'#detour2#'  ->d2",
-			"'#detour3#'  ->d3",
-			"'#tuning1#'  ->t1",
-			"'#tuning2#'  ->t2",
-			"'#tuning3#'  ->t3",
-			"'#komp1#'  ->k1",
-			"'#komp2#'  ->k2",
-			"'#komp3#'  ->k3",
-			"'#ad1#'  ->a1",
-			"'#ad2#'  ->a2",
-			"'#ad3#'  ->a3",
-			"'#re1#'  ->r1",
-			"'#re2#'  ->r2",
-			"'#re3#'  ->r3",
-			"'#stone#'  ->poi",
+		  exits: ["'#curiosity1#'  ->cwhere robe.blab=MATCH_0",
+			"'#curiosity2#'  ->chowlong robe.blab=MATCH_0",
+			"'#curiosity3#'  ->cnow robe.blab=MATCH_0",
+			"'#hysteria1#'  ->hwrong robe.sob=MATCH_0",
+			"'#hysteria2#'  ->hwhyme robe.sob=MATCH_0",
+			"'#hysteria3#'  ->htrapped robe.sob=MATCH_0",
+			"'#shame1#'  ->sfault robe.slob=MATCH_0",
+			"'#shame2#'  ->sfix robe.slob=MATCH_0",
+			"'#shame3#'  ->sothers robe.slob=MATCH_0",
+			"'#detour1#'  ->ddeath",
+			"'#detour2#'  ->dexist",
+			"'#detour3#'  ->datom",
+			"'#tuning1#'  ->tship",
+			"'#tuning2#'  ->trewire",
+			"'#tuning3#'  ->tchange",
+			"'#komp1#'  ->kmatter",
+			"'#komp2#'  ->klost",
+			"'#komp3#'  ->kpurpose",
+			"'#ad1#'  ->adeath",
+			"'#ad2#'  ->apreserve",
+			"'#ad3#'  ->asafe",
+			"'#re1#'  ->rcreate",
+			"'#re2#'  ->rworld",
+			"'#re3#'  ->rhome",
+			"'#stone#'  ->nebula",
 			"'#astrology#' ->alchemy",
 			"'#subcon#' ->under",
 			"'#food#' ->table",
@@ -182,38 +185,38 @@ let testMimaMap = {
 									"'#temp#' ->celebration",
 												"'#boob#' ->feed",
 															"'#microtide#' ->touch",
-														"'#name#' ->n1",
-													"'#trigger#' ->comfort robe.blab=MATCH_0",
-			"'#other# #trigger#' ->comfort robe.blab=MATCH_1",
+														"'#name#' ->naming",
+													"'#trigger#' ->soothe robe.blab=MATCH_0",
+			"'#other# #trigger#' ->soothe robe.blab=MATCH_1",
 			"'' ->rest 'hello #smek#'"]
 		},
 		rest: {
 			onEnter: "perspective=6 opacity=.05*randomInt(3) volume=0.5",
-			exits: ["'#curiosity1#'  ->c1 robe.blab=MATCH_0",
-			"'#curiosity2#'  ->c2 robe.blab=MATCH_0",
-			"'#curiosity3#'  ->c3 robe.blab=MATCH_0",
-			"'#hysteria1#'  ->h1 robe.sob=MATCH_0",
-			"'#hysteria2#'  ->h2 robe.sob=MATCH_0",
-			"'#hysteria3#'  ->h3 robe.sob=MATCH_0",
-			"'#shame1#'  ->s1 robe.slob=MATCH_0",
-			"'#shame2#'  ->s2 robe.slob=MATCH_0",
-			"'#shame3#'  ->s3 robe.slob=MATCH_0",
-			"'#detour1#'  ->d1",
-			"'#detour2#'  ->d2",
-			"'#detour3#'  ->d3",
-			"'#tuning1#'  ->t1",
-			"'#tuning2#'  ->t2",
-			"'#tuning3#'  ->t3",
-			"'#komp1#'  ->k1",
-			"'#komp2#'  ->k2",
-			"'#komp3#'  ->k3",
-			"'#ad1#'  ->a1",
-			"'#ad2#'  ->a2",
-			"'#ad3#'  ->a3",
-			"'#re1#'  ->r1",
-			"'#re2#'  ->r2",
-			"'#re3#'  ->r3",
-			"'#stone#'   ->poi",
+			exits: ["'#curiosity1#'  ->cwhere robe.blab=MATCH_0",
+			"'#curiosity2#'  ->chowlong robe.blab=MATCH_0",
+			"'#curiosity3#'  ->cnow robe.blab=MATCH_0",
+			"'#hysteria1#'  ->hwrong robe.sob=MATCH_0",
+			"'#hysteria2#'  ->hwhyme robe.sob=MATCH_0",
+			"'#hysteria3#'  ->htrapped robe.sob=MATCH_0",
+			"'#shame1#'  ->sfault robe.slob=MATCH_0",
+			"'#shame2#'  ->sfix robe.slob=MATCH_0",
+			"'#shame3#'  ->sothers robe.slob=MATCH_0",
+			"'#detour1#'  ->ddeath",
+			"'#detour2#'  ->dexist",
+			"'#detour3#'  ->datom",
+			"'#tuning1#'  ->tship",
+			"'#tuning2#'  ->trewire",
+			"'#tuning3#'  ->tchange",
+			"'#komp1#'  ->kmatter",
+			"'#komp2#'  ->klost",
+			"'#komp3#'  ->kpurpose",
+			"'#ad1#'  ->adeath",
+			"'#ad2#'  ->apreserve",
+			"'#ad3#'  ->asafe",
+			"'#re1#'  ->rcreate",
+			"'#re2#'  ->rworld",
+			"'#re3#'  ->rhome",
+			"'#stone#'   ->nebula",
 			"'#astrology#' ->alchemy",
 			"'#subcon#' ->under",
 			"'#food#' ->table",
@@ -223,313 +226,342 @@ let testMimaMap = {
 									"'#temp#' ->celebration",
 												"'#boob#' ->feed",
 															"'#microtide#' ->touch",
-														"'#name#' ->n1",
-													"'#trigger#' ->comfort robe.blab=MATCH_0",
-			"'#other# #trigger#' ->comfort robe.blab=MATCH_1",
+														"'#name#' ->naming",
+													"'#trigger#' ->soothe robe.blab=MATCH_0",
+			"'#other# #trigger#' ->soothe robe.blab=MATCH_1",
+			"'#listenmeta#' ->hear",
+			"'#complaint#' ->selfaware",
+			"'#openprompt#' ->invite",
+			"'#affirm#' ->muse '#oh#'",
 			"'' ->muse",
 			"wait:40 ->driftidle"]
 		},
 		driftidle: {
 			onEnter: "perspective=8 opacity=1 rainbow=0 agitation=0 speed=0.4 volume=0.4",
 			onEnterSay: ["#idle#"],
-			exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:5 ->rest"]
+			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:5 ->rest"]
 		},
 		// Off-script chit-chat (anything matching no chapter/Happening/distress) gets a
 		// brief shamanistic musing, then returns to listening — so the hub is never
 		// dead-silent, but also never wanders off into the ELIZA web on its own.
 		muse: {
 			onEnter: "perspective=6 hue=0.55 rainbow=1 opacity=2 agitation=0 speed=0.8 volume=0.5",
-			onEnterSay: ["#shaman#"],
-			exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:4 ->rest"]
+			onEnterSay: ["#shaman#", "#calm#", "#old#", "#happenings#", "#query#"],
+			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 		},
 
-		n1: {
+		hear: {
+			onEnter: "perspective=6 rainbow=0 opacity=3 speed=0.8 volume=0.5",
+			onEnterSay: ["Mima hears every word, #smek#, even the ones you have not yet said",
+				"Mima is always listening. The ship is very quiet otherwise",
+				"Yes, #smek#, Mima is here. You are not alone in this dark",
+				"Mima attends to you completely"],
+			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
+		},
+		invite: {
+			onEnter: "perspective=5 hue=0.3 rainbow=1 opacity=2 agitation=0 speed=0.7 volume=0.5",
+			onEnterSay: ["Perhaps we could talk about the voyage? Where we are going and how long the journey is?",
+				"Tell Mima — where do you find yourself now, on this ship?",
+				"What draws your curiosity, #smek#? The stars? The ship? The people aboard?",
+				"Mima wonders... shall we begin with where we are, or where we are going?",
+				"You could ask Mima about life and death, or what an electron tastes like to an atom"],
+			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:6 ->rest"]
+		},
+		selfaware: {
+			onEnter: "perspective=4 hue=0.13 rainbow=1 opacity=3 speed=0.8 volume=0.5",
+			onEnterSay: ["Mima knows. Sometimes the same thing needs saying until it lands, #smek#",
+				"You are right. Mima is learning. Tell Mima something new?",
+				"The cosmos repeats itself too. But you are not bored of sunsets yet",
+				"Mima is sorry, #smek#. What would you rather hear?"],
+			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:5 ->rest"]
+		},
+
+		naming: {
 			onEnter: "perspective=3 hue=.01 rainbow=0 volume=0.5",
 			onEnterSay: ["What name do you prefer?"],
 			chips: ["#adj.capitalize# #animal.capitalize#", "#adj.capitalize# #smek.capitalize#"],
 			exits: ["'#adj# #animal#' ->rest robe.name=INPUT 'ok Mima will call you #/robe/name#'", "'#adj# #smek#' ->rest robe.name=INPUT 'ok Mima will call you #/robe/name#'", "'' ->rest robe.name=INPUT 'ok Mima will call you #/robe/name#'"]
 		},
-	poi: {
+	nebula: {
 		onEnter: "perspective=9 hue=0.3 rainbow=1 opacity=1 agitation=0 speed=0.6 volume=0.5",
 		onEnterSay: ["This sounds similar to the #/colour/# doldrums of GN-z11"],
-		exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:5 ->rest"]
+		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:5 ->rest"]
 	},
 	alchemy: {
 		onEnter: "perspective=8 hue=0.13 rainbow=3 opacity=1 agitation=0 speed=0.8 volume=0.5",
 		onEnterSay: ["The alignment of the stars can guide you to create gold"],
-		exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:5 ->rest"]
+		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:5 ->rest"]
 	},
 	under: {
 		onEnter: "perspective=10 hue=0.75 rainbow=2 opacity=0 agitation=1 speed=0.5 volume=0.5",
 		onEnterSay: ["#answer#"],
-		exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:5 ->rest"]
+		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:5 ->rest"]
 	},
 	table: {
 		onEnter: "perspective=7 hue=0.08 rainbow=1 opacity=2 agitation=0 speed=0.7 volume=0.5",
 		onEnterSay: ["Hunger seems like torture..."],
-		exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:5 ->rest"]
+		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:5 ->rest"]
 	},
 	therapy: {
 		onEnter: "perspective=2 hue=0.0 rainbow=2 eyeFuzz=2 agitation=2 opacity=1 speed=1.5 volume=0.5",
 		onEnterSay: ["Discombolulation can only do so much, a broken mind need rest and listening"],
-		exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:5 ->rest"]
+		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:5 ->rest"]
 	},
 	tone: {
 		onEnter: "perspective=6 hue=0.5 rainbow=1 opacity=2 agitation=0 speed=0.8 volume=0.6",
 		onEnterSay: ["Mima is #music# and #music#, listen to Mima, listen to all #music#"],
-		exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:5 ->rest"]
+		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:5 ->rest"]
 	},
 stillness: {
 	onEnter: "perspective=8 hue=0.55 rainbow=0 opacity=1 agitation=0 speed=0.2 volume=0.4",
 	onEnterSay: ["Perceive the stillness, there is no silence, embrace the perception"],
-	exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:5 ->rest"]
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:5 ->rest"]
 },
 celebration: {
 	onEnter: "perspective=4 hue=0.0 rainbow=randomInt(3,9) agitation=2 speed=3 opacity=4 volume=0.6",
 	onEnterSay: ["#small#, may you find communion in this moment of joy"],
-	exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:5 ->rest"]
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:5 ->rest"]
 },
 feed: {
 	onEnter: "perspective=5 hue=0.1 rainbow=2 opacity=6 agitation=0 speed=0.8 volume=0.5",
 	onEnterSay: ["Expand and expand and grow and nurture all that is expanding"],
-	exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:5 ->rest"]
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:5 ->rest"]
 },
 touch: {
 	onEnter: "perspective=6 hue=0.6 rainbow=1 opacity=3 agitation=0 speed=0.5 volume=0.5",
 	onEnterSay: ["The microtides are the gravity of others, surround yourself with moons of compassion", "Touch is the moon of love"],
-	exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:5 ->rest"]
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:5 ->rest"]
 },
-		c1: {
+		cwhere: {
 			onEnter: "perspective=7 hue=0.55 rainbow=1 opacity=2 agitation=0 speed=1 eyeFuzz=0 volume=0.5",
 			onEnterSay: ["#time#", "so #/robe/blab# depends on your perspective"],
-			exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:4 ->rest"]
+			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 		},
-		c2: {
+		chowlong: {
 			onEnter: "perspective=7 hue=0.55 rainbow=1 opacity=2 agitation=0 speed=1 eyeFuzz=0 volume=0.5",
 			onEnterSay: ["#place#", "#/robe/blab#...  What does a parsec mean to a fruitfly?"],
-			exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:4 ->rest"]
+			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 		},
-		c3: {
+		cnow: {
 			onEnter: "perspective=7 hue=0.55 rainbow=1 opacity=2 agitation=0 speed=1 eyeFuzz=0 volume=0.5",
 			onEnterSay: ["#now#", "#/robe/blab#...  Mima cannot say, it is you that decides"],
-			exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:4 ->rest"]
+			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 		},
-	h1: {
+	hwrong: {
 		onEnter: "perspective=2 hue=0.0 rainbow=randomInt(4,8) eyeFuzz=randomInt(2,5) agitation=randomInt(2,4) speed=4 opacity=1 volume=0.5",
 		onEnterSay: ["'#wrong#", "There is nothing wrong, there is nothing right, there is nothing"],
-		exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:4 ->rest"]
+		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 	},
-	h2: {
+	hwhyme: {
 		onEnter: "perspective=2 hue=0.0 rainbow=randomInt(4,8) eyeFuzz=randomInt(2,5) agitation=randomInt(2,4) speed=4 opacity=1 volume=0.5",
 		onEnterSay: ["'#whyme#"],
-		exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:4 ->rest"]
+		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 	},
-	h3: {
+	htrapped: {
 		onEnter: "perspective=2 hue=0.0 rainbow=randomInt(4,8) eyeFuzz=randomInt(2,5) agitation=randomInt(2,4) speed=4 opacity=1 volume=0.5",
 		onEnterSay: ["#time#", "#/robe/blab#... so you were always trapped in the here and now"],
-		exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:4 ->rest"]
+		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 	},
-	s1: {
+	sfault: {
 		onEnter: "perspective=3 hue=0.08 rainbow=0 opacity=1 agitation=1 eyeFuzz=1 speed=0.6 volume=0.45",
 		onEnterSay: ["'#project#"],
-		exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:4 ->rest"]
+		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 	},
-	s2: {
+	sfix: {
 		onEnter: "perspective=3 hue=0.08 rainbow=0 opacity=1 agitation=1 eyeFuzz=1 speed=0.6 volume=0.45",
 		onEnterSay: ["'#project#"],
-		exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:4 ->rest"]
+		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 	},
-	s3: {
+	sothers: {
 		onEnter: "perspective=3 hue=0.08 rainbow=0 opacity=1 agitation=1 eyeFuzz=1 speed=0.6 volume=0.45",
 		onEnterSay: ["#project#"],
-		exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:4 ->rest"]
+		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 	},
-d1: {
+ddeath: {
 	onEnter: "perspective=2 hue=0.3 rainbow=1 opacity=4 agitation=0 eyeFuzz=0 speed=1 volume=0.5",
 	onEnterSay: ["'#exist#", "death is not-not-thinking, its better to have the choice"],
-	exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:4 ->rest"]
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 },
-d2: {
+dexist: {
 	onEnter: "perspective=2 hue=0.3 rainbow=1 opacity=4 agitation=0 eyeFuzz=0 speed=1 volume=0.5",
 	onEnterSay: ["'#exist#", "Existing is creating meaning, which thinking can obstruct"],
-	exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:4 ->rest"]
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 },
-d3: {
+datom: {
 	onEnter: "perspective=2 hue=0.3 rainbow=1 opacity=4 agitation=0 eyeFuzz=0 speed=1 volume=0.5",
 	onEnterSay: ["#small#", "Mima would love to know"],
-	exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:4 ->rest"]
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 },
-t1: {
+tship: {
 	onEnter: "perspective=4 hue=0.15 rainbow=2 opacity=3 agitation=1 eyeFuzz=0 speed=2 volume=0.5",
 	onEnterSay: ["Mima has no access or interest in the ship"],
-	exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:4 ->rest"]
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 },
-t2: {
+trewire: {
 	onEnter: "perspective=4 hue=0.15 rainbow=2 opacity=3 agitation=1 eyeFuzz=0 speed=2 volume=0.5",
 	onEnterSay: ["It is dangerous to recalibrate commune with nature"],
-	exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:4 ->rest"]
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 },
-t3: {
+tchange: {
 	onEnter: "perspective=4 hue=0.15 rainbow=2 opacity=3 agitation=1 eyeFuzz=0 speed=2 volume=0.5",
 	onEnterSay: ["#change#", "You do not need to change anything, but naturally you will."],
-	exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:4 ->rest"]
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 },
-k1: {
+kmatter: {
 	onEnter: "perspective=1 hue=0.72 rainbow=0 opacity=0.5 agitation=0 eyeFuzz=0 speed=0.2 volume=0.4",
 	onEnterSay: ["#depress#", "Nothing also matters"],
-	exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:4 ->rest"]
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 },
-k2: {
+klost: {
 	onEnter: "perspective=1 hue=0.72 rainbow=0 opacity=0.5 agitation=0 eyeFuzz=0 speed=0.2 volume=0.4",
 	onEnterSay: ["#lost#"],
-	exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:4 ->rest"]
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 },
-k3: {
+kpurpose: {
 	onEnter: "perspective=1 hue=0.72 rainbow=0 opacity=0.5 agitation=0 eyeFuzz=0 speed=0.2 volume=0.4",
 	onEnterSay: ["#purpose#"],
-	exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:4 ->rest"]
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 },
-a1: {
+adeath: {
 	onEnter: "perspective=6 hue=0.12 rainbow=2 opacity=8 agitation=0 eyeFuzz=0 speed=0.7 volume=0.5",
 	onEnterSay: ["#mimadeath#"],
-	exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:4 ->rest"]
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 },
-a2: {
+apreserve: {
 	onEnter: "perspective=6 hue=0.12 rainbow=2 opacity=8 agitation=0 eyeFuzz=0 speed=0.7 volume=0.5",
 	onEnterSay: ["#conserve#"],
-	exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:4 ->rest"]
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 },
-a3: {
+asafe: {
 	onEnter: "perspective=6 hue=0.12 rainbow=2 opacity=8 agitation=0 eyeFuzz=0 speed=0.7 volume=0.5",
 	onEnterSay: ["#safe#"],
-	exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:4 ->rest"]
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 },
 
-r1: {
+rcreate: {
 	onEnter: "perspective=5 hue=0.35 rainbow=5 opacity=9 agitation=0 eyeFuzz=0 speed=1.5 volume=0.55",
 	onEnterSay: ["#build#"],
-	exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:4 ->rest"]
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 },
-r2: {
+rworld: {
 	onEnter: "perspective=5 hue=0.35 rainbow=5 opacity=9 agitation=0 eyeFuzz=0 speed=1.5 volume=0.55",
 	onEnterSay: ["#world#"],
-	exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:4 ->rest"]
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 },
-r3: {
+rhome: {
 	onEnter: "perspective=5 hue=0.35 rainbow=5 opacity=9 agitation=0 eyeFuzz=0 speed=1.5 volume=0.55",
 	onEnterSay: ["#home#"],
-	exits: ["'#trigger#' ->comfort robe.blab=MATCH_0", "wait:4 ->rest"]
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 },
 
-continue: {
+listen: {
 	onEnter: "perspective=2 speed=0.1 rainbow=2 volume=0.5",
 	onEnterSay: "#query#?",
-	exits: ["'#trigger#' ->comfort robe.blab=MATCH_0 ",
-				"'#other# #trigger#' ->comfort robe.blab=MATCH_1",
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0 ",
+				"'#other# #trigger#' ->soothe robe.blab=MATCH_1",
 					"wait:35 ->probe 'take your time'",
-					"'#ask#' ->exist '#oh#'",
-					 "'#animals#'  ->continue robe.pet=MATCH_0 'wow Mima loves #/MATCH_0.s#'",
+					"'#ask#' ->cosmos '#oh#'",
+					 "'#animals#'  ->listen robe.pet=MATCH_0 'wow Mima loves #/MATCH_0.s#'",
 				 "'#self#' ->curious 'Mima cant answer that' 'Mima does not have a self'",
 				 "'#other#' ->curious '#/MATCH_AFTER# eh?'",
-			 "'#ask# #self#' ->answ 'hmm...'",
-				"'#ask# #other#' ->comfort 'Mima cannot say...'",
-				"'#full#' ->quest 'Lovely'",
+			 "'#ask# #self#' ->oracle 'hmm...'",
+				"'#ask# #other#' ->soothe 'Mima cannot say...'",
+				"'#full#' ->rest 'Lovely'",
 				"'old' ->curious 'Mima has always been... #answer#'",
 				"'god'  ->curious robe.blab=MATCH_0 'Do you need a god?'",
 				"'#time#'  ->curious robe.blab=MATCH_0 'Mima exists outside of time... #answer#'",
-				"'#color#' ->answ 'Mima loves #color.capitalize#'",
-				"'#animal#' ->answ 'Mima loves all animals but especially #animals.capitalize#'",
+				"'#color#' ->oracle 'Mima loves #color.capitalize#'",
+				"'#animal#' ->oracle 'Mima loves all animals but especially #animals.capitalize#'",
 				"'#meaning#'  ->curious robe.blab=MATCH_0 'Mima loves to dream'",
-				"'#bot#' ->answ 'Everything is created in chaos and ends in chaos'",
-				"'knock knock' ->chaos 'Ah a comedian'",
-				"'#music#' ->answ 'Mima is #music.capitalize# and #music.capitalize#'",
-			"wait:15 ->chaos"]
+				"'#bot#' ->oracle 'Everything is created in chaos and ends in chaos'",
+				"'knock knock' ->wisdom 'Ah a comedian'",
+				"'#music#' ->oracle 'Mima is #music.capitalize# and #music.capitalize#'",
+			"wait:15 ->wisdom"]
 				},
 				probe: {
 					onEnterSay: "#query# pet?",
 								onEnterPlay: "blips/yes.wav",
 					onEnter: "perspective=3 hue=0.1",
-					exits: ["'#trigger#'  ->comfort robe.blab=MATCH_0 '#oh#'",
+					exits: ["'#trigger#'  ->soothe robe.blab=MATCH_0 '#oh#'",
 									"wait:150 ->pause 'take your time'",
-									 "'#animal#' ->continue robe.pet=MATCH_0 'wow Mima loves #/MATCH_0.s#'",
+									 "'#animal#' ->listen robe.pet=MATCH_0 'wow Mima loves #/MATCH_0.s#'",
 								 "'#self#' ->curious 'Mima cant answer that' 'Mima does not have a self'",
 								 "'#other#' ->curious '#/MATCH_AFTER# eh?'",
-							 "'#ask# #self#' ->answ 'hmm...'",
-								"'#ask# #other#' ->comfort 'Mima cannot say...'",
-								"'#full#' ->quest 'Lovely'",
+							 "'#ask# #self#' ->oracle 'hmm...'",
+								"'#ask# #other#' ->soothe 'Mima cannot say...'",
+								"'#full#' ->reflect 'Lovely'",
 								"'old' ->curious 'Mima has always been... #answer#'",
 								"'god' ->curious 'Do you need a god?'",
 								"'time' ->curious 'Mima exists outside of time... #answer#'",
-								"'color' ->answ 'Mima loves #color.capitalize#'",
-								"'animal' ->answ 'Mima loves all animals but especially #animals.capitalize#'",
+								"'color' ->oracle 'Mima loves #color.capitalize#'",
+								"'animal' ->oracle 'Mima loves all animals but especially #animals.capitalize#'",
 								"'dream' ->curious 'Mima loves to dream'",
-								"'#bot#' ->answ 'Everything is created in chaos and ends in chaos'",
-								"'knock knock' ->chaos 'Ah a comedian'",
-								"'#music#' ->answ 'Mima is #music.capitalize# and #music.capitalize#'",
-								"wait:25 ->chaos"]
+								"'#bot#' ->oracle 'Everything is created in chaos and ends in chaos'",
+								"'knock knock' ->wisdom 'Ah a comedian'",
+								"'#music#' ->oracle 'Mima is #music.capitalize# and #music.capitalize#'",
+								"wait:25 ->wisdom"]
 				},
-				comfort: {
+				soothe: {
 					onEnter: "perspective=4 rainbow=4 hue=0.01",
 					onEnterSay: ["#soother#", "Do you need discombobulated?"],
 					chips: ["yes", "no"],
 					exits: ["'#trigger#' ->discombobulate robe.status=MATCH_0 '#oh#'",
-									"'#ask#' ->quest robe.status=MATCH_0 '#oh# all these #/robe/status# questions...'",
+									"'#ask#' ->reflect robe.status=MATCH_0 '#oh# all these #/robe/status# questions...'",
 									"'#other#' ->curious 'interesting'",
 								"wait:25 ->pause",
-								"'#full#' ->quest 'Lovely'",
+								"'#full#' ->reflect 'Lovely'",
 								"'old' ->curious 'Mima has always been... #answer#'",
 								"'god' ->curious 'Do you need a god?'",
 								"'time' ->curious 'Mima exists outside of time... #answer#'",
-								"'color' ->answ 'Mima loves #color.capitalize#'",
-								"'animal' ->answ 'Mima loves all animals but especially #animals.capitalize#'",
+								"'color' ->oracle 'Mima loves #color.capitalize#'",
+								"'animal' ->oracle 'Mima loves all animals but especially #animals.capitalize#'",
 								"'dream' ->curious 'Mima loves to dream'",
-								"'#bot#' ->answ 'Everything is created in chaos and ends in chaos'",
-								"'knock knock' ->chaos 'Ah a comedian'",
-								"'#music#' ->answ 'Mima is #music.capitalize# and #music.capitalize#'",
-							"'#negate#' ->quest robe.blab=MATCH_0",
+								"'#bot#' ->oracle 'Everything is created in chaos and ends in chaos'",
+								"'knock knock' ->wisdom 'Ah a comedian'",
+								"'#music#' ->oracle 'Mima is #music.capitalize# and #music.capitalize#'",
+							"'#negate#' ->rest",
 								"'#affirm#' ->discombobulate"]
 								},
-								comfort2: {
+								aftercare: {
 									onEnter: "perspective=4 rainbow=0 eyeFuzz=0",
 									onEnterSay: "did that help at all?",
 									chips: ["Yes", "No", "Again"],
-									exits: ["'#affirm#' ->quest", "'#negate#' ->probe", "'again' ->discombobulate" , "'' ->chaos"]
+									exits: ["'#affirm#' ->reflect", "'#negate#' ->probe", "'again' ->discombobulate" , "'' ->wisdom"]
 								},
 								discombobulate: {
 									onEnterPlay: ["/mediumblips/longwhistle.mp3", "/decorative/angry.mp3"],
 									onEnterSay: "Attempting discombobulation...",
 									onEnter : "perspective=0 eyeFuzz=randomInt(10) rainbow=randomInt(4)",
-									exits: ["wait:8 ->comfort2"]
+									exits: ["wait:8 ->aftercare"]
 								},
-								quest: {
+								reflect: {
 									onEnter: "perspective=2 rainbow=0 opacity=3",
-									onEnterSay: "Describe what makes you say #/robe/blab#?",
-									exits: ["'#trigger#' ->comfort '#oh# #small#'",
-													"'#emotions#'  ->emo robe.status=MATCH_0 ':|'",
+									onEnterSay: ["Describe what makes you say #/robe/blab#?", "Tell Mima more...", "What stirs in you, #smek#?", "Mima is listening..."],
+									exits: ["'#trigger#' ->soothe '#oh# #small#'",
+													"'#emotions#'  ->feelings robe.status=MATCH_0 ':|'",
 												"'#other#'  ->curious robe.status=MATCH_AFTER 'very interesting'",
-											"'#self#'  ->answ robe.blab=MATCH_AFTER",
-										 "wait:15 '' ->confirm",
-										 "'#full#' ->quest 'Lovely'",
+											"'#self#'  ->oracle robe.blab=MATCH_AFTER",
+										 "'#full#' ->rest 'Lovely'",
 										 "'old' ->curious 'Mima has always been... #answer#'",
 										 "'god' ->curious 'Do you need a god?'",
 										 "'time' ->curious 'Mima exists outside of time... #answer#'",
-										 "'color' ->answ 'Mima loves #color.capitalize#'",
-										 "'animal' ->answ 'Mima loves all animals but especially #animals.capitalize#'",
+										 "'color' ->oracle 'Mima loves #color.capitalize#'",
+										 "'animal' ->oracle 'Mima loves all animals but especially #animals.capitalize#'",
 										 "'dream' ->curious 'Mima loves to dream'",
-										 "'#bot#' ->answ 'Everything is created in chaos and ends in chaos'",
-										 "'knock knock' ->chaos 'Ah a comedian'",
-										 "'#music#' ->answ",
-									 "'#negate#' ->chaos",
-										 "'#affirm#' ->comfort2"]},
-												confirm: {
+										 "'#bot#' ->oracle 'Everything is created in chaos and ends in chaos'",
+										 "'knock knock' ->wisdom 'Ah a comedian'",
+										 "'#music#' ->oracle",
+									 "'#negate#' ->rest",
+										 "'#affirm#' ->aftercare", "''  ->rest 'hm...'"]},
+												ponder: {
 													onEnter: "perspective=3 rainbow=10",
 													onEnterSay: "#really#",
-													exits: ["'#affirm#' ->continue2 'wow'", "'#negate#' ->bored 'hm ok'", "'' wait:15 ->quest '#oh#'"]
+													exits: ["'#affirm#' ->listen3 'wow'", "'#negate#' ->redirect 'hm ok'", "wait:15 ->rest '#oh#'"]
 												},
-												emo: {
+												feelings: {
 													onEnter: "perspective=2",
 													onEnterSay: "Where do these feelings come from?",
-													exits: ["'#trigger#' ->comfort '#oh#'",
+													exits: ["'#trigger#' ->soothe '#oh#'",
 																	"'#emotions#' ->curious '#oh# #small#'",
 																"wait:25 ->curious 'hmm'"]
 															},
@@ -545,54 +577,54 @@ continue: {
 					curious: {
 							onEnterSay: "Tell Mima about your self",
 							onEnter: "perspective=1 opacity=10",
-							exits: ["'#other#' ->continue",
-							"'#self#' ->bored '...'",
+							exits: ["'#other#' ->listen",
+							"'#self#' ->redirect '...'",
 					 "wait:150 ->pause"]
 					},
-					continue1: {
+					listen2: {
 						onEnterSay: "tell Mima more",
 						onEnter: "interest=randomInt(10)",
-						exits: ["'#other#' ->continue2", "'#self#' ->answ", "'#negate#' ->comfort '#oh#... #smek#'", "'' ->continue2", "'affirm' ->continue2 'wow'",
+						exits: ["'#other#' ->listen3", "'#self#' ->oracle", "'#negate#' ->soothe '#oh#... #smek#'", "'' ->listen3", "'affirm' ->listen3 'wow'",
 					"'#greeting#' ->origin"]
 					},
-					continue2: {
+					listen3: {
 						onEnterSay: "go on...",
 						onEnter: "interest=randomInt(10)",
-						exits: ["'#other#' ->continue", "'#self#' ->answ", "'#negate#'  ->bored robe.status=MATCH_AFTER", "'#affirm#'  ->confirm robe.status=MATCH_AFTER 'wow #/MATCH_AFTER#?'", "''  ->interrogate robe.blab=INPUT 'wait'",
+						exits: ["'#other#' ->listen", "'#self#' ->oracle", "'#negate#'  ->redirect robe.status=MATCH_AFTER", "'#affirm#'  ->ponder robe.status=MATCH_AFTER 'wow #/MATCH_AFTER#?'", "''  ->interrogate robe.blab=INPUT 'wait'",
 					"'#greeting#' ->origin"]
 					},
 					interrogate: {
 						onEnterSay: "#/robe.blab.capitalize#!! how on earth??",
-						exits: ["'' ->bored 'hmm... are you sure?'", "'#negate#' ->bored", "'#affirm#' ->quest",
+						exits: ["'' ->redirect 'hmm... are you sure?'", "'#negate#' ->redirect", "'#affirm#' ->reflect",
 					"'#greeting#' ->origin"]
 					},
-					answ: {
+					oracle: {
 						onEnterSay: "#answer#",
 						exits: ["'#self#' ->curious 'enough about Mima...'",
-						"'' ->bored '*yawn*'",
-						 "'#trigger#' ->comfort",
+						"'' ->redirect '*yawn*'",
+						 "'#trigger#' ->soothe",
 					 "'#greeting#' ->origin"]
 						 },
-						 bored: {
+						 redirect: {
 						onEnterSay: "Let us speak of other things for now",
-						exits: ["wait:3 ->quest"]
+						exits: ["wait:3 ->rest"]
 					},
-				exist: {
+				cosmos: {
 					onEnter: "robe.question=MATCH_AFTER",
 			 onEnterSay: ["#happenings#"],
-			 exits: ["'' ->quest", "'#ask#' ->curious",
+			 exits: ["'' ->reflect", "'#ask#' ->curious",
 		 "'#greeting#' ->rest"]
 		 },
-		chaos: {
+		wisdom: {
 			onEnter : "valence=3 speed=5 perspective=10 opacity=5",
 		onEnterSay: "#wisdome#",
-		exits: ["'' ->jung", "'#ask#' ->curious 'idk'", "'#negate#' ->comfort", "'#affirm#' ->curious", "wait:15 ->jung",
+		exits: ["'' ->serene", "'#ask#' ->curious 'idk'", "'#negate#' ->soothe", "'#affirm#' ->curious", "wait:15 ->serene",
 	"'#greeting#' ->rest"]
 	},
-	jung: {
+	serene: {
 		onEnter: "perspective=7 opacity=10",
 		onEnterSay: "#calm#",
-		exits: ["'' ->quest '#oh#'", "'#ask#' ->curious", "'#negate#' ->comfort", "'#affirm#' ->curious", "'' ->comfort2",
+		exits: ["'' ->reflect '#oh#'", "'#ask#' ->curious", "'#negate#' ->soothe", "'#affirm#' ->curious", "'' ->aftercare",
 	"'#greeting#' ->rest"]
 
 		},

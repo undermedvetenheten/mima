@@ -49,6 +49,13 @@ function Face() {
 	this.faceColor = new KColor(0.01, 0.43, 0.90)
 
 	this.particles = []
+
+	this.touch = null          // {x, y} canvas-center-relative px, or null
+	this.touchAttraction = 0   // lerps 0→1 while holding
+	this.blinkL = 0            // per-eye touch blink (0=open, 1=closed)
+	this.blinkR = 0
+	this._z2 = 1               // space scale, updated each draw frame
+	this._canvasH = 600        // canvas pixel height, set by registerCanvas
 }
 
 // Say s, and return a promise
@@ -72,8 +79,56 @@ Face.prototype.say = function(s) {
 
 Face.prototype.update = function(t) {
 	this.particles.forEach(p => p.update(t))
-
 	this.particles = this.particles.filter(p => p.age === undefined || p.age < 1)
+
+	let blinkLTarget = 0, blinkRTarget = 0
+	if (this.touch) {
+		this.touchAttraction += (1 - this.touchAttraction) * 0.06
+		// Convert touch (canvas-center-relative px) to face-local coords
+		const zs = 1 / (app.values.perspective * 0.7 + 0.3)
+		const tx = this.touch.x / zs
+		const ty = (this.touch.y + this._canvasH * 0.09) / zs
+		// Eye centres: (±pw*2.5, ph*-2.5) in face-local space
+		const hitR = this.pixelW * 3
+		const eyeY = this.pixelH * -2.5
+		if (Math.abs(ty - eyeY) < hitR) {
+			if (tx > 0 && Math.abs(tx - this.pixelW * 2.5) < hitR) blinkRTarget = 1
+			if (tx < 0 && Math.abs(tx + this.pixelW * 2.5) < hitR) blinkLTarget = 1
+		}
+	} else {
+		this.touchAttraction *= 0.88
+	}
+	this.blinkL += (blinkLTarget - this.blinkL) * 0.15
+	this.blinkR += (blinkRTarget - this.blinkR) * 0.15
+}
+
+Face.prototype.registerCanvas = function(canvas) {
+	this._canvasH = canvas.height
+	const toCenter = (clientX, clientY) => {
+		const r = canvas.getBoundingClientRect()
+		const sx = canvas.width / r.width
+		const sy = canvas.height / r.height
+		return {
+			x: (clientX - r.left) * sx - canvas.width / 2,
+			y: (clientY - r.top) * sy - canvas.height / 2
+		}
+	}
+	canvas.addEventListener('touchstart', e => {
+		e.preventDefault()
+		const t = e.touches[0]
+		this.touch = toCenter(t.clientX, t.clientY)
+	}, {passive: false})
+	canvas.addEventListener('touchmove', e => {
+		e.preventDefault()
+		const t = e.touches[0]
+		this.touch = toCenter(t.clientX, t.clientY)
+	}, {passive: false})
+	canvas.addEventListener('touchend', e => {
+		e.preventDefault()
+		this.touch = null
+		this.blinkL = 0
+		this.blinkR = 0
+	}, {passive: false})
 }
 
 Face.prototype.setWord = function(word, length) {
@@ -103,7 +158,15 @@ Face.prototype.drawSpace = function(g, t) {
 	for (var i = 0; i < count; i++) {
 		let pct = i/count
 		p.setToPolar(200*(1.2 + Math.sin(4*pct*(2 + stress*.2 + .7*Math.sin(t*.2)) + t*.1)), 20*Math.sin(20*(2 + 1*Math.sin(t*.001))*pct))
-		
+
+		// Attract stars toward touch point
+		if (this.touch && this.touchAttraction > 0.01) {
+			const tx = this.touch.x / this._z2
+			const ty = this.touch.y / this._z2
+			p.x += (tx - p.x) * this.touchAttraction * 0.7
+			p.y += (ty - p.y) * this.touchAttraction * 0.7
+		}
+
 		let r = 1 + Math.sin(pct*100 + t*.4)
 		
 		g.noStroke()
@@ -147,8 +210,9 @@ Face.prototype.drawFaceDetails = function(g, t) {
 			// eyebrows — static, do not move when blinking
 			g.rect(0, -ph, pw*4, ph*1)
 
-			// eye — blinks
-			g.scale(1, 1 - .9*blink)
+			// eye — blinks (per-eye when touching an eye directly)
+			let eyeBlink = scaleX > 0 ? Math.max(blink, this.blinkR) : Math.max(blink, this.blinkL)
+			g.scale(1, 1 - .9*eyeBlink)
 			g.rect(0, 0, pw*2, ph*1)
 
 			g.popMatrix()
@@ -228,6 +292,7 @@ Face.prototype.draw = function(g, time) {
 	// Draw spacey particles
 	if (app.values.perspective > -1) {
 		let z2 = utilities.lerp(zoomScale, 1, .8)
+		this._z2 = z2
 		g.pushMatrix()
 		g.scale(z2, z2)
 		this.drawSpace(g, t)

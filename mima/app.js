@@ -212,8 +212,8 @@ let app = {
 					app.valueTracker.perspective.set(2, t.current, .1)
 					app.valueTracker.opacity.set(10, t.current, .1)
 
-
-
+					const canvas = document.querySelector('#bot canvas')
+					if (canvas) app.face.registerCanvas(canvas)
 				}
 			});
 		}

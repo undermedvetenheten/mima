@@ -218,16 +218,20 @@ let app = {
 			});
 		}
 
-		window.addEventListener("resize", () => {
-			// TODO: can't get resizing to work
-			// if (app.time.frame > 10) {
-			// 	let botDiv = document.getElementById("bot")
-			// 	console.log(botDiv)
-			// 	console.log("resize", botDiv.clientWidth, botDiv.clientHeight)
+		window.addEventListener("resize", () => {});
 
-			// 	app.processing.size(botDiv.width, botDiv.height);
-			// }
-		});
+		// Keep app positioned within the visual viewport when the mobile keyboard opens.
+		// dvh units (in CSS) handle modern browsers; this covers older iOS Safari where
+		// fixed elements don't automatically follow the visual viewport.
+		if (window.visualViewport) {
+			const mimaApp = document.getElementById('mima-app');
+			window.visualViewport.addEventListener('resize', () => {
+				const vv = window.visualViewport;
+				const h = Math.min(vv.height * 0.95, 800);
+				mimaApp.style.height = h + 'px';
+				mimaApp.style.top = (vv.offsetTop + vv.height * 0.5) + 'px';
+			});
+		}
 
 
 		createProcessing()

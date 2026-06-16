@@ -4,13 +4,17 @@
 	cursor:default;
 	overflow: hidden;
 	border-radius: 10px;
-	margin: auto auto;
 	background-color: black;
-	position: relative;
+	position: fixed;
+	left: 50%;
+	top: 50%;
+	transform: translate(-50%, -50%);
 	width: 95%;
 	max-width: 500px;
-	max-height: 800px;
 	height: 90%;
+	height: 90dvh;
+	max-height: 800px;
+	transition: height 0.15s ease, top 0.15s ease;
 }
 
 div {

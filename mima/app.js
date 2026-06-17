@@ -213,9 +213,18 @@ let app = {
 					app.valueTracker.opacity.set(10, t.current, .1)
 
 					const canvas = document.querySelector('#bot canvas')
-					if (canvas) app.face.registerCanvas(canvas)
+					if (canvas) app.face.registerCanvas(canvas, document.getElementById('mima-app'))
 				}
 			});
+		}
+
+		if (window.visualViewport) {
+			window.visualViewport.addEventListener('resize', () => {
+				const kbHeight = Math.max(0, window.innerHeight - window.visualViewport.height - 30)
+				const bot = document.getElementById('bot')
+				bot.style.transition = 'transform 0.35s ease-out'
+				bot.style.transform = kbHeight > 0 ? `translateY(${Math.min(kbHeight * 0.45, 200)}px)` : ''
+			})
 		}
 
 		window.addEventListener("resize", () => {

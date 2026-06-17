@@ -1,16 +1,19 @@
 #mima-app {
 	/*border: 1px solid green;*/
 	box-shadow: 0px 0px 15px hsla(190, 90%, 80%, 1), 0px 0px 0px 1px hsla(190, 0%, 80%, 1);
-	cursor:default;
+	cursor: default;
 	overflow: hidden;
 	border-radius: 10px;
-	margin: auto auto;
+	margin: auto;
 	background-color: black;
 	position: relative;
-	width: 95%;
-	max-width: 500px;
-	max-height: 800px;
-	height: 90%;
+	flex: none;
+	align-self: center;
+	/* Width is the binding constraint — capped by screen width and by 62.5% of screen height (5:8 ratio).
+	   Height is then derived from that width, keeping the face proportional in any orientation. */
+	--app-w: min(95vw, 500px, calc(90svh * 0.625));
+	width: var(--app-w);
+	height: min(calc(var(--app-w) * 1.6), 90svh, 800px);
 }
 
 div {
@@ -94,8 +97,9 @@ div {
 
 
 #mima-app .chatwindow-message-body {
-		background-color: hsla(200, 0%, 100%, .8);
-
+	background-color: hsla(200, 0%, 100%, .8);
+	max-width: 65%;
+	text-align: left;
 }
 
 
@@ -108,7 +112,7 @@ div {
 
 #mima-app .chatwindow-message-user .chatwindow-message-body{
 	background-color: hsla(200, 100%, 80%, .8);
-
+	max-width: 65%;
 }
 .panel.section,.blackboard {
 	padding : 4px;

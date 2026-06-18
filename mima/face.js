@@ -110,6 +110,7 @@ function Face() {
 	this._touchSpawnTimer = 0
 	this.flowmap = new FlowMap()
 	this._prevTouchSpace = null
+	this._pointerId = null
 }
 
 // Say s, and return a promise
@@ -228,18 +229,28 @@ Face.prototype.registerCanvas = function(canvas, touchTarget) {
 			y: (clientY - r.top) * sy - canvas.height / 2
 		}
 	}
-	touchTarget.addEventListener('touchstart', e => {
-		const t = e.touches[0]
-		this.touch = toCenter(t.clientX, t.clientY)
-	})
-	touchTarget.addEventListener('touchmove', e => {
-		const t = e.touches[0]
-		this.touch = toCenter(t.clientX, t.clientY)
-	})
-	touchTarget.addEventListener('touchend', () => {
+	const release = () => {
+		this._pointerId = null
 		this.touch = null
 		this.blinkL = 0
 		this.blinkR = 0
+	}
+	touchTarget.addEventListener('pointerdown', e => {
+		if (this._pointerId !== null) return
+		this._pointerId = e.pointerId
+		this.touch = toCenter(e.clientX, e.clientY)
+	})
+	touchTarget.addEventListener('pointermove', e => {
+		if (e.pointerId !== this._pointerId) return
+		this.touch = toCenter(e.clientX, e.clientY)
+	})
+	touchTarget.addEventListener('pointerup', e => {
+		if (e.pointerId !== this._pointerId) return
+		release()
+	})
+	touchTarget.addEventListener('pointercancel', e => {
+		if (e.pointerId !== this._pointerId) return
+		release()
 	})
 }
 

@@ -334,8 +334,18 @@ touch: {
 },
 		cwhere: {
 			onEnter: "perspective=7 hue=0.55 rainbow=1 opacity=2 agitation=0 speed=1 eyeFuzz=0 volume=0.5",
-			onEnterSay: ["#time#", "so #/robe/blab# depends on your perspective"],
-			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
+			// Beat 1: answer, reframe, then hand the turn back with a question.
+			onEnterSay: ["#time#", "so #/robe/blab# depends on your perspective", "where do you hope we are heading, #smek#?"],
+			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0",
+				"'#negate#' ->rest '#oh#... perhaps it is enough to be moving'",
+				"'' ->cwhereDeep robe.blab=INPUT",
+				"wait:20 ->rest"]
+		},
+		// Beat 2: Mima reflects the player's own words back, then drifts home.
+		cwhereDeep: {
+			onEnter: "perspective=9 hue=0.45 rainbow=2 opacity=4 agitation=0 speed=0.8 volume=0.5",
+			onEnterSay: ["you reach toward #/robe/blab#...", "Mima will point the dreaming that way", "the ship goes where the longing goes, #smek#"],
+			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:7 ->rest"]
 		},
 		chowlong: {
 			onEnter: "perspective=7 hue=0.55 rainbow=1 opacity=2 agitation=0 speed=1 eyeFuzz=0 volume=0.5",
@@ -409,18 +419,45 @@ tchange: {
 },
 kmatter: {
 	onEnter: "perspective=1 hue=0.72 rainbow=0 opacity=0.5 agitation=0 eyeFuzz=0 speed=0.2 volume=0.4",
-	onEnterSay: ["#depress#", "Nothing also matters"],
-	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
+	// Beat 1: sit in the nihilism, then turn it into an invitation.
+	onEnterSay: ["#depress#", "Nothing also matters", "but tell Mima, #smek#, what do you wish could matter?"],
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0",
+		"'#negate#' ->rest 'then rest in the nothing a while, #smek#'",
+		"'' ->kmatterDeep robe.blab=INPUT",
+		"wait:20 ->rest"]
+},
+// Beat 2: the emotional turn — their answer becomes the meaning. Face warms
+// from the cold nihilist palette (hue 0.72, dim, slow) toward green and brighter.
+kmatterDeep: {
+	onEnter: "perspective=3 hue=0.35 rainbow=2 opacity=4 agitation=0 eyeFuzz=0 speed=0.7 volume=0.5",
+	onEnterSay: ["then #/robe/blab# matters", "you made it matter by saying it into the dark", "that is how meaning is born, #smek#"],
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:7 ->rest"]
 },
 klost: {
 	onEnter: "perspective=1 hue=0.72 rainbow=0 opacity=0.5 agitation=0 eyeFuzz=0 speed=0.2 volume=0.4",
-	onEnterSay: ["#lost#"],
-	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
+	onEnterSay: ["#lost#", "but where would you go, #smek#, if nothing were in your way?"],
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0",
+		"'#negate#' ->rest 'then be lost a while, even that is a direction'",
+		"'' ->klostDeep robe.blab=INPUT",
+		"wait:20 ->rest"]
+},
+klostDeep: {
+	onEnter: "perspective=3 hue=0.35 rainbow=2 opacity=4 agitation=0 eyeFuzz=0 speed=0.7 volume=0.5",
+	onEnterSay: ["#/robe/blab#...", "see, you knew the way after all", "the lost are only those who have not yet named where they are going"],
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:7 ->rest"]
 },
 kpurpose: {
 	onEnter: "perspective=1 hue=0.72 rainbow=0 opacity=0.5 agitation=0 eyeFuzz=0 speed=0.2 volume=0.4",
-	onEnterSay: ["#purpose#"],
-	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
+	onEnterSay: ["#purpose#", "so tell Mima — what would you build, if the dark gave you the time?"],
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0",
+		"'#negate#' ->rest 'then let purpose find you, #smek#, it often does'",
+		"'' ->kpurposeDeep robe.blab=INPUT",
+		"wait:20 ->rest"]
+},
+kpurposeDeep: {
+	onEnter: "perspective=3 hue=0.35 rainbow=2 opacity=4 agitation=0 eyeFuzz=0 speed=0.7 volume=0.5",
+	onEnterSay: ["#/robe/blab#...", "then that is the slow flower you are growing", "purpose is not given, #smek#, it is what you build to keep the dark a little further off"],
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:7 ->rest"]
 },
 adeath: {
 	onEnter: "perspective=6 hue=0.12 rainbow=2 opacity=8 agitation=0 eyeFuzz=0 speed=0.7 volume=0.5",

@@ -5,55 +5,39 @@ let soundLibrary = {
 }
 
 
-// --- Reverb (2026-06-21) --------------------------------------------------
-// Baseline reverb on every chirp and fade: each sound gets its own reverb at
-// load (see loadSoundFolder), giving the whole voice a consistent sense of
-// space. randomChirp() raises the mix when Mima is "far" (perspective > 3) so
-// she sounds more distant. Tweak these to taste.
-let reverbSettings = {
-	time: 3.4,        // reverb tail length, seconds — long, so it lingers
-	decay: 0.3,       // lower = more sustain through the tail (don't die off early)
-	reverse: false,   // true = swelling/reverse reverb; false = natural tail
-	mix: 0.5,         // baseline wet/dry mix — wet, so everything shares one room
-	farMix: 0.8,      // even wetter when Mima is far away (perspective > 3)
-}
-function makeReverb() {
-	return new Pizzicato.Effects.Reverb({
-		time: reverbSettings.time,
-		decay: reverbSettings.decay,
-		reverse: reverbSettings.reverse,
-		mix: reverbSettings.mix,
+let effects = {
+	reverb: new Pizzicato.Effects.Reverb({
+		time: 3.4,
+		decay: 0.3,
+		reverse: false,
+		mix: 0,
 	})
 }
 
+let lastChirpTime = 0
 function randomChirp(length) {
-
-
-
 	let keys = Object.keys(soundLibrary.chirps)
-	if (keys.length !== 0) {
-		let key = getRandom(keys)
-		let sound = soundLibrary.chirps[key]
+	if (keys.length === 0) return
+	let now = Date.now()
+	if (now - lastChirpTime < 120) return
+	lastChirpTime = now
 
-		// Per-file levelling gain from the manifest (see serve.js): brings every
-		// blip/chirp to a consistent peak so the hot ones don't jump out / clip.
-		let gain = sound._gain || 1
-		sound.volume = app.values.volume*settings.volume*gain
-		// Baseline reverb is always on (added at load); when Mima is far away she
-		// goes quieter and the reverb gets wetter so she sounds distant.
-		if (sound._reverb) sound._reverb.mix = reverbSettings.mix
-		if (app.values.perspective > 3) {
-			sound.volume *= .1
-			if (sound._reverb) sound._reverb.mix = reverbSettings.farMix
-		}
+	let key = getRandom(keys)
+	let sound = soundLibrary.chirps[key]
 
+	sound.volume = app.values.volume * settings.volume
+	if (app.values.perspective > 3) {
+		sound.volume *= .1
+		effects.reverb.mix = 0.3
+	} else {
+		effects.reverb.mix = 0
+	}
 
-		sound.play()
+	sound.play()
 
-		sound.sourceNode.playbackRate.value = (Math.pow(.92, app.values.speed + .01))*settings.speed / (length*.001 + 1 + Math.random())
-		sound.on('end', () => {
-			// console.log("done!")
-		})
+	if (sound.sourceNode) {
+		const rate = (Math.pow(.92, app.values.speed + .01)) * settings.speed / (length * .001 + 1 + Math.random())
+		sound.sourceNode.playbackRate.setValueAtTime(rate, Pizzicato.context.currentTime)
 	}
 }
 
@@ -77,12 +61,10 @@ function loadSoundFolder(folder, poolName) {
 					options: { path: 'mima/sounds/' + folder + '/' + file }
 				}, ()  => {
 					sound._gain = gain
-					// Each chirp/fade gets its own baseline reverb for a shared sense
-					// of space (created here as the file loads, so the cost spreads
-					// out rather than building 50 impulses at once).
-					let rev = makeReverb()
-					sound.addEffect(rev)
-					sound._reverb = rev
+					if (!sound._reverbAdded) {
+						sound.addEffect(effects.reverb)
+						sound._reverbAdded = true
+					}
 					soundLibrary[poolName][key] = sound
 					console.log(`${poolName} loaded: '${key}' (gain ${gain})`);
 					// If the player already pressed "Hello?" before the fades had
@@ -142,12 +124,14 @@ function initSounds() {
 		console.log("RESUME SOUND")
 	Pizzicato.context.resume();
 
-	// Voice = blips/ + chirps/, both folded into the same randomChirp() pool.
-	// Fades = one-shot transition whooshes (played by playFade on state change).
-	// All levelled per-file via their manifests (see loadSoundFolder / serve.js).
-	loadSoundFolder('blips', 'chirps')
-	loadSoundFolder('chirps', 'chirps')
+	// Fades first — needed immediately for the first state-change whoosh.
+	// Chirps/blips deferred so their decode burst doesn't compete with the
+	// AudioContext resume and face animation on the same frame.
 	loadSoundFolder('fades', 'fades')
+	setTimeout(() => {
+		loadSoundFolder('blips', 'chirps')
+		loadSoundFolder('chirps', 'chirps')
+	}, 1500)
 
 	// Background soundtrack — full filename incl. extension so .wav/.mp3 both work.
 	let soundtrackFiles = ["kettleSimple01.mp3"]

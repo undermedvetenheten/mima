@@ -83,9 +83,6 @@ let synthBed = {
 				source: 'wave',
 				options: { type: 'sine', frequency: fr, attack: this.attack, release: this.release, volume: this.voiceVolume }
 			})
-			// Route through the same room reverb as the chirps/fades (see sound.js)
-			// so the whole soundscape sits in one space.
-			if (typeof makeReverb === 'function') v.addEffect(makeReverb())
 			v._baseFreq = fr
 			v.play()
 			return v

@@ -194,47 +194,31 @@ let app = {
 		})
 	},
 
-	start(e) {
+	start() {
 		app.isActive = true
 		initSounds()
-		// Immediate audible feedback that the press landed: a fade (not a chirp),
-		// fired as soon as the fades are loaded — see fadeWhenReady in sound.js.
-		fadeWhenReady()
-		// Start the generative drone bed (see synthbed.js).
-		synthBed.start()
-		// Clear any existing loop
-		clearInterval(app.tickInterval)
 
-		// Send the "Hello?" press as a word particle that shoots up from the press
-		// point into the centre where Mima arrives (instead of a chat bubble). Mima's
-		// scripted "Mima is present" comes from entering origin once the arrival ends.
-		let f = app.face
-		let from = (e && f._canvas) ? f.clientToCanvas(e.clientX, e.clientY) : { x: 0, y: f._canvasH * 0.4 }
-		f.particles.push(new Particle({
-			word: "Hello?",
-			lifespan: 2.6,
-			originX: from.x,
-			originY: from.y,
-			target: { x: 0, y: -f._canvasH * 0.09 }
-		}))
-
-		// Replay the arrival sequence (particles gather, then the face fades up).
-		app.face.arrivalStart = undefined
-		app.blinkCount = 0
-
-		// Hold the conversation until the face has arrived, so her first words land
-		// with the moment of arrival rather than over an empty frame.
-		setTimeout(() => {
+		const startChat = () => {
+			clearInterval(app.tickInterval)
 			app.instance.start()
+
+			let blinkCount = 0
 			app.tickInterval = setInterval(() => {
 				app.instance.tick()
-				app.blinkCount++
-				if (app.blinkCount > 50 + 60*Math.random()) {
+				blinkCount++
+
+				if (blinkCount > 50 + 60*Math.random()) {
 					app.blink()
-					app.blinkCount = 0
+					blinkCount = 0
 				}
 			}, 100)
-		}, app.face.arrivalDur * 1000)
+		}
+
+		if (Pizzicato.context.state === 'running') {
+			startChat()
+		} else {
+			Pizzicato.context.resume().then(startChat)
+		}
 	},
 
 	userInput(data) {

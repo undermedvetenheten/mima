@@ -5,7 +5,9 @@ let settings = {
 	volume: 0.7,
 	speed:1,
 	transitionSpeed: .7,
-
+	// Chance (0..1) that any given spoken word triggers a voice chirp. Chirping
+	// every word was too chaotic — keep it occasional. Tune to taste.
+	chirpChance: 0.25,
 }
 
 let app = {
@@ -77,6 +79,11 @@ let app = {
 
 		let words = output.split(" ")
 
+		// Guarantee at least one chirp per utterance (it's eerie when Mima speaks
+		// in silence) by forcing a chirp on one random word, while the rest stay
+		// occasional. So: always at least one, never every word.
+		let guaranteedChirp = Math.floor(Math.random() * words.length)
+
 		let start = new Promise((resolve) => {
 			setTimeout(() => {
 				resolve()
@@ -94,7 +101,10 @@ let app = {
 
 					// Resolve when the word is done
 					setTimeout(() => {
-						randomChirp(wordLength)
+						// At least one chirp per line (the guaranteed word), plus the
+						// occasional extra — but never every word (too chaotic).
+						if (index === guaranteedChirp || Math.random() < settings.chirpChance)
+							randomChirp(wordLength)
 						app.face.setWord(word, wordLength)
 						resolve()
 					}, wordLength)
@@ -112,6 +122,10 @@ let app = {
 		handlers: {
 			onEnterState: (stateID, lastStateID) => {
 				console.log("ENTER STATE HANDLER:" + stateID)
+				// One fade sound per state change, so every transition has an
+				// audible whoosh (see playFade in sound.js).
+				playFade()
+
 				// "origin" is the first state Chancery enters (see Chancery.start);
 				// the old "welcome" state was removed in the mimamap rewrite.
 				// startSoundtrack() guards against double-play, so re-entering origin is safe.
@@ -183,6 +197,9 @@ let app = {
 	start(e) {
 		app.isActive = true
 		initSounds()
+		// Immediate audible feedback that the press landed: a fade (not a chirp),
+		// fired as soon as the fades are loaded — see fadeWhenReady in sound.js.
+		fadeWhenReady()
 		// Clear any existing loop
 		clearInterval(app.tickInterval)
 

@@ -1,0 +1,34 @@
+[
+  {
+    "file": "affirm-001.wav",
+    "gain": 1.79
+  },
+  {
+    "file": "chirp-001.wav",
+    "gain": 1.79
+  },
+  {
+    "file": "hi-001.wav",
+    "gain": 1.79
+  },
+  {
+    "file": "iguess.wav",
+    "gain": 1.79
+  },
+  {
+    "file": "uh huh-001.wav",
+    "gain": 1.787
+  },
+  {
+    "file": "why-001.wav",
+    "gain": 1.792
+  },
+  {
+    "file": "why-002.wav",
+    "gain": 1.792
+  },
+  {
+    "file": "yes-001.wav",
+    "gain": 1.793
+  }
+]

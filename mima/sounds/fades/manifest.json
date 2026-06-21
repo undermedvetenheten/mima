@@ -1,0 +1,38 @@
+[
+  {
+    "file": "fade01.wav",
+    "gain": 2.794
+  },
+  {
+    "file": "fade02-001.wav",
+    "gain": 3.034
+  },
+  {
+    "file": "fade02.wav",
+    "gain": 3.034
+  },
+  {
+    "file": "fade03.wav",
+    "gain": 4
+  },
+  {
+    "file": "fade04.wav",
+    "gain": 4
+  },
+  {
+    "file": "fade05.wav",
+    "gain": 2.24
+  },
+  {
+    "file": "fade06.wav",
+    "gain": 4
+  },
+  {
+    "file": "fade07.wav",
+    "gain": 2.18
+  },
+  {
+    "file": "fade08.wav",
+    "gain": 4
+  }
+]

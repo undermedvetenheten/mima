@@ -1,0 +1,114 @@
+[
+  {
+    "file": "chirp01-001.wav",
+    "gain": 4
+  },
+  {
+    "file": "chirp02.wav",
+    "gain": 3.559
+  },
+  {
+    "file": "chirp03.wav",
+    "gain": 3.023
+  },
+  {
+    "file": "chirp04.wav",
+    "gain": 3.331
+  },
+  {
+    "file": "chirp05.wav",
+    "gain": 3.095
+  },
+  {
+    "file": "chirp06.wav",
+    "gain": 3.11
+  },
+  {
+    "file": "chirp07.wav",
+    "gain": 4
+  },
+  {
+    "file": "chirp08.wav",
+    "gain": 3.549
+  },
+  {
+    "file": "chirp09.wav",
+    "gain": 3.091
+  },
+  {
+    "file": "chirp10.wav",
+    "gain": 2.954
+  },
+  {
+    "file": "chirp11-001.wav",
+    "gain": 2.026
+  },
+  {
+    "file": "chirp12-001.wav",
+    "gain": 1.854
+  },
+  {
+    "file": "chirp13.wav",
+    "gain": 1.415
+  },
+  {
+    "file": "chirp14.wav",
+    "gain": 1.832
+  },
+  {
+    "file": "chirp15.wav",
+    "gain": 1.282
+  },
+  {
+    "file": "chirp16.wav",
+    "gain": 0.975
+  },
+  {
+    "file": "chirp17.wav",
+    "gain": 1.576
+  },
+  {
+    "file": "chirp18.wav",
+    "gain": 1.439
+  },
+  {
+    "file": "chirp19.wav",
+    "gain": 1.289
+  },
+  {
+    "file": "chirp20.wav",
+    "gain": 0.895
+  },
+  {
+    "file": "chirp21.wav",
+    "gain": 4
+  },
+  {
+    "file": "chirp22.wav",
+    "gain": 4
+  },
+  {
+    "file": "chirp23.wav",
+    "gain": 4
+  },
+  {
+    "file": "chirp24.wav",
+    "gain": 4
+  },
+  {
+    "file": "chirp25.wav",
+    "gain": 1.447
+  },
+  {
+    "file": "chirp26.wav",
+    "gain": 1.409
+  },
+  {
+    "file": "chirp27.wav",
+    "gain": 1.23
+  },
+  {
+    "file": "chirp28.wav",
+    "gain": 1.762
+  }
+]

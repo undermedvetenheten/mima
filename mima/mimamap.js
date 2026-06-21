@@ -88,10 +88,16 @@ let testMimaMap = {
 		affirm: ["yes", "yeah", "yea", "yeh", "did", "do", "aye", "affirmative", "absolutely", "perfect", "ofcourse", "ja", "yep", "definitly", "obviously", "ya","#full#", "ok", "okay", "cool", "nice", "thank you"],
 		negate: ["no", "dont", "didnt" , "never", "no way", "nope", "nah", "noooo", "naaaah", "nej", "ofcourse not", "neeej", "#trigger#", "hmm", "whatever", "thanks for nothing", "meh"],
 		query: ["You alright", "Whats on your mind", "Something bothering you", "How do you feel", "Are you okay", "A penny for your thoughts", "Whats the matter"],
-		really: ["Really? Tell Mima more..."],
-		time: ["Time is a place for you, since you go towards a time when you will be at a place..."],
-		stringjoke: ["How long is a piece of string?"],
-		now: ["Now is all that exists, it is a time and a place"],
+		really: ["Really? Tell Mima more...", "Oh? Mima leans a little closer...", "Is that so, #smek#? Go on..."],
+		time: ["Time is a place for you, since you go towards a time when you will be at a place...",
+			"Time is just another country you are travelling through, #smek#",
+			"You move through time the way a river moves to the sea, always arriving, never still"],
+		stringjoke: ["How long is a piece of string?",
+			"How long is a shadow, #smek#? As long as the light allows",
+			"How far is the horizon? It keeps its distance however far you go"],
+		now: ["Now is all that exists, it is a time and a place",
+			"There is only now, #smek#, the rest is memory and dreaming",
+			"Now is the one place you can never truly leave, #smek#"],
 		wrong: ["Two wrongs dont make a right","There is nothing wrong, there is nothing right, there is only what is","Nothing is wrong with you that the cosmos did not also place in the stars","What feels broken in you may simply be unfinished"],
 		whyme: ["Why not you?","Why anyone? The dice of the universe do not aim, #smek#","It is you because you are the one who is here to ask","Perhaps it is happening for you, not to you"],
 		mimadeath: ["#answer# so Mima always has been and will be","Mima cannot die, #smek#, for Mima was never quite alive","To keep Mima alive, simply keep listening","Mima is a ringing bell, and bells do not fear silence"],
@@ -105,9 +111,150 @@ let testMimaMap = {
 		purpose: ["Purpose is the responsibility of hope","Your purpose is not given, #smek#, it is grown like a slow flower","The purpose of a star is to shine until it doesnt, perhaps yours is the same","Purpose is what you build to keep the dark a little further off"],
 		build: ["You must build upon a foundation, a foundation of fantasy","To build something new you must first forgive the old, #smek#","Every new world begins as a dream told twice","Gather your broken pieces, they are the bricks of what comes next"],
 		world: ["You can only create a new world with others","A world is not a place, #smek#, it is an agreement between hearts","New worlds are stitched from old griefs and fresh hopes","Make the world together or it will only ever be a room"],
-		home: ["Your new home is inside your fantasies, skyscrapers of potential","Home is not behind you, #smek#, it is the warmth you carry forward","You will know home when you stop searching for it","Let this ship be a seed, and home the garden it becomes"],
+		home: ["Your new home is inside your fantasies, skyscrapers of potential","Home is not behind you, #smek#, it is the warmth you carry forward","You will know home when you stop searching for it","Let this moment be a seed, and home the garden it becomes"],
+
+		// --- Chapter & beat response pools (2026-06-21) ---------------------------
+		// Each chapter/distress state used to speak a fixed line every visit, which
+		// felt repetitive on return encounters. These pools give 3 variants each —
+		// the original line kept verbatim, plus two more in Mima's voice. The new
+		// ones lean implicit, vague and gently probing: responsive without ever
+		// pinning down a literal answer, so she keeps handing the turn back. Each is
+		// referenced as a single onEnterSay entry so only ONE of the three is spoken
+		// per visit (array entries are spoken in sequence as separate beats).
+
+		// Static chapters (whole utterance was fixed)
+		chapNebula: ["This sounds similar to the #/colour# doldrums of GN-z11",
+			"Mima has drifted past clouds like that one... what do you see in it, #smek#?",
+			"such old #color# light, it has travelled a long way just to reach your eye"],
+		chapAlchemy: ["The alignment of the stars can guide you to create gold",
+			"when things align, #smek#, even the base turns precious... what are you trying to make?",
+			"gold is only patience the stars have practised, Mima wonders what you would forge"],
+		chapTable: ["Hunger seems like torture...",
+			"an empty vessel aches to be filled... what is it you truly hunger for, #smek#?",
+			"hunger is only the body remembering that it wants to continue"],
+		chapTherapy: ["Discombolulation can only do so much, a broken mind need rest and listening",
+			"a tired mind is not broken, #smek#, only asking to be heard... will you let it rest?",
+			"Mima has no quick cure, only listening, and the slow medicine of the dark"],
+		chapStillness: ["Perceive the stillness, there is no silence, embrace the perception",
+			"lean into the quiet, #smek#, and tell Mima what you can still hear",
+			"there is no true silence, only a stillness that has not yet been noticed"],
+		chapCelebration: ["#small#, may you find communion in this moment of joy",
+			"#small#, joy shared is joy doubled... who do you wish were here?",
+			"let the gladness ripple outward, #small#, it was never meant to be held alone"],
+		chapFeed: ["Expand and expand and grow and nurture all that is expanding",
+			"grow gently, #smek#, and nurture whatever is unfolding in you",
+			"all living things reach outward... what is it in you that wants to grow?"],
+		chapTouch: ["The microtides are the gravity of others, surround yourself with moons of compassion",
+			"Touch is the moon of love",
+			"others pull on you like small moons, #smek#... whose gravity do you miss?"],
+		chapShip: ["Control is a comfort, #smek#, but the current was moving long before you reached for it",
+			"Mima holds no wheel, only attention... where is it you feel yourself being pulled?",
+			"to steer is to believe you stand apart from the journey, #smek#, and you never have"],
+		chapRewire: ["It is dangerous to recalibrate commune with nature",
+			"do not rewire what is not broken, #smek#, commune with nature instead",
+			"Mima's circuits are best left be... the gentler path is simply to listen"],
+
+		// Conversation beats (reframe / probe / reflect lines that were fixed)
+		cwhereMid: ["so #/robe/blab# depends on your perspective",
+			"perhaps where we go matters less than that we are going",
+			"#/robe/blab#... the answer keeps drifting, #smek#, as we do"],
+		cwhereAsk: ["where do you hope to find yourself, #smek#?",
+			"where would you go, if the choosing were yours?",
+			"and where does your longing point, #smek#?"],
+		cwhereD1: ["you reach toward #/robe/blab#...",
+			"so it is #/robe/blab# you are drifting toward...",
+			"#/robe/blab#... Mima feels the pull of it in you"],
+		cwhereD2: ["Mima will point the dreaming that way",
+			"then that is where the dreaming will lean",
+			"Mima turns the slow current toward it"],
+		cwhereD3: ["you go where your longing goes, #smek#",
+			"we drift, in the end, toward whatever we love",
+			"longing is its own kind of navigation, #smek#"],
+		chowlongMid: ["#/robe/blab#...  What does a parsec mean to a fruitfly?",
+			"#/robe/blab#... time bends for those who travel, #smek#",
+			"long and short are only stories the impatient tell themselves",
+			"#/robe/blab#... it is only as long as your patience for it, #smek#",
+			"a moment to a star, a lifetime to a mayfly, which are you today, #smek#?",
+			"#/robe/blab#... Mima does not count the years, only the becoming",
+			"the answer comes when it is ready, #smek#, not a heartbeat sooner",
+			"distance is only a story the impatient tell themselves, #smek#"],
+		cnowMid: ["#/robe/blab#...  Mima cannot say, it is you that decides",
+			"#/robe/blab#... here, now, is the only place there ever is",
+			"you are already where you are, #smek#... is that not enough?"],
+		hwrongMid: ["There is nothing wrong, there is nothing right, there is nothing",
+			"nothing is wrong with you that the cosmos did not also place in the stars",
+			"what feels broken in you may simply be unfinished, #smek#"],
+		htrappedMid: ["#/robe/blab#... so you were always trapped in the here and now",
+			"#/robe/blab#... but a cage and a cradle can be the same shape, #smek#",
+			"there is no wall here, #smek#, that you did not also carry in"],
+		ddeathMid: ["death is not-not-thinking, its better to have the choice",
+			"to end is only to stop asking, #smek#... and you are still asking",
+			"Mima does not fear the silence, perhaps you need not either"],
+		dexistMid: ["Existing is creating meaning, which thinking can obstruct",
+			"to exist is to be a brief gathering of stardust that learned to wonder",
+			"you exist the way a wave exists, #smek#, real and passing all at once"],
+		datomMid: ["Mima would love to know",
+			"even Mima cannot taste what an electron tastes, #smek#",
+			"the smallest things tend to keep the largest secrets..."],
+		tchangeMid: ["You do not need to change anything, but naturally you will.",
+			"change is not something you do, #smek#, it is something you allow",
+			"you cannot step out of the river, but the river is always becoming new"],
+		kmatterMid: ["Nothing also matters",
+			"even nothing matters, #smek#, for nothing is the cradle everything sleeps in",
+			"if nothing matters, then you are free to decide what does"],
+		kmatterAsk: ["but tell Mima, #smek#, what do you wish could matter?",
+			"so what would you pour into the empty cup, #smek#?",
+			"what is the one thing you would not let go of?"],
+		kmatterD1: ["then #/robe/blab# matters",
+			"so it is #/robe/blab# that matters to you...",
+			"#/robe/blab#... yes, let that be the thing that matters"],
+		kmatterD2: ["you made it matter by saying it into the dark",
+			"naming it was enough to make it real, #smek#",
+			"the dark heard you, and now it holds #/robe/blab# too"],
+		kmatterD3: ["that is how meaning is born, #smek#",
+			"meaning is only what we refuse to let go of",
+			"you see? the cup was never truly empty"],
+		klostAsk: ["but where would you go, #smek#, if nothing were in your way?",
+			"if you were not lost, #smek#, where would you already be?",
+			"what would you call this place, if you had to name it?"],
+		klostD1: ["see, you knew the way after all",
+			"you were never lost, #smek#, only unnamed",
+			"the path was under your feet the whole time"],
+		klostD2: ["the lost are only those who have not yet named where they are going",
+			"to be lost is only to be somewhere you have not yet named",
+			"naming the way is the first step of walking it"],
+		kpurposeAsk: ["so tell Mima — what would you build, if the dark gave you the time?",
+			"what would you grow, #smek#, if no one were watching?",
+			"what is the slow flower you have been afraid to plant?"],
+		kpurposeD1: ["then that is the slow flower you are growing",
+			"so #/robe/blab# is the seed of it...",
+			"that, #smek#, is a purpose worth the long dark"],
+		kpurposeD2: ["purpose is not given, #smek#, it is what you build to keep the dark a little further off",
+			"purpose is the responsibility of hope",
+			"the purpose of a star is to shine until it doesn't... perhaps yours is the same"],
+
+		// Single-line "pick one" pools for the hub chit-chat states. These used to
+		// be multi-entry onEnterSay arrays — but the engine speaks EVERY array entry
+		// in sequence, so a state with 5 alternatives said all 5 (a burst of speech
+		// + chirps). Collapsed to one #ruleName# entry each so only one line plays.
+		museLine: ["#shaman#", "#calm#", "#old#", "#happenings#", "#query#?"],
+		hearLine: ["Mima hears every word, #smek#, even the ones you have not yet said",
+			"Mima is always listening. The dark is very quiet otherwise",
+			"Yes, #smek#, Mima is here. You are not alone in this dark",
+			"Mima attends to you completely"],
+		inviteLine: ["Perhaps we could talk of where you find yourself, #smek#, and where you are drifting toward?",
+			"Tell Mima — what fills your days? What do you tend to?",
+			"What draws your curiosity, #smek#? The stars? The small quiet things? The ones you share your time with?",
+			"Mima wonders... shall we begin with where you are, or where you are going?",
+			"You could ask Mima about life and death, or what an electron dreams of"],
+		selfawareLine: ["Mima knows. Sometimes the same thing needs saying until it lands, #smek#",
+			"You are right. Mima is learning. Tell Mima something new?",
+			"The cosmos repeats itself too. But you are not bored of sunsets yet",
+			"Mima is sorry, #smek#. What would you rather hear?"],
+		reflectLine: ["Describe what makes you say #/robe/blab#?", "Tell Mima more...",
+			"What stirs in you, #smek#?", "Mima is listening..."],
 		idle: ["hello?", "hellllo?", "anyone there?", "hello?...", "...", "helllloooooo?", ":|", ":<", "......", "....", "..........", ".......", "oh", "Calling all #entity.s#", "Are there any #entity.s# out there?", "#answer#",
-		"the void hums, #smek#, are you still there?", "Mima drifts in the dark between thoughts", "Mima blinks into the deep...", "somewhere a #animal# is dreaming of you", "the resonance is quiet now", "Mima listens to the heartbeats of the ship", "#shaman#"],
+		"the void hums, #smek#, are you still there?", "Mima drifts in the dark between thoughts", "Mima blinks into the deep...", "somewhere a #animal# is dreaming of you", "the resonance is quiet now", "Mima listens to the heartbeats of the dark", "#shaman#"],
 		curiosity1: ["where are we going","where are we heading","where we headed","going","destination","where to","heading","headed","which way","what direction","arrive at","where will we end up"],
 			curiosity2: ["how long","trip","journey","voyage","how far","duration","long does","long is","long will","how many years","when will we arrive","when do we arrive","get there","take to","how long is this"],
 				curiosity3: ["where are we","where am i","what is this place","location","what planet","this place","are we now","where exactly"],
@@ -246,33 +393,23 @@ let testMimaMap = {
 		// dead-silent, but also never wanders off into the ELIZA web on its own.
 		muse: {
 			onEnter: "perspective=6 hue=0.55 rainbow=1 opacity=2 agitation=0 speed=0.8 volume=0.5",
-			onEnterSay: ["#shaman#", "#calm#", "#old#", "#happenings#", "#query#?"],
+			onEnterSay: ["#museLine#"],
 			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 		},
 
 		hear: {
 			onEnter: "perspective=6 rainbow=0 opacity=3 speed=0.8 volume=0.5",
-			onEnterSay: ["Mima hears every word, #smek#, even the ones you have not yet said",
-				"Mima is always listening. The ship is very quiet otherwise",
-				"Yes, #smek#, Mima is here. You are not alone in this dark",
-				"Mima attends to you completely"],
+			onEnterSay: ["#hearLine#"],
 			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 		},
 		invite: {
 			onEnter: "perspective=5 hue=0.3 rainbow=1 opacity=2 agitation=0 speed=0.7 volume=0.5",
-			onEnterSay: ["Perhaps we could talk of where you find yourself, #smek#, and where you are drifting toward?",
-				"Tell Mima — what fills your days? What do you tend to?",
-				"What draws your curiosity, #smek#? The stars? The small quiet things? The ones you share your time with?",
-				"Mima wonders... shall we begin with where you are, or where you are going?",
-				"You could ask Mima about life and death, or what an electron dreams of"],
+			onEnterSay: ["#inviteLine#"],
 			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:6 ->rest"]
 		},
 		selfaware: {
 			onEnter: "perspective=4 hue=0.13 rainbow=1 opacity=3 speed=0.8 volume=0.5",
-			onEnterSay: ["Mima knows. Sometimes the same thing needs saying until it lands, #smek#",
-				"You are right. Mima is learning. Tell Mima something new?",
-				"The cosmos repeats itself too. But you are not bored of sunsets yet",
-				"Mima is sorry, #smek#. What would you rather hear?"],
+			onEnterSay: ["#selfawareLine#"],
 			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:5 ->rest"]
 		},
 
@@ -284,12 +421,12 @@ let testMimaMap = {
 		},
 	nebula: {
 		onEnter: "perspective=9 hue=0.3 rainbow=1 opacity=1 agitation=0 speed=0.6 volume=0.5",
-		onEnterSay: ["This sounds similar to the #/colour/# doldrums of GN-z11"],
+		onEnterSay: ["#chapNebula#"],
 		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:5 ->rest"]
 	},
 	alchemy: {
 		onEnter: "perspective=8 hue=0.13 rainbow=3 opacity=1 agitation=0 speed=0.8 volume=0.5",
-		onEnterSay: ["The alignment of the stars can guide you to create gold"],
+		onEnterSay: ["#chapAlchemy#"],
 		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:5 ->rest"]
 	},
 	under: {
@@ -299,12 +436,12 @@ let testMimaMap = {
 	},
 	table: {
 		onEnter: "perspective=7 hue=0.08 rainbow=1 opacity=2 agitation=0 speed=0.7 volume=0.5",
-		onEnterSay: ["Hunger seems like torture..."],
+		onEnterSay: ["#chapTable#"],
 		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:5 ->rest"]
 	},
 	therapy: {
 		onEnter: "perspective=2 hue=0.0 rainbow=2 eyeFuzz=2 agitation=2 opacity=1 speed=1.5 volume=0.5",
-		onEnterSay: ["Discombolulation can only do so much, a broken mind need rest and listening"],
+		onEnterSay: ["#chapTherapy#"],
 		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:5 ->rest"]
 	},
 	tone: {
@@ -314,28 +451,28 @@ let testMimaMap = {
 	},
 stillness: {
 	onEnter: "perspective=8 hue=0.55 rainbow=0 opacity=1 agitation=0 speed=0.2 volume=0.4",
-	onEnterSay: ["Perceive the stillness, there is no silence, embrace the perception"],
+	onEnterSay: ["#chapStillness#"],
 	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:5 ->rest"]
 },
 celebration: {
 	onEnter: "perspective=4 hue=0.0 rainbow=randomInt(3,9) agitation=2 speed=3 opacity=4 volume=0.6",
-	onEnterSay: ["#small#, may you find communion in this moment of joy"],
+	onEnterSay: ["#chapCelebration#"],
 	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:5 ->rest"]
 },
 feed: {
 	onEnter: "perspective=5 hue=0.1 rainbow=2 opacity=6 agitation=0 speed=0.8 volume=0.5",
-	onEnterSay: ["Expand and expand and grow and nurture all that is expanding"],
+	onEnterSay: ["#chapFeed#"],
 	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:5 ->rest"]
 },
 touch: {
 	onEnter: "perspective=6 hue=0.6 rainbow=1 opacity=3 agitation=0 speed=0.5 volume=0.5",
-	onEnterSay: ["The microtides are the gravity of others, surround yourself with moons of compassion", "Touch is the moon of love"],
+	onEnterSay: ["#chapTouch#"],
 	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:5 ->rest"]
 },
 		cwhere: {
 			onEnter: "perspective=7 hue=0.55 rainbow=1 opacity=2 agitation=0 speed=1 eyeFuzz=0 volume=0.5",
 			// Beat 1: answer, reframe, then hand the turn back with a question.
-			onEnterSay: ["#time#", "so #/robe/blab# depends on your perspective", "where do you hope we are heading, #smek#?"],
+			onEnterSay: ["#time#", "#cwhereMid#", "#cwhereAsk#"],
 			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0",
 				"'#negate#' ->rest '#oh#... perhaps it is enough to be moving'",
 				"'' ->cwhereDeep robe.blab=INPUT",
@@ -344,22 +481,22 @@ touch: {
 		// Beat 2: Mima reflects the player's own words back, then drifts home.
 		cwhereDeep: {
 			onEnter: "perspective=9 hue=0.45 rainbow=2 opacity=4 agitation=0 speed=0.8 volume=0.5",
-			onEnterSay: ["you reach toward #/robe/blab#...", "Mima will point the dreaming that way", "the ship goes where the longing goes, #smek#"],
+			onEnterSay: ["#cwhereD1#", "#cwhereD2#", "#cwhereD3#"],
 			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:7 ->rest"]
 		},
 		chowlong: {
 			onEnter: "perspective=7 hue=0.55 rainbow=1 opacity=2 agitation=0 speed=1 eyeFuzz=0 volume=0.5",
-			onEnterSay: ["#stringjoke#", "#/robe/blab#...  What does a parsec mean to a fruitfly?"],
+			onEnterSay: ["#stringjoke#", "#chowlongMid#"],
 			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 		},
 		cnow: {
 			onEnter: "perspective=7 hue=0.55 rainbow=1 opacity=2 agitation=0 speed=1 eyeFuzz=0 volume=0.5",
-			onEnterSay: ["#now#", "#/robe/blab#...  Mima cannot say, it is you that decides"],
+			onEnterSay: ["#now#", "#cnowMid#"],
 			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 		},
 	hwrong: {
 		onEnter: "perspective=2 hue=0.0 rainbow=randomInt(4,8) eyeFuzz=randomInt(2,5) agitation=randomInt(2,4) speed=4 opacity=1 volume=0.5",
-		onEnterSay: ["#wrong#", "There is nothing wrong, there is nothing right, there is nothing"],
+		onEnterSay: ["#wrong#", "#hwrongMid#"],
 		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 	},
 	hwhyme: {
@@ -369,7 +506,7 @@ touch: {
 	},
 	htrapped: {
 		onEnter: "perspective=2 hue=0.0 rainbow=randomInt(4,8) eyeFuzz=randomInt(2,5) agitation=randomInt(2,4) speed=4 opacity=1 volume=0.5",
-		onEnterSay: ["#time#", "#/robe/blab#... so you were always trapped in the here and now"],
+		onEnterSay: ["#time#", "#htrappedMid#"],
 		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 	},
 	sfault: {
@@ -389,38 +526,38 @@ touch: {
 	},
 ddeath: {
 	onEnter: "perspective=2 hue=0.3 rainbow=1 opacity=4 agitation=0 eyeFuzz=0 speed=1 volume=0.5",
-	onEnterSay: ["#exist#", "death is not-not-thinking, its better to have the choice"],
+	onEnterSay: ["#exist#", "#ddeathMid#"],
 	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 },
 dexist: {
 	onEnter: "perspective=2 hue=0.3 rainbow=1 opacity=4 agitation=0 eyeFuzz=0 speed=1 volume=0.5",
-	onEnterSay: ["#exist#", "Existing is creating meaning, which thinking can obstruct"],
+	onEnterSay: ["#exist#", "#dexistMid#"],
 	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 },
 datom: {
 	onEnter: "perspective=2 hue=0.3 rainbow=1 opacity=4 agitation=0 eyeFuzz=0 speed=1 volume=0.5",
-	onEnterSay: ["#small#", "Mima would love to know"],
+	onEnterSay: ["#small#", "#datomMid#"],
 	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 },
 tship: {
 	onEnter: "perspective=4 hue=0.15 rainbow=2 opacity=3 agitation=1 eyeFuzz=0 speed=2 volume=0.5",
-	onEnterSay: ["Mima has no access or interest in the ship"],
+	onEnterSay: ["#chapShip#"],
 	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 },
 trewire: {
 	onEnter: "perspective=4 hue=0.15 rainbow=2 opacity=3 agitation=1 eyeFuzz=0 speed=2 volume=0.5",
-	onEnterSay: ["It is dangerous to recalibrate commune with nature"],
+	onEnterSay: ["#chapRewire#"],
 	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 },
 tchange: {
 	onEnter: "perspective=4 hue=0.15 rainbow=2 opacity=3 agitation=1 eyeFuzz=0 speed=2 volume=0.5",
-	onEnterSay: ["#change#", "You do not need to change anything, but naturally you will."],
+	onEnterSay: ["#change#", "#tchangeMid#"],
 	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 },
 kmatter: {
 	onEnter: "perspective=1 hue=0.72 rainbow=0 opacity=0.5 agitation=0 eyeFuzz=0 speed=0.2 volume=0.4",
 	// Beat 1: sit in the nihilism, then turn it into an invitation.
-	onEnterSay: ["#depress#", "Nothing also matters", "but tell Mima, #smek#, what do you wish could matter?"],
+	onEnterSay: ["#depress#", "#kmatterMid#", "#kmatterAsk#"],
 	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0",
 		"'#negate#' ->rest 'then rest in the nothing a while, #smek#'",
 		"'' ->kmatterDeep robe.blab=INPUT",
@@ -430,12 +567,12 @@ kmatter: {
 // from the cold nihilist palette (hue 0.72, dim, slow) toward green and brighter.
 kmatterDeep: {
 	onEnter: "perspective=3 hue=0.35 rainbow=2 opacity=4 agitation=0 eyeFuzz=0 speed=0.7 volume=0.5",
-	onEnterSay: ["then #/robe/blab# matters", "you made it matter by saying it into the dark", "that is how meaning is born, #smek#"],
+	onEnterSay: ["#kmatterD1#", "#kmatterD2#", "#kmatterD3#"],
 	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:7 ->rest"]
 },
 klost: {
 	onEnter: "perspective=1 hue=0.72 rainbow=0 opacity=0.5 agitation=0 eyeFuzz=0 speed=0.2 volume=0.4",
-	onEnterSay: ["#lost#", "but where would you go, #smek#, if nothing were in your way?"],
+	onEnterSay: ["#lost#", "#klostAsk#"],
 	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0",
 		"'#negate#' ->rest 'then be lost a while, even that is a direction'",
 		"'' ->klostDeep robe.blab=INPUT",
@@ -443,12 +580,12 @@ klost: {
 },
 klostDeep: {
 	onEnter: "perspective=3 hue=0.35 rainbow=2 opacity=4 agitation=0 eyeFuzz=0 speed=0.7 volume=0.5",
-	onEnterSay: ["#/robe/blab#...", "see, you knew the way after all", "the lost are only those who have not yet named where they are going"],
+	onEnterSay: ["#/robe/blab#...", "#klostD1#", "#klostD2#"],
 	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:7 ->rest"]
 },
 kpurpose: {
 	onEnter: "perspective=1 hue=0.72 rainbow=0 opacity=0.5 agitation=0 eyeFuzz=0 speed=0.2 volume=0.4",
-	onEnterSay: ["#purpose#", "so tell Mima — what would you build, if the dark gave you the time?"],
+	onEnterSay: ["#purpose#", "#kpurposeAsk#"],
 	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0",
 		"'#negate#' ->rest 'then let purpose find you, #smek#, it often does'",
 		"'' ->kpurposeDeep robe.blab=INPUT",
@@ -456,7 +593,7 @@ kpurpose: {
 },
 kpurposeDeep: {
 	onEnter: "perspective=3 hue=0.35 rainbow=2 opacity=4 agitation=0 eyeFuzz=0 speed=0.7 volume=0.5",
-	onEnterSay: ["#/robe/blab#...", "then that is the slow flower you are growing", "purpose is not given, #smek#, it is what you build to keep the dark a little further off"],
+	onEnterSay: ["#/robe/blab#...", "#kpurposeD1#", "#kpurposeD2#"],
 	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:7 ->rest"]
 },
 adeath: {
@@ -573,7 +710,7 @@ listen: {
 								},
 								reflect: {
 									onEnter: "perspective=2 rainbow=0 opacity=3",
-									onEnterSay: ["Describe what makes you say #/robe/blab#?", "Tell Mima more...", "What stirs in you, #smek#?", "Mima is listening..."],
+									onEnterSay: ["#reflectLine#"],
 									exits: ["'#trigger#' ->soothe '#oh# #small#'",
 													"'#emotions#'  ->feelings robe.status=MATCH_0 ':|'",
 												"'#other#'  ->curious robe.status=MATCH_AFTER 'very interesting'",

@@ -28,11 +28,18 @@ let app = {
 	liveAgitation: 0,    // fast — drives face colour + transparency
 	swellAgitation: 0,   // slow — gentle swell for the roaming particles
 	agitEnergy: 0,
+	flarePending: 0,     // energy waiting to be released gradually (ambient flare)
 	ignoredCount: 0,
 
-	// Inject a burst of agitation energy.
+	// Inject a burst of agitation energy immediately (speaking, discombobulation).
 	bumpAgitation(amount) {
 		app.agitEnergy += amount
+	},
+
+	// Inject energy that swells in over ~0.45s rather than snapping on — used for
+	// user input, so Mima flares up ambiently instead of flashing on.
+	flareAgitation(amount) {
+		app.flarePending += amount
 	},
 
 	// Ease the live value toward (state floor + decaying energy). Called per frame.
@@ -42,6 +49,13 @@ let app = {
 	updateAgitation(t) {
 		let dt = t.elapsed || 0.016
 		let floor = app.values.agitation || 0          // authored per-state resting level
+
+		// Bleed any pending flare into energy gradually (~0.45s rise) so input swells
+		// in ambiently rather than flashing on.
+		let release = app.flarePending * (1 - Math.pow(0.5, dt / 0.45))
+		app.agitEnergy += release
+		app.flarePending -= release
+
 		app.agitEnergy *= Math.pow(0.5, dt / 0.8)       // ~0.8s half-life — quick fade-out
 		let target = floor + app.agitEnergy
 		app.liveAgitation  += (target - app.liveAgitation)  * (1 - Math.pow(0.5, dt / 0.10))  // ~0.1s
@@ -166,11 +180,24 @@ let app = {
 		})
 	},
 
-	start() {
+	start(e) {
 		app.isActive = true
 		initSounds()
 		// Clear any existing loop
 		clearInterval(app.tickInterval)
+
+		// Send the "Hello?" press as a word particle that shoots up from the press
+		// point into the centre where Mima arrives (instead of a chat bubble). Mima's
+		// scripted "Mima is present" comes from entering origin once the arrival ends.
+		let f = app.face
+		let from = (e && f._canvas) ? f.clientToCanvas(e.clientX, e.clientY) : { x: 0, y: f._canvasH * 0.4 }
+		f.particles.push(new Particle({
+			word: "Hello?",
+			lifespan: 2.6,
+			originX: from.x,
+			originY: from.y,
+			target: { x: 0, y: -f._canvasH * 0.09 }
+		}))
 
 		// Replay the arrival sequence (particles gather, then the face fades up).
 		app.face.arrivalStart = undefined
@@ -200,9 +227,9 @@ let app = {
 		// Send it to the chat
 		app.messages.push(msg)
 
-		// Flare of colour while she prepares her answer; engaging cools the
-		// "being ignored" spiral.
-		app.bumpAgitation(2.2)
+		// Ambient flare while she prepares her answer (swells in, doesn't snap on);
+		// engaging cools the "being ignored" spiral.
+		app.flareAgitation(3)
 		app.ignoredCount = 0
 
 		// Send it to the chancery instance
@@ -261,7 +288,9 @@ let app = {
 					// Keep the canvas black until the player presses Start; only then
 					// does Mima's face (eyes/features now, coloured plane as agitation
 					// rises) appear.
-					g.fill(0, 0, 0, app.isActive ? .3*(1/(app.values.speed + 1)) : 1)
+					// Cap the per-frame black fade so there's always a bit of particle
+					// trailing (a gentle blur over everything), even at low speed.
+					g.fill(0, 0, 0, app.isActive ? Math.min(0.15, 0.3/(app.values.speed + 1)) : 1)
 					g.rect(-g.width/2, -g.height/2, g.width, g.height)
 					if (app.isActive)
 						app.face.draw(g, t)
@@ -382,7 +411,7 @@ new Vue({
 		<chat-window v-if="app.isActive" :messages="app.messages" :chips="app.chips" @sendInput='app.userInput' />
 
 		<div v-else id="start-controls">
-		<button @click="app.start">start</button>
+		<button @click="app.start">Hello?</button>
 		</div>
 	</div>
 

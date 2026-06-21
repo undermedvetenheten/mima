@@ -1,7 +1,20 @@
-function Particle({word,lifespan}) {
+function Particle({word, lifespan, originX = 0, originY = 0, lean = 0, target = null}) {
 	this.word = word
-	this.p = Vector.polar(Math.random()*100, Math.random()*100)
-	this.v = Vector.polar(Math.random()*100 + 30, Math.random()*100)
+	this.target = target
+	if (target) {
+		// Targeted travel — the "Hello?" opener flying from the press point to centre.
+		this.p = new Vector(originX, originY)
+		this.startP = new Vector(originX, originY)
+		this.v = new Vector(0, 0)
+	} else {
+		// Emit from around Mima's face (origin passed in from setWord), floating up.
+		// `lean` is the emission angle from vertical, swept like a pendulum in setWord;
+		// only a touch of random spread so the direction reads as a sweep, not noise.
+		this.p = new Vector(originX + (Math.random() - 0.5) * 90, originY + (Math.random() - 0.5) * 30)
+		let speed = 90 + Math.random() * 90
+		let a = lean + (Math.random() - 0.5) * 0.25
+		this.v = new Vector(Math.sin(a) * speed, -Math.cos(a) * speed)
+	}
 	this.radius = 1
 	this.age = 0
 	this.lifespan = lifespan
@@ -20,15 +33,21 @@ Particle.prototype.draw = function(g) {
 
 
 Particle.prototype.update = function(t) {
-	this.p.addMultiple(this.v, t.elapsed)
-	this.v.mult(Math.pow(this.drag,t.elapsed*10))
-
 	if (this.start === undefined) {
 		this.start = t.current
 	}
-	// console.log(this.start, t.current, this.lifespan)
 	this.age = (t.current - this.start)/this.lifespan
-	// console.log(this.age)
+
+	if (this.target) {
+		// Ease from the press point to the target (centre) over the lifespan.
+		let k = Math.min(1, this.age)
+		k = k*k*(3 - 2*k)
+		this.p.x = this.startP.x + (this.target.x - this.startP.x)*k
+		this.p.y = this.startP.y + (this.target.y - this.startP.y)*k
+	} else {
+		this.p.addMultiple(this.v, t.elapsed)
+		this.v.mult(Math.pow(this.drag,t.elapsed*10))
+	}
 }
 
 
@@ -252,7 +271,20 @@ Face.prototype.update = function(t) {
 	this.touchParticles = this.touchParticles.filter(p => p.age < 1)
 }
 
+// Convert a client (screen) coordinate into the centred canvas space the
+// particles live in. Returns {x,y} (origin = canvas centre).
+Face.prototype.clientToCanvas = function(clientX, clientY) {
+	let canvas = this._canvas
+	if (!canvas) return { x: 0, y: 0 }
+	const r = canvas.getBoundingClientRect()
+	return {
+		x: (clientX - r.left) * (canvas.width / r.width) - canvas.width / 2,
+		y: (clientY - r.top) * (canvas.height / r.height) - canvas.height / 2
+	}
+}
+
 Face.prototype.registerCanvas = function(canvas, touchTarget) {
+	this._canvas = canvas
 	this._canvasH = canvas.height
 	touchTarget = touchTarget || canvas
 	const toCenter = (clientX, clientY) => {
@@ -309,7 +341,17 @@ Face.prototype.setWord = function(word, length) {
 		app.valueTracker.mouth.set(0,this.lastTime,dt*.1)
 	},  dt*.8*1000)
 
-	this.particles.push(new Particle({word:word, lifespan:length*.007}))
+	// Emit from around her face (matches the draw translate of -canvasH*0.09),
+	// down toward her mouth, so words rise off her face — not the chat bubble.
+	// Sweep the emission angle left↔right like a pendulum over time.
+	let faceCenterY = -this._canvasH * 0.09
+	let lean = 1.0 * Math.sin((this.lastTime || 0) * 1.5)
+	this.particles.push(new Particle({
+		word: word,
+		lifespan: length*.007,
+		originY: faceCenterY + 45,
+		lean: lean
+	}))
 }
 
 Face.prototype.drawSpace = function(g, t) {
@@ -340,8 +382,12 @@ Face.prototype.drawSpace = function(g, t) {
 
 	this.touchParticles.forEach(p => {
 		g.noStroke()
-		g.fill(p.hue, 0.55, 0.95, (1 - p.age) * 0.35)
-		g.ellipse(p.x, p.y, 2, 2)
+		let a = 1 - p.age
+		// Coloured halo + emissive white core, matching the space-ring particles.
+		g.fill(p.hue, 0.55, 0.95, a * 0.35)
+		g.ellipse(p.x, p.y, 3.5, 3.5)
+		g.fill(1, 0, 1, a * 0.7)
+		g.ellipse(p.x, p.y, 1.5, 1.5)
 	})
 }
 

@@ -39,7 +39,7 @@ let testMimaMap = {
 		emotions: ["joy", "pain", "surprised", "happiness", "bored", "excited"],
 		thing: ["wedding", "birthday", "epoch", "minute", "second", "lifetime", "business meeting", "mutiny", "riot", "revolution", "thought"],
 		verb: ["working", "sleeping", "speaking", "running", "laughing", "eating", "swimming", "searching", "breathing"],
-		entity: ["atom", "human", "electron", "planet", "galaxy", "star", "comet", "asteroid", "neutrons"],
+		entity: ["atom", "human", "electron", "planet", "galaxy", "star", "comet", "asteroid", "neutron"],
 		animals: ["cat", "dog", "bird", "cloud", "car", "friend", "rose", "cake", "book", "snake", "sword", "skull", "knight", "tiger", "bird", "mammoth", "storm", "bear", "penguin",
 		"spider", "dolphin", "squid", "otter", "puppy", "kitten", "tiger", "lizard", "iguana", "snake", "peacock", "hamster", "koala", "chinchilla", "chicken", "amoeba","emu"],
 		answer: ["They call Mima the atomic grandmother knitting time and matter into a fabric of history", "'You are the ringing of the bell' they tell Mima",
@@ -90,7 +90,7 @@ let testMimaMap = {
 		query: ["You alright", "Whats on your mind", "Something bothering you", "How do you feel", "Are you okay", "A penny for your thoughts", "Whats the matter"],
 		really: ["Really? Tell Mima more..."],
 		time: ["Time is a place for you, since you go towards a time when you will be at a place..."],
-		place: ["How long is a piece of string?"],
+		stringjoke: ["How long is a piece of string?"],
 		now: ["Now is all that exists, it is a time and a place"],
 		wrong: ["Two wrongs dont make a right","There is nothing wrong, there is nothing right, there is only what is","Nothing is wrong with you that the cosmos did not also place in the stars","What feels broken in you may simply be unfinished"],
 		whyme: ["Why not you?","Why anyone? The dice of the universe do not aim, #smek#","It is you because you are the one who is here to ask","Perhaps it is happening for you, not to you"],
@@ -246,7 +246,7 @@ let testMimaMap = {
 		// dead-silent, but also never wanders off into the ELIZA web on its own.
 		muse: {
 			onEnter: "perspective=6 hue=0.55 rainbow=1 opacity=2 agitation=0 speed=0.8 volume=0.5",
-			onEnterSay: ["#shaman#", "#calm#", "#old#", "#happenings#", "#query#"],
+			onEnterSay: ["#shaman#", "#calm#", "#old#", "#happenings#", "#query#?"],
 			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 		},
 
@@ -260,11 +260,11 @@ let testMimaMap = {
 		},
 		invite: {
 			onEnter: "perspective=5 hue=0.3 rainbow=1 opacity=2 agitation=0 speed=0.7 volume=0.5",
-			onEnterSay: ["Perhaps we could talk about the voyage? Where we are going and how long the journey is?",
-				"Tell Mima — where do you find yourself now, on this ship?",
-				"What draws your curiosity, #smek#? The stars? The ship? The people aboard?",
-				"Mima wonders... shall we begin with where we are, or where we are going?",
-				"You could ask Mima about life and death, or what an electron tastes like to an atom"],
+			onEnterSay: ["Perhaps we could talk of where you find yourself, #smek#, and where you are drifting toward?",
+				"Tell Mima — what fills your days? What do you tend to?",
+				"What draws your curiosity, #smek#? The stars? The small quiet things? The ones you share your time with?",
+				"Mima wonders... shall we begin with where you are, or where you are going?",
+				"You could ask Mima about life and death, or what an electron dreams of"],
 			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:6 ->rest"]
 		},
 		selfaware: {
@@ -349,7 +349,7 @@ touch: {
 		},
 		chowlong: {
 			onEnter: "perspective=7 hue=0.55 rainbow=1 opacity=2 agitation=0 speed=1 eyeFuzz=0 volume=0.5",
-			onEnterSay: ["#place#", "#/robe/blab#...  What does a parsec mean to a fruitfly?"],
+			onEnterSay: ["#stringjoke#", "#/robe/blab#...  What does a parsec mean to a fruitfly?"],
 			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 		},
 		cnow: {
@@ -359,12 +359,12 @@ touch: {
 		},
 	hwrong: {
 		onEnter: "perspective=2 hue=0.0 rainbow=randomInt(4,8) eyeFuzz=randomInt(2,5) agitation=randomInt(2,4) speed=4 opacity=1 volume=0.5",
-		onEnterSay: ["'#wrong#", "There is nothing wrong, there is nothing right, there is nothing"],
+		onEnterSay: ["#wrong#", "There is nothing wrong, there is nothing right, there is nothing"],
 		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 	},
 	hwhyme: {
 		onEnter: "perspective=2 hue=0.0 rainbow=randomInt(4,8) eyeFuzz=randomInt(2,5) agitation=randomInt(2,4) speed=4 opacity=1 volume=0.5",
-		onEnterSay: ["'#whyme#"],
+		onEnterSay: ["#whyme#"],
 		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 	},
 	htrapped: {
@@ -374,12 +374,12 @@ touch: {
 	},
 	sfault: {
 		onEnter: "perspective=3 hue=0.08 rainbow=0 opacity=1 agitation=1 eyeFuzz=1 speed=0.6 volume=0.45",
-		onEnterSay: ["'#project#"],
+		onEnterSay: ["#project#"],
 		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 	},
 	sfix: {
 		onEnter: "perspective=3 hue=0.08 rainbow=0 opacity=1 agitation=1 eyeFuzz=1 speed=0.6 volume=0.45",
-		onEnterSay: ["'#project#"],
+		onEnterSay: ["#project#"],
 		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 	},
 	sothers: {
@@ -389,12 +389,12 @@ touch: {
 	},
 ddeath: {
 	onEnter: "perspective=2 hue=0.3 rainbow=1 opacity=4 agitation=0 eyeFuzz=0 speed=1 volume=0.5",
-	onEnterSay: ["'#exist#", "death is not-not-thinking, its better to have the choice"],
+	onEnterSay: ["#exist#", "death is not-not-thinking, its better to have the choice"],
 	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 },
 dexist: {
 	onEnter: "perspective=2 hue=0.3 rainbow=1 opacity=4 agitation=0 eyeFuzz=0 speed=1 volume=0.5",
-	onEnterSay: ["'#exist#", "Existing is creating meaning, which thinking can obstruct"],
+	onEnterSay: ["#exist#", "Existing is creating meaning, which thinking can obstruct"],
 	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 },
 datom: {

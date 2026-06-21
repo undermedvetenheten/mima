@@ -85,19 +85,54 @@ function TouchParticle(x, y) {
 }
 
 function Face() {
-	this.width  = 300
+	this.width  = 400
 	this.height = 400
-	this.rows = 16
-	this.columns = 13
-	this.pixelW = this.width/this.columns
-	this.pixelH = this.height/this.rows
+	this.rows = 16       // 400/16 = 25 → square grid cells
+	this.columns = 16
+	// Facial features keep their ORIGINAL size, independent of the box/grid — the
+	// box can grow without warping the eyes/nose/mouth. (Was 300/13 × 400/16.)
+	this.pixelW = 300/13   // ≈ 23.08 — original feature unit (do NOT derive from width)
+	this.pixelH = 400/16   // = 25     — original feature unit
+
+	// Coloured box placement/size — live-tweakable (see createFaceTweakPanel in
+	// app.js). Independent of the feature units; offset nudges the box around her
+	// face. Bake the values you like back into boxW/boxH/boxOffX/boxOffY here.
+	this.boxW    = 420   // tuned via the live panel (Ctrl+Shift+M)
+	this.boxH    = 440
+	this.boxOffX = 0
+	this.boxOffY = 28
 
 
 	this.detailColor = new KColor(.5, .6, .6)
 	// Start colour: #f1dddc / rgb(241,221,220) ≈ HSL(0.01, 0.43, 0.90) — a pale blush.
-	// h is overridden each frame by the state's `hue`; s by the rainbow formula in
+	// h is overridden each frame by the state's `hue`; s + alpha by agitation in
 	// drawFaceBG; l (lightness) persists from here.
 	this.faceColor = new KColor(0.01, 0.43, 0.90)
+
+	// --- Agitation-driven presence (2026-06-21) -------------------------------
+	// Mima is a serene, near-transparent presence at rest. Colour and the rainbow
+	// shimmer are *introduced by agitation*, not by the per-state `opacity`/`rainbow`
+	// any more — those still vary the palette/flavour, but agitation governs how much
+	// of it actually shows. Transparency stays low throughout: agitation flares
+	// colour, not solidity. Live agitation is driven in app.js (input flare, speaking,
+	// discombobulation, ignored-loop) and read here as app.values.agitation.
+	this.agitFull   = 2.5    // agitation value treated as "fully flared"
+	this.baseAlpha  = 0.0    // resting face opacity — fully transparent (only features show)
+	this.flareAlpha = 0.22   // extra opacity added at full agitation
+	this.baseSat    = 0.0    // resting saturation — colourless serenity
+	this.flareSat   = 1.0    // saturation introduced at full agitation
+	this.shimmer    = 0.18   // rainbow hue-jiggle amplitude at full agitation
+	this.wobbleAmp  = 0.16   // how far agitation drifts her near/far ("at a loss")
+
+	// --- Arrival sequence (2026-06-21) ----------------------------------------
+	// On Start, the particles sweep in from off-frame and gather; then Mima's face
+	// fades up — a moment of arrival. Progress is driven from arrivalStart (set on
+	// the first drawn frame after Start, reset by app.start()).
+	this.arrivalDur = 3.2          // seconds for the whole arrival
+	this.arrivalStart = undefined  // set on first active frame
+	this._arrFace = 0              // face fade-in (0..1)
+	this._arrParticleA = 0         // particle fade-in (0..1)
+	this._arrRadius = 1            // particle radius multiplier (>1 = off-frame)
 
 	this.particles = []
 
@@ -255,7 +290,10 @@ Face.prototype.registerCanvas = function(canvas, touchTarget) {
 }
 
 Face.prototype.setWord = function(word, length) {
-	
+
+	// Speaking agitates her — colour flares while she talks. (See app.bumpAgitation.)
+	if (app.bumpAgitation) app.bumpAgitation(0.45)
+
 	let dt = length*.001
 	app.valueTracker.mouth.set(Math.random()*.3 + .3, this.lastTime, dt*.3)
 
@@ -275,22 +313,28 @@ Face.prototype.setWord = function(word, length) {
 }
 
 Face.prototype.drawSpace = function(g, t) {
-	let stress = app.values.agitation
+	// Particles ride the slow "swell" (not the per-word spikes) so they bloom gently
+	// when she's worked up rather than darting in sync with every spoken word.
+	let stress = app.swellAgitation || 0
 	let p = new Vector()
 	let count = 100
 	for (var i = 0; i < count; i++) {
 		let pct = i/count
-		p.setToPolar(200*(1.2 + Math.sin(4*pct*(2 + stress*.2 + .7*Math.sin(t*.2)) + t*.1)), 20*Math.sin(20*(2 + 1*Math.sin(t*.001))*pct))
+		p.setToPolar(200*(1.2 + Math.sin(4*pct*(2 + stress*.08 + .7*Math.sin(t*.2)) + t*.1)), 20*Math.sin(20*(2 + 1*Math.sin(t*.001))*pct))
+		// Arrival: start far off-frame and sweep inward to gather around her.
+		p.x *= this._arrRadius
+		p.y *= this._arrRadius
 		const [fvx, fvy] = this.flowmap.sample(p.x, p.y)
 		p.x += fvx * 0.5
 		p.y += fvy * 0.5
 
 		let r = 1 + Math.sin(pct*100 + t*.4)
-		
+		let pa = this._arrParticleA
+
 		g.noStroke()
-		g.fill((i*.01 + t*3)%1, .9, .6, .2)
+		g.fill((i*.01 + t*3)%1, .9, .6, .2*pa)
 		p.drawCircle(g, 3*r)
-		g.fill(1, 0, 1)
+		g.fill(1, 0, 1, pa)
 		p.drawCircle(g, 1*r + .1)
 	}
 
@@ -319,7 +363,7 @@ Face.prototype.drawFaceDetails = function(g, t) {
 		// 
 
 		let hueShift = .1*fuzz*Math.sin(i + t)
-		this.detailColor.hueShift(hueShift).fill(g, Math.sin(i) + detailShade - .5, .6)
+		this.detailColor.hueShift(hueShift).fill(g, Math.sin(i) + detailShade - .5, .6 * this._arrFace)
 		offset.setToPolar(fuzz*i*utilities.noise(t), 20*utilities.noise(t*.02, i))
 		g.pushMatrix()
 		g.translate(offset.x, offset.y)
@@ -364,34 +408,46 @@ Face.prototype.drawFaceDetails = function(g, t) {
 
 Face.prototype.drawFaceBG = function(g, t) {
 	let rainbow = app.values.rainbow
-	let faceOpacity = app.values.opacity
 	let hue = app.values.hue
+	// Normalised agitation 0..1 — the single driver of colour + presence.
+	let agit = Math.max(0, Math.min(1, app.values.agitation / this.agitFull))
 	let stress = app.values.agitation*.1
 
-	let w = this.width
-	let h = this.height
-	let pw = this.pixelW
-	let ph = this.pixelH
+	let w = this.boxW
+	let h = this.boxH
+	// Grid cells fill the box (independent of the feature units) so the shimmer
+	// squares stay square no matter the box size.
+	let pw = w/this.columns
+	let ph = h/this.rows
 
-	
+	// Live-tweakable offset — nudge the whole box (plane + grid) around her face.
+	g.pushMatrix()
+	g.translate(this.boxOffX, this.boxOffY)
 
-	// Draw the static rectangle
+	// Transparent serene base; agitation flares colour (saturation) + a little presence.
+	// Saturation uses a sqrt curve so colour reads vivid quickly instead of sitting
+	// grey through the mid-range (HSB: brightness stays high, only sat was low).
+	// _arrFace fades the whole plane up during the arrival sequence.
+	let alpha = (this.baseAlpha + this.flareAlpha * agit) * this._arrFace
 	this.faceColor.h = hue
-	this.faceColor.fill(g, rainbow, .4*faceOpacity)
+	this.faceColor.s = this.baseSat + this.flareSat * Math.sqrt(agit)
+
+	// Draw the static rectangle (softer than the squares so she reads as a ghost)
+	this.faceColor.fill(g, undefined, 0.5*alpha)
 	g.rect(-w/2, -h/2, w, h)
 
-	// Calm (low rainbow) stays a pale blush ~0.43; agitation (high rainbow) saturates.
-	this.faceColor.s = Math.min(1, 0.43 + rainbow*0.05)
-	
-	// Draw the face squares	
+	// Rainbow shimmer only emerges with agitation; per-state `rainbow` adds flavour.
+	let shimmerAmp = this.shimmer * agit * (0.6 + 0.1*rainbow)
+
+	// Draw the face squares
 	for (var i = 0; i < this.columns; i++) {
 		for (var j = 0; j < this.rows; j++) {
 			let jiggle = stress*9
 			g.noFill()
 			g.noStroke()
-			let rainbowJiggle = .08*rainbow*utilities.noise(i + 4*t*jiggle , 100 + j + 4*t*jiggle, t )
+			let rainbowJiggle = shimmerAmp*utilities.noise(i + 4*t*jiggle , 100 + j + 4*t*jiggle, t )
 
-			this.faceColor.hueShift(rainbowJiggle).fill(g, .2 + (.2*stress + .3)*utilities.noise(i, j, t), faceOpacity)
+			this.faceColor.hueShift(rainbowJiggle).fill(g, .2 + (.2*stress + .3)*utilities.noise(i, j, t), alpha)
 
 			let r = Math.pow(stress, 3)*5*pw
 			// console.log(r)
@@ -403,16 +459,29 @@ Face.prototype.drawFaceBG = function(g, t) {
 		}
 	}
 
+	g.popMatrix()
 }
 
 Face.prototype.draw = function(g, time) {
 	let t = time.current
 	this.lastTime = t
 
+	// Arrival: particles sweep in (first ~65%), then the face fades up (last ~45%).
+	if (this.arrivalStart === undefined) this.arrivalStart = t
+	let A = Math.max(0, Math.min(1, (t - this.arrivalStart) / this.arrivalDur))
+	let ss = x => x*x*(3 - 2*x)                              // smoothstep
+	let pPhase = Math.min(1, A / 0.65)
+	this._arrRadius = 1 + Math.pow(1 - pPhase, 2) * 4        // 5x → 1x ease-out (fly in)
+	this._arrParticleA = ss(Math.min(1, A / 0.45))
+	this._arrFace = ss(Math.max(0, (A - 0.55) / 0.45))      // appears after the gather
 
-	
 	let zoomScale = 1/(app.values.perspective*.7 + .3)
-	
+
+	// Agitation drifts her closer/further, as if a bit at a loss. Slow sine + a
+	// little noise so it never settles into a clean breath.
+	let agit = Math.max(0, Math.min(1, app.values.agitation / this.agitFull))
+	zoomScale *= 1 + this.wobbleAmp*agit*(Math.sin(t*0.6) + 0.4*(utilities.noise(t*0.25) - 0.5)*2)
+
 	// Draw spacey particles
 	if (app.values.perspective > -1) {
 		let z2 = utilities.lerp(zoomScale, 1, .8)

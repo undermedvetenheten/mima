@@ -19,6 +19,36 @@ let app = {
 	values: {
 	},
 
+	// --- Live agitation (2026-06-21) ------------------------------------------
+	// The per-state `agitation=` authored in the mimamap is a *resting floor*.
+	// On top of it we run transient "energy" that spikes on events (input flare,
+	// speaking, discombobulation, being ignored) and decays back to calm. The
+	// renderer (face.js) reads the combined value as app.values.agitation and uses
+	// it to introduce colour + drift her near/far. Tuned by half-life below.
+	liveAgitation: 0,    // fast — drives face colour + transparency
+	swellAgitation: 0,   // slow — gentle swell for the roaming particles
+	agitEnergy: 0,
+	ignoredCount: 0,
+
+	// Inject a burst of agitation energy.
+	bumpAgitation(amount) {
+		app.agitEnergy += amount
+	},
+
+	// Ease the live value toward (state floor + decaying energy). Called per frame.
+	// Exponential (frame-rate independent) smoothing — no hard snap when a frame
+	// hitches, which is what made the transparency jump. Short half-life keeps her
+	// facial transparency snappy; the particles ride a much slower swell.
+	updateAgitation(t) {
+		let dt = t.elapsed || 0.016
+		let floor = app.values.agitation || 0          // authored per-state resting level
+		app.agitEnergy *= Math.pow(0.5, dt / 0.8)       // ~0.8s half-life — quick fade-out
+		let target = floor + app.agitEnergy
+		app.liveAgitation  += (target - app.liveAgitation)  * (1 - Math.pow(0.5, dt / 0.10))  // ~0.1s
+		app.swellAgitation += (target - app.swellAgitation) * (1 - Math.pow(0.5, dt / 1.20))  // ~1.2s
+		app.values.agitation = app.liveAgitation        // what the face renders from
+	},
+
 	blink() {
 		app.animateValueTo("blink", 1, .1)
 			setTimeout(() => {
@@ -73,14 +103,34 @@ let app = {
 				// startSoundtrack() guards against double-play, so re-entering origin is safe.
 				if (stateID === "origin")
 					startSoundtrack()
+
+				// Discombobulation is her most agitated act — big colour flare.
+				if (stateID === "discombobulate")
+					app.bumpAgitation(3)
+
+				// Calling into the void and being ignored escalates her agitation;
+				// each idle utterance pushes harder until the player engages.
+				const idleStates = ["driftidle", "idle", "cryo", "pause"]
+				if (idleStates.includes(stateID)) {
+					app.ignoredCount++
+					app.bumpAgitation(Math.min(3, 0.6 * app.ignoredCount))
+				}
 			},
 			onOutput: ({output, progress}) => {
 
-				app.messages.push({
-					owner: "bot",
-					text: [output]
+				// A beat before a question — so after a string of statements Mima
+				// pauses, then asks. Applies to any line ending in '?'.
+				let pre = /\?\s*$/.test(output) ? 700 : 0
+
+				return new Promise((resolve) => {
+					setTimeout(() => {
+						app.messages.push({
+							owner: "bot",
+							text: [output]
+						})
+						app.speakWords(output, progress).then(resolve)
+					}, pre)
 				})
-				return app.speakWords(output, progress)
 
 			},
 			onChips: (chips) => {
@@ -122,20 +172,23 @@ let app = {
 		// Clear any existing loop
 		clearInterval(app.tickInterval)
 
-		app.instance.start()
+		// Replay the arrival sequence (particles gather, then the face fades up).
+		app.face.arrivalStart = undefined
+		app.blinkCount = 0
 
-		let blinkCount = 0
-		let tickCount = 0
-		app.tickInterval = setInterval(() => {
-			app.instance.tick()
-			blinkCount++
-			tickCount++
-
-			if (blinkCount > 50 + 60*Math.random()) {
-				app.blink()
-				blinkCount = 0
-			}
-		}, 100)
+		// Hold the conversation until the face has arrived, so her first words land
+		// with the moment of arrival rather than over an empty frame.
+		setTimeout(() => {
+			app.instance.start()
+			app.tickInterval = setInterval(() => {
+				app.instance.tick()
+				app.blinkCount++
+				if (app.blinkCount > 50 + 60*Math.random()) {
+					app.blink()
+					app.blinkCount = 0
+				}
+			}, 100)
+		}, app.face.arrivalDur * 1000)
 	},
 
 	userInput(data) {
@@ -146,6 +199,11 @@ let app = {
 
 		// Send it to the chat
 		app.messages.push(msg)
+
+		// Flare of colour while she prepares her answer; engaging cools the
+		// "being ignored" spiral.
+		app.bumpAgitation(2.2)
+		app.ignoredCount = 0
 
 		// Send it to the chancery instance
 		app.instance.input(msg)
@@ -192,17 +250,21 @@ let app = {
 						// console.log(key, app.values[key])
 					})
 
+					// Override the lerped agitation with the live event-driven value.
+					app.updateAgitation(t)
 
 					app.face.update(t)
 
 				},
 				onDraw: (g, t) => {
 
-					if (t.frame <= 1000000) {
-						g.fill(0, 0, 0, .3*(1/(app.values.speed + 1)))
-						g.rect(-g.width/2, -g.height/2, g.width, g.height)
+					// Keep the canvas black until the player presses Start; only then
+					// does Mima's face (eyes/features now, coloured plane as agitation
+					// rises) appear.
+					g.fill(0, 0, 0, app.isActive ? .3*(1/(app.values.speed + 1)) : 1)
+					g.rect(-g.width/2, -g.height/2, g.width, g.height)
+					if (app.isActive)
 						app.face.draw(g, t)
-					}
 				},
 				onStart: (g, t) => {
 					app.processing = g
@@ -241,6 +303,9 @@ let app = {
 
 		createProcessing()
 
+		// Live face-box tweak panel — flip app.devMode to true to bring it back.
+		if (app.devMode) createFaceTweakPanel()
+
 		app.initUI()
 
 		// if (app.devMode)
@@ -252,6 +317,63 @@ let app = {
 
 app.init()
 
+
+// --- Quick-and-dirty live tweak panel for the face box (2026-06-21) -----------
+// Sliders nudge the coloured box around her face and resize it live; the readout
+// prints values to paste back into the Face constructor (boxW/boxH/boxOffX/boxOffY).
+// Remove this call in init() to drop it.
+function createFaceTweakPanel() {
+	let f = app.face
+	let panel = document.createElement("div")
+	panel.style.cssText = "position:fixed;top:8px;right:8px;z-index:99999;background:rgba(0,0,0,.72);" +
+		"color:#fff;font:11px monospace;padding:8px 10px;border-radius:6px;width:190px;user-select:none"
+	panel.innerHTML = "<b>face box</b>"
+
+	let readout = document.createElement("div")
+	readout.style.cssText = "margin-top:6px;cursor:pointer;opacity:.8"
+	readout.title = "click to copy"
+	let refresh = () => {
+		readout.textContent = `boxW:${f.boxW|0} boxH:${f.boxH|0} boxOffX:${f.boxOffX|0} boxOffY:${f.boxOffY|0}`
+	}
+	readout.onclick = () => navigator.clipboard && navigator.clipboard.writeText(readout.textContent)
+
+	;[["boxOffX",-300,300],["boxOffY",-300,300],["boxW",50,900],["boxH",50,900]].forEach(([key,min,max]) => {
+		let row = document.createElement("label")
+		row.style.cssText = "display:block;margin:5px 0 0"
+		row.textContent = key
+		let input = document.createElement("input")
+		input.type = "range"; input.min = min; input.max = max; input.step = 1; input.value = f[key]
+		input.style.cssText = "width:100%;margin-top:2px"
+		input.addEventListener("input", () => { f[key] = parseFloat(input.value); refresh() })
+		row.appendChild(input)
+		panel.appendChild(row)
+	})
+
+	panel.appendChild(readout)
+	refresh()
+	document.body.appendChild(panel)
+	app._tweakPanel = panel
+}
+
+// Secret debug toggle: Ctrl+Shift+M flips devMode (face tweak panel + chancery
+// dev tools). Unlikely to fire while typing in the chat.
+function toggleDevMode() {
+	app.devMode = !app.devMode
+	if (app.devMode) {
+		if (!app._tweakPanel) createFaceTweakPanel()
+		else app._tweakPanel.style.display = ""
+	} else if (app._tweakPanel) {
+		app._tweakPanel.style.display = "none"
+	}
+	console.log("devMode:", app.devMode)
+}
+
+window.addEventListener("keydown", e => {
+	if (e.ctrlKey && e.shiftKey && (e.key === "M" || e.key === "m")) {
+		e.preventDefault()
+		toggleDevMode()
+	}
+})
 
 
 new Vue({

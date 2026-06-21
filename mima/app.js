@@ -200,6 +200,8 @@ let app = {
 		// Immediate audible feedback that the press landed: a fade (not a chirp),
 		// fired as soon as the fades are loaded — see fadeWhenReady in sound.js.
 		fadeWhenReady()
+		// Start the generative drone bed (see synthbed.js).
+		synthBed.start()
 		// Clear any existing loop
 		clearInterval(app.tickInterval)
 

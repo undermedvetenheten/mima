@@ -14,9 +14,13 @@ let effects = {
 	})
 }
 
+let lastChirpTime = 0
 function randomChirp(length) {
 	let keys = Object.keys(soundLibrary.chirps)
 	if (keys.length === 0) return
+	let now = Date.now()
+	if (now - lastChirpTime < 120) return
+	lastChirpTime = now
 
 	let key = getRandom(keys)
 	let sound = soundLibrary.chirps[key]
@@ -57,7 +61,10 @@ function loadSoundFolder(folder, poolName) {
 					options: { path: 'mima/sounds/' + folder + '/' + file }
 				}, ()  => {
 					sound._gain = gain
-					sound.addEffect(effects.reverb)
+					if (!sound._reverbAdded) {
+						sound.addEffect(effects.reverb)
+						sound._reverbAdded = true
+					}
 					soundLibrary[poolName][key] = sound
 					console.log(`${poolName} loaded: '${key}' (gain ${gain})`);
 					// If the player already pressed "Hello?" before the fades had
@@ -117,12 +124,14 @@ function initSounds() {
 		console.log("RESUME SOUND")
 	Pizzicato.context.resume();
 
-	// Voice = blips/ + chirps/, both folded into the same randomChirp() pool.
-	// Fades = one-shot transition whooshes (played by playFade on state change).
-	// All levelled per-file via their manifests (see loadSoundFolder / serve.js).
-	loadSoundFolder('blips', 'chirps')
-	loadSoundFolder('chirps', 'chirps')
+	// Fades first — needed immediately for the first state-change whoosh.
+	// Chirps/blips deferred so their decode burst doesn't compete with the
+	// AudioContext resume and face animation on the same frame.
 	loadSoundFolder('fades', 'fades')
+	setTimeout(() => {
+		loadSoundFolder('blips', 'chirps')
+		loadSoundFolder('chirps', 'chirps')
+	}, 1500)
 
 	// Background soundtrack — full filename incl. extension so .wav/.mp3 both work.
 	let soundtrackFiles = ["kettleSimple01.mp3"]

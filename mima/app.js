@@ -201,6 +201,7 @@ let app = {
 		const startChat = () => {
 			clearInterval(app.tickInterval)
 			app.instance.start()
+			synthBed.start()
 
 			let blinkCount = 0
 			app.tickInterval = setInterval(() => {

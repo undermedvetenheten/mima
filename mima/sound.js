@@ -5,55 +5,110 @@ let soundLibrary = {
 }
 
 
-// --- Reverb (2026-06-21) --------------------------------------------------
-// Baseline reverb on every chirp and fade: each sound gets its own reverb at
-// load (see loadSoundFolder), giving the whole voice a consistent sense of
-// space. randomChirp() raises the mix when Mima is "far" (perspective > 3) so
-// she sounds more distant. Tweak these to taste.
-let reverbSettings = {
-	time: 3.4,        // reverb tail length, seconds — long, so it lingers
-	decay: 0.3,       // lower = more sustain through the tail (don't die off early)
-	reverse: false,   // true = swelling/reverse reverb; false = natural tail
-	mix: 0.5,         // baseline wet/dry mix — wet, so everything shares one room
-	farMix: 0.8,      // even wetter when Mima is far away (perspective > 3)
+// --- Reverb bus (2026-06-22) ------------------------------------------------
+// ONE shared room reverb, built as an aux send rather than a per-sound effect.
+// Pizzicato's addEffect taps an effect's output into EACH sound's master, so
+// sharing one effect instance across many sounds sums its wet output once per
+// sound (and the synth bed spawns voices forever) — that runs away / feeds back.
+// Instead we make a single convolver: every sound keeps its normal dry path to
+// the master AND sends a copy into `reverbBus`; the wet output hits the speakers
+// exactly once. "Added to the reverb once" = one reverbBus.connect() per sound.
+// Tweak ROOM_SECONDS / wet.gain to taste.
+function makeImpulse(ctx, seconds, decay) {
+	let rate = ctx.sampleRate
+	let len = Math.max(1, Math.floor(seconds * rate))
+	let buf = ctx.createBuffer(2, len, rate)
+	for (let ch = 0; ch < 2; ch++) {
+		let data = buf.getChannelData(ch)
+		for (let i = 0; i < len; i++)
+			data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay)
+	}
+	return buf
 }
-function makeReverb() {
-	return new Pizzicato.Effects.Reverb({
-		time: reverbSettings.time,
-		decay: reverbSettings.decay,
-		reverse: reverbSettings.reverse,
-		mix: reverbSettings.mix,
-	})
+let reverbBus = (function () {
+	let ctx = Pizzicato.context
+	let send = ctx.createGain()              // sounds connect here (aux send)
+	let convolver = ctx.createConvolver()
+	convolver.buffer = makeImpulse(ctx, 6, 3) // 6s room, exp decay
+	let wet = ctx.createGain()
+	wet.gain.value = 0.6                       // overall reverb amount into master
+	send.connect(convolver)
+	convolver.connect(wet)
+	wet.connect(Pizzicato.masterGainNode)     // single wet output tap
+	return send
+})()
+// --- Dub delay bus (2026-06-22) ---------------------------------------------
+// A tribute to the accidental reverb-runaway: a feedback delay (the musical,
+// BOUNDED version of that swell). Everything sends a copy in at low volume; the
+// delay regenerates with a darkening lowpass in the loop for a dubby tail. The
+// touch screen rides `feedback` (how long it regenerates) and `wet` (how loud)
+// via setFeedback/setWet — drag toward the edge for that on-the-verge howl,
+// release to settle back. A limiter on the wet path keeps it ear-safe even when
+// pushed near self-oscillation. See attachInput() in synthbed.js for the touch.
+let dubDelay = (function () {
+	let ctx = Pizzicato.context
+	let send = ctx.createGain()                 // sounds connect here (aux send)
+	let delay = ctx.createDelay(2.0)
+	delay.delayTime.value = 0.38                 // dubby repeat time
+	let feedback = ctx.createGain()
+	let tone = ctx.createBiquadFilter()          // darken each repeat
+	tone.type = 'lowpass'; tone.frequency.value = 2200
+	let wet = ctx.createGain()
+	let limiter = ctx.createDynamicsCompressor() // safety: hard-ish ceiling
+	limiter.threshold.value = -10; limiter.ratio.value = 20
+	limiter.attack.value = 0.003; limiter.release.value = 0.25
+
+	let baseFeedback = 0.42, baseWet = 0.32      // present, but still rides up on touch
+	feedback.gain.value = baseFeedback
+	wet.gain.value = baseWet
+
+	send.connect(delay)
+	delay.connect(tone)
+	tone.connect(feedback); feedback.connect(delay)   // the feedback loop
+	tone.connect(wet)
+	wet.connect(limiter); limiter.connect(Pizzicato.masterGainNode)
+
+	let clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
+	let glide = (param, v) => param.setTargetAtTime(v, ctx.currentTime, 0.1)
+	return {
+		send, baseFeedback, baseWet,
+		setFeedback(f) { glide(feedback.gain, clamp(f, 0, 0.92)) },  // <1 so it always decays
+		setWet(w)      { glide(wet.gain, clamp(w, 0, 0.6)) },
+		setTime(t)     { glide(delay.delayTime, clamp(t, 0.02, 1.6)) },
+		reset()        { glide(feedback.gain, baseFeedback); glide(wet.gain, baseWet) },
+	}
+})()
+
+// Send a sound's output into the shared aux buses (reverb + dub delay), once.
+function sendToReverb(sound) {
+	if (!sound || sound._reverbSent) return
+	try {
+		sound.connect(reverbBus)
+		sound.connect(dubDelay.send)
+		sound._reverbSent = true
+	} catch (e) {}
 }
 
+let lastChirpTime = 0
 function randomChirp(length) {
-
-
-
 	let keys = Object.keys(soundLibrary.chirps)
-	if (keys.length !== 0) {
-		let key = getRandom(keys)
-		let sound = soundLibrary.chirps[key]
+	if (keys.length === 0) return
+	let now = Date.now()
+	if (now - lastChirpTime < 120) return
+	lastChirpTime = now
 
-		// Per-file levelling gain from the manifest (see serve.js): brings every
-		// blip/chirp to a consistent peak so the hot ones don't jump out / clip.
-		let gain = sound._gain || 1
-		sound.volume = app.values.volume*settings.volume*gain
-		// Baseline reverb is always on (added at load); when Mima is far away she
-		// goes quieter and the reverb gets wetter so she sounds distant.
-		if (sound._reverb) sound._reverb.mix = reverbSettings.mix
-		if (app.values.perspective > 3) {
-			sound.volume *= .1
-			if (sound._reverb) sound._reverb.mix = reverbSettings.farMix
-		}
+	let key = getRandom(keys)
+	let sound = soundLibrary.chirps[key]
 
+	sound.volume = app.values.volume * settings.volume
+	// Far away = quieter; the steady shared-reverb tail makes it read as distant.
+	if (app.values.perspective > 3) sound.volume *= .1
 
-		sound.play()
+	sound.play()
 
-		sound.sourceNode.playbackRate.value = (Math.pow(.92, app.values.speed + .01))*settings.speed / (length*.001 + 1 + Math.random())
-		sound.on('end', () => {
-			// console.log("done!")
-		})
+	if (sound.sourceNode) {
+		const rate = (Math.pow(.92, app.values.speed + .01)) * settings.speed / (length * .001 + 1 + Math.random())
+		sound.sourceNode.playbackRate.setValueAtTime(rate, Pizzicato.context.currentTime)
 	}
 }
 
@@ -77,12 +132,7 @@ function loadSoundFolder(folder, poolName) {
 					options: { path: 'mima/sounds/' + folder + '/' + file }
 				}, ()  => {
 					sound._gain = gain
-					// Each chirp/fade gets its own baseline reverb for a shared sense
-					// of space (created here as the file loads, so the cost spreads
-					// out rather than building 50 impulses at once).
-					let rev = makeReverb()
-					sound.addEffect(rev)
-					sound._reverb = rev
+					sendToReverb(sound)
 					soundLibrary[poolName][key] = sound
 					console.log(`${poolName} loaded: '${key}' (gain ${gain})`);
 					// If the player already pressed "Hello?" before the fades had
@@ -142,12 +192,14 @@ function initSounds() {
 		console.log("RESUME SOUND")
 	Pizzicato.context.resume();
 
-	// Voice = blips/ + chirps/, both folded into the same randomChirp() pool.
-	// Fades = one-shot transition whooshes (played by playFade on state change).
-	// All levelled per-file via their manifests (see loadSoundFolder / serve.js).
-	loadSoundFolder('blips', 'chirps')
-	loadSoundFolder('chirps', 'chirps')
+	// Fades first — needed immediately for the first state-change whoosh.
+	// Chirps/blips deferred so their decode burst doesn't compete with the
+	// AudioContext resume and face animation on the same frame.
 	loadSoundFolder('fades', 'fades')
+	setTimeout(() => {
+		loadSoundFolder('blips', 'chirps')
+		loadSoundFolder('chirps', 'chirps')
+	}, 1500)
 
 	// Background soundtrack — full filename incl. extension so .wav/.mp3 both work.
 	let soundtrackFiles = ["kettleSimple01.mp3"]

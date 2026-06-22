@@ -5,12 +5,27 @@ html, body, main {
 	height: 100%;
 	width: 100%;
 	box-sizing: border-box;
+	/* No pull-to-refresh / overscroll glow — touch drags are for Mima, not the page. */
+	overscroll-behavior: none;
 }
 body {
 	background-color: #111111;
 	display: flex;
 	flex-direction: column;
 	font-family: Nunito;
+	/* Dragging across the screen bends pitch / rides the dub delay — don't let it
+	   select text or trigger the browser's tap gestures. Inputs opt back in below. */
+	-webkit-user-select: none;
+	-moz-user-select: none;
+	user-select: none;
+	-webkit-touch-callout: none;
+}
+
+/* But typing into the chat must still allow normal text selection/editing. */
+input, textarea {
+	-webkit-user-select: text;
+	-moz-user-select: text;
+	user-select: text;
 }
 
 h1,h2,h3,h4 {
@@ -28,6 +43,7 @@ canvas {
 	top: 0px;
 	width: 100%;
 	height: 100%;
+	touch-action: manipulation;
 }
 :root {
 

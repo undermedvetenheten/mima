@@ -83,9 +83,10 @@ let synthBed = {
 				source: 'wave',
 				options: { type: 'sine', frequency: fr, attack: this.attack, release: this.release, volume: this.voiceVolume }
 			})
-			// Route through the same room reverb as the chirps/fades (see sound.js)
-			// so the whole soundscape sits in one space.
-			if (typeof makeReverb === 'function') v.addEffect(makeReverb())
+			// Send every voice into the one shared room reverb (see sound.js) so the
+			// whole soundscape sits in a single space — one reverb, not one per note.
+			// It's an aux send (dry path stays intact), added once per fresh voice.
+			if (typeof sendToReverb === 'function') sendToReverb(v)
 			v._baseFreq = fr
 			v.play()
 			return v
@@ -109,18 +110,30 @@ let synthBed = {
 		this.applyDetune()
 		if (this.running) this.raf = requestAnimationFrame(() => this.tick())
 	},
-	// Listen for touch/pointer: x-position sets the bend (centre = in tune),
-	// releasing eases it back to in tune.
+	// Listen for touch/pointer:
+	//  - x-position bends the pitch (centre = in tune)
+	//  - y-position rides the dub delay (lower on screen = more feedback + wetter,
+	//    toward that on-the-edge howl). See dubDelay in sound.js.
+	// Releasing eases the pitch back in tune and settles the dub to its baseline.
 	attachInput() {
 		if (this.inputAttached) return
 		this.inputAttached = true
-		let setFromX = (x) => {
+		let setFromXY = (x, y) => {
 			let w = window.innerWidth || 1
 			this.targetDetune = ((x / w) * 2 - 1) * this.bendCents   // -1..+1 -> ±bendCents
+			if (typeof dubDelay !== 'undefined') {
+				let n = Math.max(0, Math.min(1, y / (window.innerHeight || 1)))  // 0 top .. 1 bottom
+				dubDelay.setFeedback(dubDelay.baseFeedback + n * 0.57)   // up to ~0.92 (still <1)
+				dubDelay.setWet(dubDelay.baseWet + n * 0.32)             // up to ~0.5
+			}
 		}
-		window.addEventListener('pointerdown', e => { this.pointerActive = true; setFromX(e.clientX) })
-		window.addEventListener('pointermove', e => { if (this.pointerActive) setFromX(e.clientX) })
-		let release = () => { this.pointerActive = false; this.targetDetune = 0 }
+		window.addEventListener('pointerdown', e => { this.pointerActive = true; setFromXY(e.clientX, e.clientY) })
+		window.addEventListener('pointermove', e => { if (this.pointerActive) setFromXY(e.clientX, e.clientY) })
+		let release = () => {
+			this.pointerActive = false
+			this.targetDetune = 0
+			if (typeof dubDelay !== 'undefined') dubDelay.reset()
+		}
 		window.addEventListener('pointerup', release)
 		window.addEventListener('pointercancel', release)
 	},

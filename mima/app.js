@@ -1,5 +1,5 @@
 
-let valueNames = ["blink","perspective", "mouth", "mouthWidth", "eyeFuzz", "agitation", "speed", "volume", "rainbow", "opacity", "hue"]
+let valueNames = ["blink","perspective", "mouth", "mouthWidth", "eyeFuzz", "agitation", "speed", "volume", "rainbow", "opacity", "hue", "planet"]
 
 let settings = {
 	volume: 0.7,
@@ -132,9 +132,21 @@ let app = {
 				if (stateID === "origin")
 					startSoundtrack()
 
-				// Discombobulation is her most agitated act — big colour flare.
-				if (stateID === "discombobulate")
+				// Discombobulation is her most agitated act — big colour flare, plus
+				// a really low sine that swells in underneath (see playDiscombobulate).
+				if (stateID === "discombobulate") {
 					app.bumpAgitation(3)
+					playDiscombobulate()
+				}
+
+				// worldgaze summons a fresh procedural planet (see planet.js); its
+				// onEnter raises planet=1 so the facebox fades fully out. Any other
+				// state eases the planet back down so it never lingers.
+				if (stateID === "worldgaze") {
+					if (typeof planet !== "undefined") planet.summon()
+				} else if (app.valueTracker.planet) {
+					app.valueTracker.planet.set(0, app.time.current, 1.2)
+				}
 
 				// Calling into the void and being ignored escalates her agitation;
 				// each idle utterance pushes harder until the player engages.

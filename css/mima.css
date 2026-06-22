@@ -9,6 +9,9 @@
 	position: relative;
 	flex: none;
 	align-self: center;
+	/* This is the pointer-event target for the face (see registerCanvas); own the
+	   touch gesture so drags track continuously instead of being cancelled as scroll. */
+	touch-action: none;
 	/* Width is the binding constraint — capped by screen width and by 62.5% of screen height (5:8 ratio).
 	   Height is then derived from that width, keeping the face proportional in any orientation. */
 	--app-w: min(95vw, 500px, calc(90svh * 0.625));

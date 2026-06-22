@@ -89,6 +89,27 @@ function sendToReverb(sound) {
 	} catch (e) {}
 }
 
+// --- Master limiter (2026-06-22) --------------------------------------------
+// Everything (dry voice + reverb + dub + the discombobulate sub) sums at
+// Pizzicato.masterGainNode. With no ceiling, that overflows into hard digital
+// clipping on phones — the "meaty" clicks heard on a Pixel. Insert one limiter
+// between the master bus and the speakers so peaks are caught instead of clipped.
+// NOTE: sample rate is NOT the cause of those clicks — Web Audio resamples mp3s
+// to the device rate automatically; no need to convert files for that.
+;(function installMasterLimiter() {
+	let ctx = Pizzicato.context
+	let m = Pizzicato.masterGainNode
+	let lim = ctx.createDynamicsCompressor()
+	lim.threshold.value = -3   // start catching just below full scale
+	lim.knee.value = 0
+	lim.ratio.value = 20       // brick-wall-ish
+	lim.attack.value = 0.003
+	lim.release.value = 0.25
+	try { m.disconnect(ctx.destination) } catch (e) {}
+	m.connect(lim)
+	lim.connect(ctx.destination)
+})()
+
 let lastChirpTime = 0
 function randomChirp(length) {
 	let keys = Object.keys(soundLibrary.chirps)
@@ -154,6 +175,25 @@ function playFade() {
 	sound.volume = settings.volume * (sound._gain || 1)
 	sound.play()
 	return true
+}
+
+
+// A really low sine for the discombobulation moment: swells in, sits under
+// everything, then fades within the ~8s state. Tuned an octave below the synth
+// bed root so it stays harmonically grounded. Kept DRY (sub-bass + reverb = mud)
+// — not routed through sendToReverb. Called from app.js onEnterState.
+let discombobDrone = null
+function playDiscombobulate() {
+	if (discombobDrone) { try { discombobDrone.stop() } catch (e) {} discombobDrone = null }
+	let root = (typeof synthBed !== 'undefined' && synthBed.root) ? synthBed.root : 65.41
+	let s = new Pizzicato.Sound({
+		source: 'wave',
+		options: { type: 'sine', frequency: root / 2, attack: 1.5, release: 2.5, volume: 0.32 }
+	})
+	discombobDrone = s
+	s.play()
+	// Let it ride most of the state, then release; clear the handle if still ours.
+	setTimeout(() => { try { s.stop() } catch (e) {} ; if (discombobDrone === s) discombobDrone = null }, 5500)
 }
 
 

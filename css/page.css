@@ -43,7 +43,9 @@ canvas {
 	top: 0px;
 	width: 100%;
 	height: 100%;
-	touch-action: manipulation;
+	/* none (not manipulation): the canvas is a drag surface — let Mima own the
+	   gesture so Android doesn't steal a drag as a scroll and fire pointercancel. */
+	touch-action: none;
 }
 :root {
 

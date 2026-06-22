@@ -519,7 +519,11 @@ Face.prototype.draw = function(g, time) {
 	let pPhase = Math.min(1, A / 0.65)
 	this._arrRadius = 1 + Math.pow(1 - pPhase, 2) * 4        // 5x → 1x ease-out (fly in)
 	this._arrParticleA = ss(Math.min(1, A / 0.45))
-	this._arrFace = ss(Math.max(0, (A - 0.55) / 0.45))      // appears after the gather
+	// _arrFace fades the whole face (box + details). When a planet is summoned it
+	// also multiplies the face out, so the facebox goes fully transparent and only
+	// the world floats (see app.values.planet / planet.js).
+	let planetAmt = Math.max(0, Math.min(1, app.values.planet || 0))
+	this._arrFace = ss(Math.max(0, (A - 0.55) / 0.45)) * (1 - planetAmt)      // appears after the gather
 
 	let zoomScale = 1/(app.values.perspective*.7 + .3)
 
@@ -547,6 +551,9 @@ Face.prototype.draw = function(g, time) {
 	this.drawFaceDetails(g, t)
 
 	g.popMatrix()
+
+	// Draw the summoned world over the (now-faded) face, under the speech.
+	if (planetAmt > 0.01 && typeof planet !== "undefined") planet.draw(g, t, planetAmt)
 
 
 	// Draw speech particles

@@ -52,7 +52,7 @@ let planet = {
 		for (let i = 0; i < mc; i++) {
 			moons.push({
 				dist: 1.6 + Math.random() * 1.6,                        // in planet-radii
-				speed: (0.12 + Math.random() * 0.30) * (Math.random() < 0.5 ? -1 : 1),
+				speed: 0.12 + Math.random() * 0.30,                     // prograde — same way the planet spins
 				phase: Math.random() * Math.PI * 2,
 				size: 0.10 + Math.random() * 0.08,                      // in planet-radii
 				incl: (Math.random() - 0.5) * 0.9,                      // orbit-plane tilt

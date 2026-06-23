@@ -25,8 +25,9 @@ let planet = {
 	pal: null,
 	moons: [],
 
-	// camera orbit (touch-to-rotate-your-view)
-	dragRot: 0, dragVel: 0, lastX: null, dragging: false, attached: false,
+	// camera orbit (touch-to-rotate-your-view) — yaw (horizontal) + pitch (vertical)
+	dragRot: 0, dragVel: 0, dragPitch: 0, dragVelY: 0,
+	lastX: null, lastY: null, dragging: false, attached: false,
 
 	// [seaHue, landHue, saturation, skyHue] — all 0..1 (HSB)
 	palettes: [
@@ -43,6 +44,8 @@ let planet = {
 		this.pal = this.palettes[Math.floor(Math.random() * this.palettes.length)]
 		this.dragRot = 0
 		this.dragVel = 0
+		this.dragPitch = 0
+		this.dragVelY = 0
 
 		// Each planet gets its own axial tilt rather than a fixed one (±~30°).
 		this.tilt = (Math.random() - 0.5) * 1.0
@@ -69,13 +72,18 @@ let planet = {
 		if (this.attached) return
 		this.attached = true
 		let active = () => (app.values.planet || 0) > 0.05
-		window.addEventListener('pointerdown', e => { if (active()) { this.dragging = true; this.lastX = e.clientX } })
+		window.addEventListener('pointerdown', e => { if (active()) { this.dragging = true; this.lastX = e.clientX; this.lastY = e.clientY } })
 		window.addEventListener('pointermove', e => {
 			if (!this.dragging) return
 			let dx = e.clientX - this.lastX
+			let dy = e.clientY - this.lastY
 			this.lastX = e.clientX
-			this.dragRot += dx * 0.01   // drag to orbit the camera
-			this.dragVel = dx * 0.01    // remember last delta for release momentum
+			this.lastY = e.clientY
+			this.dragRot += dx * 0.01     // yaw — orbit left/right
+			this.dragPitch += dy * 0.01   // pitch — orbit up/down
+			this.dragPitch = Math.max(-1.5, Math.min(1.5, this.dragPitch))  // don't flip over the poles
+			this.dragVel = dx * 0.01      // remember last deltas for release momentum
+			this.dragVelY = dy * 0.01
 		})
 		let up = () => { this.dragging = false }
 		window.addEventListener('pointerup', up)
@@ -88,10 +96,17 @@ let planet = {
 	_tilt(x, y, z, ct, st) {
 		return [x, y * ct - z * st, y * st + z * ct]
 	},
-	// Apply the viewer's camera orbit (about screen vertical y). Only changes what
-	// we SEE, not what is lit. Returns [x, y, z] (z>0 = facing the viewer).
-	_orbit(x, y, z, cd, sd) {
-		return [x * cd + z * sd, y, -x * sd + z * cd]
+	// Apply the viewer's camera orbit — yaw (about screen y) then pitch (about
+	// screen x), so you can turn the world any way you like. Only changes what we
+	// SEE, not what is lit. Returns [x, y, z] (z>0 = facing the viewer).
+	_orbit(x, y, z, cy, sy, cp, sp) {
+		// yaw about y
+		let x1 = x * cy + z * sy
+		let z1 = -x * sy + z * cy
+		// pitch about x
+		let y2 = y * cp - z1 * sp
+		let z2 = y * sp + z1 * cp
+		return [x1, y2, z2]
 	},
 
 	draw(g, t, presence) {
@@ -99,15 +114,18 @@ let planet = {
 		let dt = this.lastT ? Math.min(0.05, t - this.lastT) : 0.016
 		this.lastT = t
 		this.rot += this.spin * dt                                      // keep spinning on its axis
-		if (!this.dragging) { this.dragRot += this.dragVel; this.dragVel *= 0.92 }  // camera momentum
+		if (!this.dragging) {                                           // camera momentum
+			this.dragRot += this.dragVel; this.dragVel *= 0.92
+			this.dragPitch = Math.max(-1.5, Math.min(1.5, this.dragPitch + this.dragVelY)); this.dragVelY *= 0.92
+		}
 
 		let rot = this.rot                  // planet's own spin (surface only)
-		let cam = this.dragRot              // viewer's orbit
 		let R = g.height * 0.065            // small — half the previous size
 		let pal = this.pal
 		let A = presence
 		let ct = Math.cos(this.tilt), st = Math.sin(this.tilt)
-		let cd = Math.cos(cam), sd = Math.sin(cam)
+		let cy = Math.cos(this.dragRot), sy = Math.sin(this.dragRot)    // camera yaw
+		let cp = Math.cos(this.dragPitch), sp = Math.sin(this.dragPitch) // camera pitch
 		// Light lives in the planet's tilted (world) frame, NOT the camera frame —
 		// so orbiting the view sweeps the terminator across the disc, as if you are
 		// circling the planet rather than spinning it under a fixed lamp.
@@ -126,7 +144,7 @@ let planet = {
 			let my = -mz0 * Math.sin(m.incl)          // orbit-plane inclination (about x)
 			let mz = mz0 * Math.cos(m.incl)
 			let [tx, ty, tz] = this._tilt(mx, my, mz, ct, st)
-			let [vx, vy, vz] = this._orbit(tx, ty, tz, cd, sd)
+			let [vx, vy, vz] = this._orbit(tx, ty, tz, cy, sy, cp, sp)
 			return { x: vx, y: vy, z: vz, size: m.size, bright: m.bright }
 		})
 		let drawMoon = p => {
@@ -136,11 +154,14 @@ let planet = {
 			g.fill(0.62, 0.06, b, A)
 			g.ellipse(R * p.x, -R * p.y, mr * 2, mr * 2)
 		}
-		moons.filter(p => p.z <= 0).forEach(drawMoon)
 
-		// Atmosphere — a single faint sliver, barely larger than the planet.
+		// Atmosphere FIRST, at the deepest layer — a translucent rim a hair larger
+		// than the disc, so a moon passing behind never disappears into it. The base
+		// disc below covers all but the 0.1% sliver.
 		g.fill(pal.sky, 0.5, 1.0, 0.05 * A)
-		g.ellipse(0, 0, R * 2 * 1.06, R * 2 * 1.06)
+		g.ellipse(0, 0, R * 2 * 1.001, R * 2 * 1.001)
+		// Behind-moons (occluded by the planet, but in front of the atmosphere rim).
+		moons.filter(p => p.z <= 0).forEach(drawMoon)
 		// Base disc (dark sea) so gaps between dots read as deep ocean / night.
 		g.fill(pal.sea, pal.sat, 0.12, A)
 		g.ellipse(0, 0, R * 2, R * 2)
@@ -159,7 +180,7 @@ let planet = {
 				let vlam = lam + rot
 				let [tx, ty, tz] = this._tilt(cphi * Math.sin(vlam), sphi, cphi * Math.cos(vlam), ct, st)
 				let lamb = Math.max(0, tx * L[0] + ty * L[1] + tz * L[2])   // lit in the planet frame
-				let [nx, ny, nz] = this._orbit(tx, ty, tz, cd, sd)
+				let [nx, ny, nz] = this._orbit(tx, ty, tz, cy, sy, cp, sp)
 				if (nz <= 0) continue   // back hemisphere (relative to viewer) — skip
 
 				let n = utilities.noise(nx0 * 1.7 + this.seed, ny0 * 1.7, nz0 * 1.7)

@@ -196,12 +196,14 @@ let planet = {
 			g.ellipse(R * p.x, -R * p.y, mr * 2, mr * 2)
 		}
 
-		// Atmosphere FIRST, at the deepest layer — a translucent rim a hair larger
-		// than the disc, so a moon passing behind never disappears into it. The base
-		// disc below covers all but the sliver. Rim ~35% thinner, ~85% more
-		// transparent, and a touch brighter (lower saturation) than before.
-		g.fill(pal.sky, 0.375, 1.0, 0.0075 * A)
-		g.ellipse(0, 0, R * 2 * 1.00065, R * 2 * 1.00065)
+		// Atmosphere FIRST, at the deepest layer — a faint WHITE halo behind the
+		// planet, so a moon passing behind never disappears into it. The base disc
+		// (R*2) is painted on top, so only the rim OUTSIDE the disc shows: the
+		// visible halo width = (ATMO_SCALE - 1) of the radius. Lower this single
+		// number for a smaller halo; values <= 1.0 vanish under the disc.
+		let ATMO_SCALE = 1.025
+		g.fill(0, 0, 1, 0.10 * A)                 // white (HSB: sat 0, brightness 1)
+		g.ellipse(0, 0, R * 2 * ATMO_SCALE, R * 2 * ATMO_SCALE)
 		// Behind-moons (occluded by the planet, but in front of the atmosphere rim).
 		moons.filter(p => p.z <= 0).forEach(drawMoon)
 		// Base disc (dark sea) so gaps between dots read as deep ocean / night.

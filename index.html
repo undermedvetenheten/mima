@@ -5,7 +5,7 @@
       type="image/png"
       href="css/favicon/favicon.ico">
 	<meta charset="utf-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-visual">
+	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, interactive-widget=resizes-visual">
 
 	<title>Mima</title>
 	<meta name="description" content="Mima" />
@@ -70,6 +70,20 @@
 <script type="text/javascript" src="mima/planet.js"></script>
 <script type="text/javascript" src="mima/mimamap.js"></script>
 <script type="text/javascript" src="mima/app.js"></script>
+
+<script type="text/javascript">
+	// Single-screen app — no zoom needed. iOS Safari ignores user-scalable for
+	// pinch, so block its gesture events (and double-tap zoom) directly.
+	document.addEventListener('gesturestart', e => e.preventDefault())
+	document.addEventListener('gesturechange', e => e.preventDefault())
+	document.addEventListener('gestureend', e => e.preventDefault())
+	let _lastTouchEnd = 0
+	document.addEventListener('touchend', e => {
+		let now = Date.now()
+		if (now - _lastTouchEnd < 300) e.preventDefault()   // double-tap zoom
+		_lastTouchEnd = now
+	}, { passive: false })
+</script>
 
 
 

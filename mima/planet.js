@@ -25,6 +25,11 @@ let planet = {
 	pal: null,
 	moons: [],
 
+	// Crossfade between worlds when "another" re-summons (state stays worldgaze, so
+	// the outer planetAmt doesn't move — this fades the current world out and the
+	// next one in). _fadeDir: -1 fading out to swap, +1 fading in, 0 steady.
+	_fade: 1, _fadeDir: 0, _pending: null,
+
 	// camera orbit (touch-to-rotate-your-view) — yaw (horizontal) + pitch (vertical)
 	dragRot: 0, dragVel: 0, dragPitch: 0, dragVelY: 0,
 	lastX: null, lastY: null, dragging: false, attached: false,
@@ -38,24 +43,14 @@ let planet = {
 		{ sea: 0.42, land: 0.28, sat: 0.45, sky: 0.45 }, // swamp green
 	],
 
-	// Pick a fresh world (called from app.onEnterState when entering worldgaze).
-	summon() {
-		this.seed = Math.random() * 1000
-		this.pal = this.palettes[Math.floor(Math.random() * this.palettes.length)]
-		this.dragRot = 0
-		this.dragVel = 0
-		this.dragPitch = 0
-		this.dragVelY = 0
-
-		// Each planet gets its own axial tilt rather than a fixed one (±~30°).
-		this.tilt = (Math.random() - 0.5) * 1.0
-
+	// Roll the parameters for a fresh world (without applying them yet).
+	_makeWorld() {
 		// A certain number of moons — usually one or two, occasionally none or three.
 		let counts = [0, 1, 1, 1, 2, 2, 2, 3]
 		let mc = counts[Math.floor(Math.random() * counts.length)]
-		this.moons = []
+		let moons = []
 		for (let i = 0; i < mc; i++) {
-			this.moons.push({
+			moons.push({
 				dist: 1.6 + Math.random() * 1.6,                        // in planet-radii
 				speed: (0.12 + Math.random() * 0.30) * (Math.random() < 0.5 ? -1 : 1),
 				phase: Math.random() * Math.PI * 2,
@@ -64,7 +59,39 @@ let planet = {
 				bright: 0.70 + Math.random() * 0.20,
 			})
 		}
+		return {
+			seed: Math.random() * 1000,
+			pal: this.palettes[Math.floor(Math.random() * this.palettes.length)],
+			tilt: (Math.random() - 0.5) * 1.0,                          // own axial tilt (±~30°)
+			moons: moons,
+		}
+	},
 
+	// Make a rolled world the live one, and reset the view onto it.
+	_apply(w) {
+		this.seed = w.seed
+		this.pal = w.pal
+		this.tilt = w.tilt
+		this.moons = w.moons
+		this.dragRot = 0; this.dragVel = 0
+		this.dragPitch = 0; this.dragVelY = 0
+	},
+
+	// Pick a fresh world (called from app.onEnterState when entering worldgaze). If a
+	// world is already on screen, crossfade to the new one; otherwise apply at once
+	// and let the outer planetAmt fade it in.
+	summon() {
+		let w = this._makeWorld()
+		let visible = (app.values.planet || 0) > 0.5 && this._fade > 0.05 && this.pal
+		if (visible) {
+			this._pending = w       // swap at the bottom of the fade-out
+			this._fadeDir = -1
+		} else {
+			this._apply(w)
+			this._fade = 1
+			this._fadeDir = 0
+			this._pending = null
+		}
 		this.attachInput()
 	},
 
@@ -119,10 +146,24 @@ let planet = {
 			this.dragPitch = Math.max(-1.5, Math.min(1.5, this.dragPitch + this.dragVelY)); this.dragVelY *= 0.92
 		}
 
+		// Crossfade machine: fade the current world out, swap, fade the new one in.
+		let fadeSpeed = 1 / 0.6                                         // ~0.6s each way
+		if (this._fadeDir < 0) {
+			this._fade -= fadeSpeed * dt
+			if (this._fade <= 0) {
+				this._fade = 0
+				if (this._pending) { this._apply(this._pending); this._pending = null }
+				this._fadeDir = 1
+			}
+		} else if (this._fadeDir > 0) {
+			this._fade += fadeSpeed * dt
+			if (this._fade >= 1) { this._fade = 1; this._fadeDir = 0 }
+		}
+
 		let rot = this.rot                  // planet's own spin (surface only)
 		let R = g.height * 0.065            // small — half the previous size
 		let pal = this.pal
-		let A = presence
+		let A = presence * this._fade       // outer state fade * inner crossfade
 		let ct = Math.cos(this.tilt), st = Math.sin(this.tilt)
 		let cy = Math.cos(this.dragRot), sy = Math.sin(this.dragRot)    // camera yaw
 		let cp = Math.cos(this.dragPitch), sp = Math.sin(this.dragPitch) // camera pitch
@@ -157,9 +198,10 @@ let planet = {
 
 		// Atmosphere FIRST, at the deepest layer — a translucent rim a hair larger
 		// than the disc, so a moon passing behind never disappears into it. The base
-		// disc below covers all but the 0.1% sliver.
-		g.fill(pal.sky, 0.5, 1.0, 0.05 * A)
-		g.ellipse(0, 0, R * 2 * 1.001, R * 2 * 1.001)
+		// disc below covers all but the sliver. Rim ~35% thinner, ~85% more
+		// transparent, and a touch brighter (lower saturation) than before.
+		g.fill(pal.sky, 0.375, 1.0, 0.0075 * A)
+		g.ellipse(0, 0, R * 2 * 1.00065, R * 2 * 1.00065)
 		// Behind-moons (occluded by the planet, but in front of the atmosphere rim).
 		moons.filter(p => p.z <= 0).forEach(drawMoon)
 		// Base disc (dark sea) so gaps between dots read as deep ocean / night.

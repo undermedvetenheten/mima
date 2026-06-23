@@ -92,16 +92,30 @@ let synthBed = {
 			return v
 		})
 		this.applyDetune()   // adopt the current touch-bend immediately
-		// Release the previous chord (its long release overlaps the new attack).
-		old.forEach(v => { try { v.stop() } catch (e) {} })
+		// Release the previous chord (its long release overlaps the new attack),
+		// then disconnect it fully so stopped voices don't accumulate in the graph.
+		old.forEach(v => {
+			try { v.stop() } catch (e) {}
+			let cleanupMs = (v.release || 0) * 1000 + 300
+			setTimeout(() => {
+				try { v.masterVolume.disconnect(Pizzicato.masterGainNode) } catch (e) {}
+				try { v.masterVolume.disconnect(reverbBus) } catch (e) {}
+				try { v.masterVolume.disconnect(dubDelay.send) } catch (e) {}
+			}, cleanupMs)
+		})
 	},
 
 	// --- touch interaction: drag/touch across the screen to gently bend pitch ---
 	// Apply the current bend to every live voice (relative to its base pitch).
+	// Use setTargetAtTime rather than direct .value assignment so the Web Audio
+	// scheduler interpolates smoothly — no zipper noise if a frame is skipped.
 	applyDetune() {
 		let r = this.ratio(this.detune)
+		let now = Pizzicato.context.currentTime
 		for (let v of this.voices) {
-			if (v._baseFreq) { try { v.frequency = v._baseFreq * r } catch (e) {} }
+			if (v._baseFreq && v.sourceNode && v.sourceNode.frequency) {
+				try { v.sourceNode.frequency.setTargetAtTime(v._baseFreq * r, now, 0.016) } catch (e) {}
+			}
 		}
 	},
 	// Per-frame ease of the bend toward its target, then apply it.

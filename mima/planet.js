@@ -196,19 +196,10 @@ let planet = {
 			g.ellipse(R * p.x, -R * p.y, mr * 2, mr * 2)
 		}
 
-		// Atmosphere FIRST, at the deepest layer — a faint WHITE halo behind the
-		// planet, so a moon passing behind never disappears into it. The base disc
-		// (R*2) is painted on top, so only the rim OUTSIDE the disc shows: the
-		// visible halo width = (ATMO_SCALE - 1) of the radius. Lower this single
-		// number for a smaller halo; values <= 1.0 vanish under the disc.
-		let ATMO_SCALE = 1.035
-		g.fill(0, 0, 1, 0.14 * A)                 // white (HSB: sat 0, brightness 1)
-		g.ellipse(0, 0, R * 2 * ATMO_SCALE, R * 2 * ATMO_SCALE)
-		// Behind-moons (occluded by the planet, but in front of the atmosphere rim).
+		// Behind-moons (occluded by the planet) draw first.
 		moons.filter(p => p.z <= 0).forEach(drawMoon)
-		// Base disc (sea) so gaps between dots read as ocean. Brightness matches the
-		// now higher-ambient dots, so the disc edge never reads as a separate ring.
-		g.fill(pal.sea, pal.sat, 0.42, A)
+		// Base disc (dark sea) so gaps between dots read as deep ocean / night.
+		g.fill(pal.sea, pal.sat, 0.12, A)
 		g.ellipse(0, 0, R * 2, R * 2)
 
 		let LAT = 24, LON = 48
@@ -230,16 +221,11 @@ let planet = {
 
 				let n = utilities.noise(nx0 * 1.7 + this.seed, ny0 * 1.7, nz0 * 1.7)
 				let isLand = n > 0.55
-				// High ambient so the night/limb side stays textured and visible out to
-				// the edge — otherwise the dark side blends into the base and the lit cap
-				// reads as a small ball inside an oversized teal disc.
-				let b = (0.45 + 0.55 * lamb) * (isLand ? 0.95 : 0.82)
-				b *= 0.8 + 0.2 * nz   // gentle limb darkening — keep the edge bright
+				let b = (0.1 + 0.95 * lamb) * (isLand ? 0.95 : 0.82)
+				b *= 0.4 + 0.6 * nz   // limb darkening (toward the viewer's edge)
 				let hue = isLand ? pal.land : pal.sea
 				let sat = pal.sat * (isLand ? 1 : 0.92)
-				// Larger, overlapping dots so the ball reads solid to its edge (no teal
-				// showing through), while limb dots stay small enough to sit inside the halo.
-				let dotR = (R * 2 / LON) * 2.6 * (0.55 + 0.4 * nz)
+				let dotR = (R * 2 / LON) * 1.6 * (0.6 + 0.5 * nz)
 				g.fill(hue, sat, b, A)
 				g.ellipse(R * nx, -R * ny, dotR, dotR)
 			}

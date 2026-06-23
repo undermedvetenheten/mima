@@ -176,24 +176,53 @@ let planet = {
 		g.translate(0, -g.height * 0.30)    // up, above the face
 		g.noStroke()
 
-		// Moon positions (planet-space orbit → tilt → camera orbit), split by depth
-		// so the ones behind the planet draw first.
+		// Sun direction in the VIEW frame, and its screen projection — used to light
+		// the moons from the same source as the planet. Phase = illuminated fraction
+		// of the visible face (depends on sun-vs-viewer angle, so it shifts as you
+		// rotate the view). Screen y is negated when drawing.
+		let [slvx, slvy, slvz] = this._orbit(L[0], L[1], L[2], cy, sy, cp, sp)
+		let phase = (slvz + 1) / 2                               // 0 = back-lit (new), 1 = full
+		let sunLen = Math.hypot(slvx, slvy) || 1
+		let sunScrX = slvx / sunLen, sunScrY = -slvy / sunLen    // toward the sun, in screen space
+
+		// Moon positions (planet-space orbit → tilt → camera orbit) + per-moon eclipse.
 		let moons = this.moons.map(m => {
 			let ang = m.phase + m.speed * t
 			let mx = m.dist * Math.cos(ang)
 			let mz0 = m.dist * Math.sin(ang)
 			let my = -mz0 * Math.sin(m.incl)          // orbit-plane inclination (about x)
 			let mz = mz0 * Math.cos(m.incl)
-			let [tx, ty, tz] = this._tilt(mx, my, mz, ct, st)
-			let [vx, vy, vz] = this._orbit(tx, ty, tz, cy, sy, cp, sp)
-			return { x: vx, y: vy, z: vz, size: m.size, bright: m.bright }
+			let [tx, ty, tz] = this._tilt(mx, my, mz, ct, st)            // world frame (where the sun lives)
+			let [vx, vy, vz] = this._orbit(tx, ty, tz, cy, sy, cp, sp)   // view frame (for drawing)
+			// Eclipse: the moon falls into the planet's shadow when it's on the far
+			// side from the sun (comp < 0) and near the shadow axis (perp < planet R = 1).
+			let comp = tx * L[0] + ty * L[1] + tz * L[2]
+			let ecl = 1, red = 0
+			if (comp < 0) {
+				let perp = Math.sqrt(Math.max(0, m.dist * m.dist - comp * comp))
+				let s = Math.min(1, Math.max(0, (perp - 0.55) / 0.85))  // 0 = deep umbra, 1 = clear
+				ecl = 0.1 + 0.9 * s
+				red = 1 - s                                              // umbra reddening
+			}
+			return { x: vx, y: vy, z: vz, size: m.size, bright: m.bright, ecl, red }
 		})
 		let drawMoon = p => {
+			// Occulted: passing behind the planet body (z<0, within the disc) — hidden.
+			if (p.z < 0 && Math.hypot(p.x, p.y) < 1) return
 			let depth = 0.8 + 0.4 * ((p.z + 2) / 4)               // mild near/far size
 			let mr = Math.max(2.2, R * p.size * depth)            // floor so they never vanish
-			let b = p.bright * (p.z > 0 ? 1 : 0.6)
-			g.fill(0.62, 0.06, b, A)
-			g.ellipse(R * p.x, -R * p.y, mr * 2, mr * 2)
+			let cx = R * p.x, cy = -R * p.y
+			let hue = 0.62 * (1 - p.red) + 0.03 * p.red           // grey, reddening in the umbra
+			let sat = 0.06 * (1 - p.red) + 0.55 * p.red
+			let base = p.bright * (0.25 + 0.75 * phase) * p.ecl   // overall light (phase + eclipse)
+			// Dim body...
+			g.fill(hue, sat, base * 0.65, A)
+			g.ellipse(cx, cy, mr * 2, mr * 2)
+			// ...with a brighter cap offset toward the sun (stays inside the disc).
+			if (phase > 0.05 && p.ecl > 0.2) {
+				g.fill(hue, sat, base, A)
+				g.ellipse(cx + sunScrX * mr * 0.4, cy + sunScrY * mr * 0.4, mr * 1.2, mr * 1.2)
+			}
 		}
 
 		// Behind-moons (occluded by the planet) draw first.

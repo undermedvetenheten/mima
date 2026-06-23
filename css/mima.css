@@ -82,6 +82,8 @@ div {
 #mima-app .chatwindow-input {
 	position: relative;
 	margin: auto 10px;
+	/* >= 16px stops iOS Safari from auto-zooming into the field on focus. */
+	font-size: 16px;
 }
 
 #mima-app input  {

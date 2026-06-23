@@ -206,9 +206,9 @@ let planet = {
 		g.ellipse(0, 0, R * 2 * ATMO_SCALE, R * 2 * ATMO_SCALE)
 		// Behind-moons (occluded by the planet, but in front of the atmosphere rim).
 		moons.filter(p => p.z <= 0).forEach(drawMoon)
-		// Base disc (deep sea) so gaps between dots read as ocean, not as a dark
-		// ring — bright enough that the disc edge matches the dotted ball.
-		g.fill(pal.sea, pal.sat, 0.22, A)
+		// Base disc (sea) so gaps between dots read as ocean. Brightness matches the
+		// now higher-ambient dots, so the disc edge never reads as a separate ring.
+		g.fill(pal.sea, pal.sat, 0.42, A)
 		g.ellipse(0, 0, R * 2, R * 2)
 
 		let LAT = 24, LON = 48
@@ -230,8 +230,11 @@ let planet = {
 
 				let n = utilities.noise(nx0 * 1.7 + this.seed, ny0 * 1.7, nz0 * 1.7)
 				let isLand = n > 0.55
-				let b = (0.1 + 0.95 * lamb) * (isLand ? 0.95 : 0.82)
-				b *= 0.72 + 0.28 * nz   // gentle limb darkening — keep the lit edge bright, not a dark teal ring
+				// High ambient so the night/limb side stays textured and visible out to
+				// the edge — otherwise the dark side blends into the base and the lit cap
+				// reads as a small ball inside an oversized teal disc.
+				let b = (0.45 + 0.55 * lamb) * (isLand ? 0.95 : 0.82)
+				b *= 0.8 + 0.2 * nz   // gentle limb darkening — keep the edge bright
 				let hue = isLand ? pal.land : pal.sea
 				let sat = pal.sat * (isLand ? 1 : 0.92)
 				// Larger, overlapping dots so the ball reads solid to its edge (no teal

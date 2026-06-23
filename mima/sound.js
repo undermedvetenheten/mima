@@ -121,6 +121,10 @@ function randomChirp(length) {
 	let key = getRandom(keys)
 	let sound = soundLibrary.chirps[key]
 
+	// If this exact sound is still playing, skip it — changing volume or rate
+	// on an active source causes an audible click/rate-glitch.
+	if (sound.playing) return
+
 	sound.volume = app.values.volume * settings.volume
 	// Far away = quieter; the steady shared-reverb tail makes it read as distant.
 	if (app.values.perspective > 3) sound.volume *= .1

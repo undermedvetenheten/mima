@@ -198,9 +198,6 @@ let planet = {
 
 		// Behind-moons (occluded by the planet) draw first.
 		moons.filter(p => p.z <= 0).forEach(drawMoon)
-		// Base disc (dark sea) so gaps between dots read as deep ocean / night.
-		g.fill(pal.sea, pal.sat, 0.12, A)
-		g.ellipse(0, 0, R * 2, R * 2)
 
 		let LAT = 24, LON = 48
 		for (let i = 0; i <= LAT; i++) {

@@ -194,7 +194,8 @@ Face.prototype.update = function(t) {
 	if (this.touch) {
 		const zs = 1 / (app.values.perspective * 0.7 + 0.3)
 		const tx = this.touch.x / zs
-		const ty = (this.touch.y + this._canvasH * 0.09) / zs
+		const planetAmt = Math.max(0, Math.min(1, app.values.planet || 0))
+		const ty = (this.touch.y + this._canvasH * 0.09 - this._canvasH * 0.12 * planetAmt) / zs
 		const hitR = this.pixelW * 3
 		const eyeY = this.pixelH * -2.5
 		if (Math.abs(ty - eyeY) < hitR) {
@@ -543,7 +544,8 @@ Face.prototype.draw = function(g, time) {
 	}
 
 	g.pushMatrix()
-	g.translate(0, -g.height*.09)
+	// Ease her down as a world rises above her head (and back up when it recedes).
+	g.translate(0, -g.height*.09 + g.height*0.12*planetAmt)
 	g.scale(zoomScale, zoomScale)
 
 

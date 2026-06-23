@@ -47,18 +47,18 @@ let planet = {
 		// Each planet gets its own axial tilt rather than a fixed one (±~30°).
 		this.tilt = (Math.random() - 0.5) * 1.0
 
-		// A certain number of moons (often none or one, occasionally a few).
-		let counts = [0, 0, 1, 1, 1, 2, 2, 3]
+		// A certain number of moons — usually one or two, occasionally none or three.
+		let counts = [0, 1, 1, 1, 2, 2, 2, 3]
 		let mc = counts[Math.floor(Math.random() * counts.length)]
 		this.moons = []
 		for (let i = 0; i < mc; i++) {
 			this.moons.push({
-				dist: 1.45 + Math.random() * 1.5,                       // in planet-radii
+				dist: 1.6 + Math.random() * 1.6,                        // in planet-radii
 				speed: (0.12 + Math.random() * 0.30) * (Math.random() < 0.5 ? -1 : 1),
 				phase: Math.random() * Math.PI * 2,
-				size: 0.05 + Math.random() * 0.06,                      // in planet-radii
+				size: 0.10 + Math.random() * 0.08,                      // in planet-radii
 				incl: (Math.random() - 0.5) * 0.9,                      // orbit-plane tilt
-				bright: 0.62 + Math.random() * 0.22,
+				bright: 0.70 + Math.random() * 0.20,
 			})
 		}
 
@@ -82,16 +82,16 @@ let planet = {
 		window.addEventListener('pointercancel', up)
 	},
 
-	// Rotate a planet-space vector into view space: axial tilt (about screen x),
-	// then camera orbit (about screen vertical y). Returns [x, y, z] (z>0 = front).
-	_view(x, y, z, ct, st, cd, sd) {
-		// axial tilt about x
-		let y1 = y * ct - z * st
-		let z1 = y * st + z * ct
-		// camera azimuth about y
-		let x2 = x * cd + z1 * sd
-		let z2 = -x * sd + z1 * cd
-		return [x2, y1, z2]
+	// Apply the planet's axial tilt (about screen x) to a planet-space vector.
+	// This is the planet's fixed world orientation — the SUN lives in this frame,
+	// so it does not follow the viewer.
+	_tilt(x, y, z, ct, st) {
+		return [x, y * ct - z * st, y * st + z * ct]
+	},
+	// Apply the viewer's camera orbit (about screen vertical y). Only changes what
+	// we SEE, not what is lit. Returns [x, y, z] (z>0 = facing the viewer).
+	_orbit(x, y, z, cd, sd) {
+		return [x * cd + z * sd, y, -x * sd + z * cd]
 	},
 
 	draw(g, t, presence) {
@@ -103,44 +103,44 @@ let planet = {
 
 		let rot = this.rot                  // planet's own spin (surface only)
 		let cam = this.dragRot              // viewer's orbit
-		let R = g.height * 0.13             // small — floats above her head
+		let R = g.height * 0.065            // small — half the previous size
 		let pal = this.pal
 		let A = presence
 		let ct = Math.cos(this.tilt), st = Math.sin(this.tilt)
 		let cd = Math.cos(cam), sd = Math.sin(cam)
-		let L = [-0.5, -0.45, 0.74]         // light: upper-left, toward viewer
+		// Light lives in the planet's tilted (world) frame, NOT the camera frame —
+		// so orbiting the view sweeps the terminator across the disc, as if you are
+		// circling the planet rather than spinning it under a fixed lamp.
+		let L = [-0.5, -0.45, 0.74]         // upper-left, toward the sunward side
 
 		g.pushMatrix()
 		g.translate(0, -g.height * 0.30)    // up, above the face
 		g.noStroke()
 
-		// Moon positions (planet-space orbit → view space), split by depth so the
-		// ones behind the planet draw first.
+		// Moon positions (planet-space orbit → tilt → camera orbit), split by depth
+		// so the ones behind the planet draw first.
 		let moons = this.moons.map(m => {
 			let ang = m.phase + m.speed * t
 			let mx = m.dist * Math.cos(ang)
-			let mz = m.dist * Math.sin(ang)
-			// orbit-plane inclination (about x)
-			let my = -mz * Math.sin(m.incl)
-			mz = mz * Math.cos(m.incl)
-			let [vx, vy, vz] = this._view(mx, my, mz, ct, st, cd, sd)
+			let mz0 = m.dist * Math.sin(ang)
+			let my = -mz0 * Math.sin(m.incl)          // orbit-plane inclination (about x)
+			let mz = mz0 * Math.cos(m.incl)
+			let [tx, ty, tz] = this._tilt(mx, my, mz, ct, st)
+			let [vx, vy, vz] = this._orbit(tx, ty, tz, cd, sd)
 			return { x: vx, y: vy, z: vz, size: m.size, bright: m.bright }
 		})
 		let drawMoon = p => {
-			let depth = 0.8 + 0.4 * ((p.z + 2) / 4)   // mild near/far size
-			let mr = R * p.size * depth
-			let b = p.bright * (p.z > 0 ? 1 : 0.65)
+			let depth = 0.8 + 0.4 * ((p.z + 2) / 4)               // mild near/far size
+			let mr = Math.max(2.2, R * p.size * depth)            // floor so they never vanish
+			let b = p.bright * (p.z > 0 ? 1 : 0.6)
 			g.fill(0.62, 0.06, b, A)
 			g.ellipse(R * p.x, -R * p.y, mr * 2, mr * 2)
 		}
 		moons.filter(p => p.z <= 0).forEach(drawMoon)
 
-		// Atmosphere — a tight rim that hugs the disc (nothing spills onto the screen).
-		for (let k = 3; k >= 1; k--) {
-			let rr = R * (1 + k * 0.012)
-			g.fill(pal.sky, 0.55, 0.95, 0.06 * A)
-			g.ellipse(0, 0, rr * 2, rr * 2)
-		}
+		// Atmosphere — a single faint sliver, barely larger than the planet.
+		g.fill(pal.sky, 0.5, 1.0, 0.05 * A)
+		g.ellipse(0, 0, R * 2 * 1.06, R * 2 * 1.06)
 		// Base disc (dark sea) so gaps between dots read as deep ocean / night.
 		g.fill(pal.sea, pal.sat, 0.12, A)
 		g.ellipse(0, 0, R * 2, R * 2)
@@ -154,16 +154,18 @@ let planet = {
 				let lam = (j / lonSteps) * Math.PI * 2
 				// planet-fixed normal (rotation-invariant) — for the surface noise
 				let nx0 = cphi * Math.sin(lam), ny0 = sphi, nz0 = cphi * Math.cos(lam)
-				// spin the surface about the planet's axis, then view-transform
+				// spin the surface about the axis, then tilt into the planet's world
+				// frame (this is where it is LIT), then orbit into the viewer's frame.
 				let vlam = lam + rot
-				let [nx, ny, nz] = this._view(cphi * Math.sin(vlam), sphi, cphi * Math.cos(vlam), ct, st, cd, sd)
-				if (nz <= 0) continue   // back hemisphere — skip
+				let [tx, ty, tz] = this._tilt(cphi * Math.sin(vlam), sphi, cphi * Math.cos(vlam), ct, st)
+				let lamb = Math.max(0, tx * L[0] + ty * L[1] + tz * L[2])   // lit in the planet frame
+				let [nx, ny, nz] = this._orbit(tx, ty, tz, cd, sd)
+				if (nz <= 0) continue   // back hemisphere (relative to viewer) — skip
 
 				let n = utilities.noise(nx0 * 1.7 + this.seed, ny0 * 1.7, nz0 * 1.7)
 				let isLand = n > 0.55
-				let lamb = Math.max(0, nx * L[0] + ny * L[1] + nz * L[2])
 				let b = (0.1 + 0.95 * lamb) * (isLand ? 0.95 : 0.82)
-				b *= 0.4 + 0.6 * nz   // limb darkening
+				b *= 0.4 + 0.6 * nz   // limb darkening (toward the viewer's edge)
 				let hue = isLand ? pal.land : pal.sea
 				let sat = pal.sat * (isLand ? 1 : 0.92)
 				let dotR = (R * 2 / LON) * 1.6 * (0.6 + 0.5 * nz)

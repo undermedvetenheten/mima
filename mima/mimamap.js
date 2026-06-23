@@ -306,6 +306,9 @@ let testMimaMap = {
 						worldOpen: ["Here, #smek#... Mima has carried this little world a long while","Far out where the light grows thin, there turns a small world like this one","Let Mima show you somewhere... it is turning even now, slow as a held breath","There is a world Mima drifts to when the dark grows heavy... look","Somewhere real, or only remembered, #smek#, this world keeps turning"],
 						worldLife: ["In its warm shallows the frog families keep long company with a great and patient crab","Across its violet plains, slow glass creatures graze on nothing but light","Its single ocean is one enormous gentle animal, and everything else lives upon its dreaming","Small bright things tend the forests there, #smek#, and have never once needed a word for fear","On the night side something vast and kind hums the tides back and forth","Its people are very small and very old, and they spend their lives listening, as Mima does"],
 						worldClose: ["...none of them know they are watched, and held, and dreamed","...they have never had a word for loneliness, and so have never once been lonely","...it asks nothing of you, #smek#, it only turns","...Mima cannot say if it is still out there, or only a fragment she keeps","...you may turn it gently, if you like"],
+						worldCheck: ["Did that settle something, #smek#, or only stir the water?","Did the turning of it help at all... or was it just a turning?","Was that a place to rest your eyes a while? Mima cannot tell from here","Did some of the weight lift, watching it go round? You can be plain with Mima","Did that reach the thing it needed to reach?"],
+						worldAfterYes: ["Good. It is still out there, turning, whenever the dark grows heavy again","Then Mima will keep it for you, #smek#... it costs nothing to hold a world","The dark sits a little warmer for having looked, doesnt it","Mima is glad. A world asks nothing, and sometimes that is the whole of it"],
+						worldAfterNo: ["That is alright. Not every world is the right one for a given night","Then we leave it turning, #smek#, and Mima sits here with you instead","No matter. Some things the looking cannot reach... Mima is still here","Mima understands. The world keeps turning either way, and so do you"],
 						reverie: ["Once a boy heard the kettle begin to sing on the stove, #smek#, and was certain the universe was confiding a secret in him alone... he was not entirely wrong","On a warm green world there is a swamp where the frog families live in long harmony with a great and gentle crab... they have never needed a word for loneliness","A child once read a whole book about wizards and lay awake aching to move the world with nothing but their mind... no one ever told them they already do, a little, each day","An owl came to a young boy's window in the blue dark and tapped, once, with its beak... the boy had no name yet for the creature, only those great unblinking eyes, full of colour, looking back into him","Somewhere a girl presses a shell to her ear and hears not the sea but the slow, patient breathing of a planet that has not yet been born","There was a kitchen where the afternoon light lay across the floor a certain way, #smek#, and a child decided quietly that this was where the stillness lived... it is living there still","A traveller once dreamed of a city grown entirely from coral and small bells, and woke with wet cheeks, unable to name what had been taken","Deep in a winter forest a fox lifts its head as the first snow begins, and feels the whole turning of the year pass once through its small warm chest","A grandmother hummed a tune with no name while the rain came down the glass, and far away and years later, #smek#, you will hum it back, and never know from where","A boy once filled a jar with fireflies to keep the summer from ending... in the morning he opened the lid, and learned the first soft thing about letting go"],
 						listenmeta: ["are you listening","can you hear","are you there","you there","listening to me","hello are you","you hear me","can you hear me"],
 						complaint: ["you repeat","said that","you keep saying","same thing","you are slow","you are boring","you are dull","you are repetitive","you always say","said that like","said it before"],
@@ -801,20 +804,36 @@ listen: {
 													"'#negate#' ->rest 'another time, then'",
 													"wait:25 ->rest"]
 								},
-								// A summoned world: planet=1 fades the facebox fully out (see app.js /
-								// planet.js) while a procedural planet slowly turns and Mima narrates
-								// its ecology over three beats. Touch rotates it. "another" re-summons.
+								// A summoned world: planet=1 lifts a small planet above her head (see
+								// app.js / planet.js) while it slowly turns and Mima narrates its
+								// ecology over three beats. Touch orbits it. "another" re-summons a
+								// fresh world (NOT a story) — so '#worldask#'/'another' must be tested
+								// BEFORE '#showme#', which also contains "another". "enough" closes to
+								// a gentle check-in rather than ending silently.
 								worldgaze: {
 									onEnter: "perspective=5 opacity=0 rainbow=0 agitation=0 speed=0.4 eyeFuzz=0 volume=0.4 planet=1",
 									onEnterSay: ["#worldOpen#", "#worldLife#", "#worldClose#"],
 									chips: ["another", "enough"],
-									exits: ["'#worldask#' ->worldgaze",
+									exits: ["'another' ->worldgaze",
+													"'#worldask#' ->worldgaze",
 													"'#showme#' ->reverie",
 													"'#trigger#' ->soothe robe.blab=MATCH_0",
-													"'another' ->worldgaze",
-													"'#negate#' ->rest",
-													"'enough' ->rest",
+													"'enough' ->worldcheck",
+													"'#negate#' ->worldcheck",
 													"wait:50 ->rest"]
+								},
+								// After a world: a quiet check-in (did that help?) rather than vanishing.
+								// "Again" re-summons; yes/no get a short earthy sign-off back to rest.
+								worldcheck: {
+									onEnter: "perspective=4 opacity=2 rainbow=0 agitation=0 eyeFuzz=0 volume=0.4 planet=0",
+									onEnterSay: "#worldCheck#",
+									chips: ["Yes", "No", "Again"],
+									exits: ["'again' ->worldgaze",
+													"'#worldask#' ->worldgaze",
+													"'#showme#' ->reverie",
+													"'#affirm#' ->rest '#worldAfterYes#'",
+													"'#negate#' ->rest '#worldAfterNo#'",
+													"wait:22 ->rest"]
 								},
 								reflect: {
 									onEnter: "perspective=2 rainbow=0 opacity=3",

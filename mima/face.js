@@ -523,7 +523,7 @@ Face.prototype.draw = function(g, time) {
 	// also multiplies the face out, so the facebox goes fully transparent and only
 	// the world floats (see app.values.planet / planet.js).
 	let planetAmt = Math.max(0, Math.min(1, app.values.planet || 0))
-	this._arrFace = ss(Math.max(0, (A - 0.55) / 0.45)) * (1 - planetAmt)      // appears after the gather
+	this._arrFace = ss(Math.max(0, (A - 0.55) / 0.45))      // appears after the gather (face stays under the planet)
 
 	let zoomScale = 1/(app.values.perspective*.7 + .3)
 

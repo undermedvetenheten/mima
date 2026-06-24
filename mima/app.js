@@ -1,5 +1,5 @@
 
-let valueNames = ["blink","perspective", "mouth", "mouthWidth", "eyeFuzz", "agitation", "speed", "volume", "rainbow", "opacity", "hue", "planet"]
+let valueNames = ["blink","perspective", "mouth", "mouthWidth", "eyeFuzz", "agitation", "speed", "volume", "rainbow", "opacity", "hue", "planet", "firefly"]
 
 let settings = {
 	volume: 0.7,
@@ -142,10 +142,27 @@ let app = {
 				// worldgaze summons a fresh procedural planet (see planet.js); its
 				// onEnter raises planet=1 so the facebox fades fully out. Any other
 				// state eases the planet back down so it never lingers.
-				if (stateID === "worldgaze") {
+				if (stateID === "worldgaze" || stateID === "worldgaze2") {
 					if (typeof planet !== "undefined") planet.summon()
 				} else if (app.valueTracker.planet) {
-					app.valueTracker.planet.set(0, app.time.current, 1.2)
+					app.valueTracker.planet.set(0, app.time.current, 2.0)
+				}
+
+				// The number game (numberGame.js) lives in JS: entering its state rolls
+				// a fresh secret; entering anything else deactivates it so input routing
+				// (see userInput) returns to normal Chancery handling.
+				if (typeof numberGame !== "undefined") {
+					if (stateID === "numbergame") numberGame.start(50)
+					else numberGame.active = false
+				}
+
+				// Storytime (the reverie states) turns the roaming background particles
+				// into drifting fireflies; any other state lets them return to chaos.
+				// Lerped slowly (2.5s) so the weight shift is gentle; drawSpace also eases
+				// each particle's position, so together they drift rather than dash.
+				if (app.valueTracker.firefly) {
+					let story = (stateID === "reverie" || stateID === "reverie2")
+					app.valueTracker.firefly.set(story ? 1 : 0, app.time.current, 2.5)
 				}
 
 				// Calling into the void and being ignored escalates her agitation;
@@ -266,8 +283,42 @@ let app = {
 		app.flareAgitation(3)
 		app.ignoredCount = 0
 
+		// Number game: while Mima is holding a number (see numberGame.js), numeric
+		// guesses are answered here in JS — the Chancery engine can't compare values.
+		// Reset the `numbergame` state's dwell timer on each guess (its wait: exit is
+		// an idle timeout, not a play timeout). A win hands control back to Chancery
+		// via a sentinel input the state matches (#numdone# -> numberwon). Non-numeric
+		// input (e.g. "i give up") falls through to Chancery's exits below.
+		if (typeof numberGame !== "undefined" && numberGame.active) {
+			let m = String(data).match(/\d+/)
+			if (m) {
+				let r = numberGame.guess(parseInt(m[0], 10))
+				// Store as a STRING: grammar path resolution (#/robe/tries#) runs the
+				// value through parseTraceryRule, which throws on a raw number and would
+				// leak the literal token "((/robe/tries))" into Mima's line.
+				if (r.status === "found")
+					app.blackboard.setAtPath(["robe", "tries"], String(numberGame.attempts))
+				app.say(r.text)
+				app.chips = r.chips
+				app.instance.timeEnteredState = app.instance.currentTime
+				if (r.status === "found")
+					app.instance.input({ owner: "user", text: ["numberfound"] })
+				return
+			}
+		}
+
 		// Send it to the chancery instance
 		app.instance.input(msg)
+	},
+
+	// Push a bot line and speak it OUTSIDE the Chancery flow — used by JS minigames
+	// (numberGame) that answer the player directly. Mirrors the onOutput handler;
+	// flattens Tracery tokens (#smek# etc.) through the chancery grammar context so
+	// Mima's voice stays consistent.
+	say(raw) {
+		let output = app.instance.context.flatten(raw)
+		app.messages.push({ owner: "bot", text: [output] })
+		return app.speakWords(output)
 	},
 
 	animateValueTo(name, val, dt) {

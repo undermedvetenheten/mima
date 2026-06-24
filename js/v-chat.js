@@ -9,7 +9,7 @@ Vue.component('chat-window', {
 
 			<!-- show the message, who it's from, any images, etc -->
 			<br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br>
-			<div class="chatwindow-message" v-for="(message,msgIndex) in messages" :class="{['chatwindow-message-' + message.owner]:true}">
+			<div class="chatwindow-message" v-for="(message,msgIndex) in visibleMessages" :class="{['chatwindow-message-' + message.owner]:true}">
 
 				<div class="chatwindow-message-body" :style="msgStyle(message, msgIndex)">
 					<div v-if="message.text">
@@ -33,10 +33,24 @@ Vue.component('chat-window', {
 	</div>
 	`,
 
+	computed: {
+		// Only the most recent messages are ever visible — older ones fade to
+		// opacity 0 (see msgStyle) and the box doesn't scroll. Rendering the whole
+		// history meant every new bubble re-laid-out an ever-growing list; on Android
+		// that main-thread reflow spike starved the audio thread and produced a sharp
+		// tick/pop exactly as the bubble appeared. Capping the rendered list keeps
+		// the per-bubble cost small and constant. 12 > the ~5 that are ever visible.
+		visibleMessages() {
+			return this.messages.slice(-12)
+		}
+	},
+
 	methods: {
 
 		msgStyle(msg, index) {
-			let nth = 1.4 - (this.messages.length - index)/3
+			// index is within visibleMessages; fade older bubbles out by recency. Using
+			// the visible-list length keeps the most-recent opacities identical to before.
+			let nth = 1.4 - (this.visibleMessages.length - index)/3
 			let opacity = Math.min(Math.max(nth*1,0), 1)
 			return {
 				opacity:opacity

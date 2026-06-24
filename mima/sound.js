@@ -41,24 +41,29 @@ let reverbBus = (function () {
 // A tribute to the accidental reverb-runaway: a feedback delay (the musical,
 // BOUNDED version of that swell). Everything sends a copy in at low volume; the
 // delay regenerates with a darkening lowpass in the loop for a dubby tail. The
-// touch screen rides `feedback` (how long it regenerates) and `wet` (how loud)
-// via setFeedback/setWet — drag toward the edge for that on-the-verge howl,
-// release to settle back. A limiter on the wet path keeps it ear-safe even when
-// pushed near self-oscillation. See attachInput() in synthbed.js for the touch.
+// touch screen drives it on two axes (see attachInput() in synthbed.js):
+//  - X warps the repeat time (setTime) + sweeps the lowpass (setTone): centre =
+//    baseline, drag left for slow + dark repeats, right for fast + bright. Sliding
+//    the delay time resamples the buffer, so the drag itself pitch-warps the tail.
+//  - Y rides `feedback` (how long it regenerates) + `wet` (how loud) for that
+//    on-the-verge howl; release to settle everything back via reset().
+// A limiter on the wet path keeps it ear-safe even when pushed near self-oscillation.
 let dubDelay = (function () {
 	let ctx = Pizzicato.context
 	let send = ctx.createGain()                 // sounds connect here (aux send)
 	let delay = ctx.createDelay(2.0)
-	delay.delayTime.value = 0.38                 // dubby repeat time
+	let baseTime = 0.38                           // dubby repeat time (centre of the warp)
+	delay.delayTime.value = baseTime
 	let feedback = ctx.createGain()
 	let tone = ctx.createBiquadFilter()          // darken each repeat
-	tone.type = 'lowpass'; tone.frequency.value = 2200
+	let baseTone = 2200                           // lowpass cutoff at centre
+	tone.type = 'lowpass'; tone.frequency.value = baseTone
 	let wet = ctx.createGain()
 	let limiter = ctx.createDynamicsCompressor() // safety: hard-ish ceiling
 	limiter.threshold.value = -10; limiter.ratio.value = 20
 	limiter.attack.value = 0.003; limiter.release.value = 0.25
 
-	let baseFeedback = 0.42, baseWet = 0.32      // present, but still rides up on touch
+	let baseFeedback = 0.42, baseWet = 0         // silent at rest; only the lower half of the screen brings it in
 	feedback.gain.value = baseFeedback
 	wet.gain.value = baseWet
 
@@ -69,13 +74,19 @@ let dubDelay = (function () {
 	wet.connect(limiter); limiter.connect(Pizzicato.masterGainNode)
 
 	let clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
-	let glide = (param, v) => param.setTargetAtTime(v, ctx.currentTime, 0.1)
+	let glide = (param, v, tc) => param.setTargetAtTime(v, ctx.currentTime, tc || 0.1)
 	return {
-		send, baseFeedback, baseWet,
-		setFeedback(f) { glide(feedback.gain, clamp(f, 0, 0.92)) },  // <1 so it always decays
-		setWet(w)      { glide(wet.gain, clamp(w, 0, 0.6)) },
-		setTime(t)     { glide(delay.delayTime, clamp(t, 0.02, 1.6)) },
-		reset()        { glide(feedback.gain, baseFeedback); glide(wet.gain, baseWet) },
+		send, baseFeedback, baseWet, baseTime, baseTone,
+		setFeedback(f) { glide(feedback.gain, clamp(f, 0, 0.72)) },  // well under 1 so it always clearly decays
+		setWet(w)      { glide(wet.gain, clamp(w, 0, 0.4)) },
+		// Sliding the delay time resamples the buffer -> the tape/dub warp. The
+		// DelayNode only interpolates linearly, so a fast slide aliases ("bitcrush")
+		// — badly, on the pure-sine bed. A slow glide (0.35s) moves the read pointer
+		// gently so the warp stays smooth instead of gritty.
+		setTime(t)     { glide(delay.delayTime, clamp(t, 0.02, 1.6), 0.35) },
+		setTone(f)     { glide(tone.frequency, clamp(f, 200, 12000)) },
+		reset()        { glide(feedback.gain, baseFeedback); glide(wet.gain, baseWet);
+		                 glide(delay.delayTime, baseTime, 0.35); glide(tone.frequency, baseTone) },
 	}
 })()
 

@@ -118,28 +118,42 @@ let synthBed = {
 			}
 		}
 	},
-	// Per-frame ease of the bend toward its target, then apply it.
+	// Per-frame ease of the bend toward its target, then apply it. Skip the audio
+	// work entirely when there's nothing to bend (no finger down and the bend has
+	// already settled to centre) — otherwise we scheduled a setTargetAtTime on every
+	// voice on every single frame, including the frame a chat bubble lays out, adding
+	// needless main-thread contention. Idle is the common case, so this is mostly free.
 	tick() {
 		this.detune += (this.targetDetune - this.detune) * this.bendEase
-		this.applyDetune()
+		if (this.pointerActive || Math.abs(this.detune - this.targetDetune) > 0.01 || Math.abs(this.detune) > 0.01)
+			this.applyDetune()
 		if (this.running) this.raf = requestAnimationFrame(() => this.tick())
 	},
-	// Listen for touch/pointer:
-	//  - x-position bends the pitch (centre = in tune)
-	//  - y-position rides the dub delay (lower on screen = more feedback + wetter,
-	//    toward that on-the-edge howl). See dubDelay in sound.js.
-	// Releasing eases the pitch back in tune and settles the dub to its baseline.
+	// Listen for touch/pointer — the dub delay (sound.js) is the instrument:
+	//  - x-position warps the dub repeat time + sweeps its lowpass. Centre = the
+	//    baseline settings; drag LEFT for slower repeats (longer delay) filtered
+	//    dark (highs rolled off), drag RIGHT for faster repeats filtered bright
+	//    (open to the high end). Sliding the delay time resamples the buffer, so
+	//    the drag itself pitch-warps the tail.
+	//  - y-position gates the dub: silent in the top half, fading in from the
+	//    midline to max loudness at the very bottom (more feedback + wetter there).
+	// Releasing settles the whole dub back to its baseline (dubDelay.reset()).
 	attachInput() {
 		if (this.inputAttached) return
 		this.inputAttached = true
 		let setFromXY = (x, y) => {
-			let w = window.innerWidth || 1
-			this.targetDetune = ((x / w) * 2 - 1) * this.bendCents   // -1..+1 -> ±bendCents
-			if (typeof dubDelay !== 'undefined') {
-				let n = Math.max(0, Math.min(1, y / (window.innerHeight || 1)))  // 0 top .. 1 bottom
-				dubDelay.setFeedback(dubDelay.baseFeedback + n * 0.57)   // up to ~0.92 (still <1)
-				dubDelay.setWet(dubDelay.baseWet + n * 0.32)             // up to ~0.5
-			}
+			if (typeof dubDelay === 'undefined') return
+			let w = window.innerWidth || 1, h = window.innerHeight || 1
+			// X: warp around the centred baseline. nx = -1 (left) .. 0 .. +1 (right).
+			let nx = (x / w) * 2 - 1
+			dubDelay.setTime(dubDelay.baseTime * Math.pow(1.3, -nx))  // gentle nudge: ~0.49s left .. 0.29s right
+			dubDelay.setTone(dubDelay.baseTone * Math.pow(2.5,  nx))  // left darker (~880Hz), right brighter (~5.5kHz)
+			// Y: the dub is silent in the top half; it fades in from the midline and
+			// reaches max loudness at the very bottom of the screen.
+			let n = Math.max(0, Math.min(1, y / h))                   // 0 top .. 1 bottom
+			let m = Math.max(0, (n - 0.5) * 2)                        // 0 above halfway .. 1 at the bottom
+			dubDelay.setFeedback(dubDelay.baseFeedback + m * 0.28)    // up to ~0.70 — always clearly decays
+			dubDelay.setWet(m * 0.38)                                 // 0 above halfway, max at the very bottom
 		}
 		window.addEventListener('pointerdown', e => { this.pointerActive = true; setFromXY(e.clientX, e.clientY) })
 		window.addEventListener('pointermove', e => { if (this.pointerActive) setFromXY(e.clientX, e.clientY) })

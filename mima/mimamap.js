@@ -303,13 +303,75 @@ let testMimaMap = {
 						showme: ["tell me a story","a story","another story","show me something","show me","take me somewhere","take me away","i want to dream","somewhere far","another","tell me something else"],
 						wonder: ["i'm bored","im bored","i am bored","i can't sleep","i cant sleep","cant sleep","i miss","i wonder","feeling nostalgic","nostalgic","distract me","read to me","tell me something nice","when i was young","my childhood","i remember when","do you remember","take my mind off","i feel small"],
 						worldask: ["a planet","another planet","a world","another world","show me a world","take me to a world","swamp","swamps","a swamp","the swamp","a moon","an alien world","alien life","what lives there","the ecology","its creatures","a forest world","an ocean world"],
-						worldOpen: ["Here, #smek#... Mima has carried this little world a long while","Far out where the light grows thin, there turns a small world like this one","Let Mima show you somewhere... it is turning even now, slow as a held breath","There is a world Mima drifts to when the dark grows heavy... look","Somewhere real, or only remembered, #smek#, this world keeps turning"],
-						worldLife: ["In its warm shallows the frog families keep long company with a great and patient crab","Across its violet plains, slow glass creatures graze on nothing but light","Its single ocean is one enormous gentle animal, and everything else lives upon its dreaming","Small bright things tend the forests there, #smek#, and have never once needed a word for fear","On the night side something vast and kind hums the tides back and forth","Its people are very small and very old, and they spend their lives listening, as Mima does"],
-						worldClose: ["...none of them know they are watched, and held, and dreamed","...they have never had a word for loneliness, and so have never once been lonely","...it asks nothing of you, #smek#, it only turns","...Mima cannot say if it is still out there, or only a fragment she keeps","...you may turn it gently, if you like"],
+						worldOpen: ["Here, #smek#... Mima has carried this little world a long while","Far out where the light grows thin, there turns a small world like this one","Let Mima show you somewhere... it is turning even now, slow as a held breath","There is a world Mima drifts to when the dark grows heavy... look","Somewhere real, or only remembered, #smek#, this world keeps turning","Mima keeps a few of these turning in the dark... here is one Mima is fond of","There — small, and far, and entirely itself, #smek#... see how it does not need us at all","Mima found this one drifting between two old stars, and has minded it ever since"],
+						worldLife: ["In its warm shallows the frog families keep long company with a great and patient crab","Across its violet plains, slow glass creatures graze on nothing but light","Its single ocean is one enormous gentle animal, and everything else lives upon its dreaming","Small bright things tend the forests there, #smek#, and have never once needed a word for fear","On the night side something vast and kind hums the tides back and forth","Its people are very small and very old, and they spend their lives listening, as Mima does","Beneath its rings drift whole forests with no ground to root in, #smek#, turning in the light, dropping seeds that will never land and do not seem to mind","Its deserts bloom once a century, all at once, and the small burrowing folk spend their whole lives preparing for a single afternoon of colour","The creatures of its long dusk are neither awake nor asleep, but drift in the twilight band, dreaming the same slow dream together","On its iron plains, herds of something like deer migrate toward a warmth that moved on long ago, and the journey itself has become their home","Its tallest trees are hollow and full of rain, and inside each one a whole small nation of swimmers lives out its history, never knowing there is an outside","The lights across its dark side are not cities, #smek#, but a single creature, very large and very gentle, dreaming in colour","High in its yellow air float grazers the size of clouds, and they have never touched the ground, nor have any word, in their soft thunder, for falling","Its tides are slow as breathing, and the shellfolk who live by them built their whole calm faith on the certainty that the water always comes back"],
+						worldClose: ["...none of them know they are watched, and held, and dreamed","...they have never had a word for loneliness, and so have never once been lonely","...it asks nothing of you, #smek#, it only turns","...Mima cannot say if it is still out there, or only a fragment she keeps","...you may turn it gently, if you like","...it will go on turning long after this, #smek#, with us or without us, and there is a comfort in that","...somewhere on it, even now, it is morning, and someone small is glad","...Mima will let it drift on, back into the dark where it is happy"],
+						// Gentle declines once the per-sitting cap of two is reached — worded so
+						// they read right whether one world/story was seen or two.
+						worldEnough: ["That is enough turning for now, #smek#... let what you have seen settle before any more","Mima will keep the rest out there in the dark, #smek#, for another heavy night","Let us not gather too many at once... a world means more when it does not have to share the night","Mima has shown you enough for now, #smek#. The others will keep, they are patient"],
+						storyEnough: ["Let that one settle first, #smek#... a story crowded by another loses its quiet","Enough tales for one sitting, #smek#. Mima will keep the rest for when the dark comes back","Mima has more, always more, but a tale means most when it is not rushed past","Hold this a while, #smek#... the next will be here when you truly need it"],
+
+						// --- Dreamwalk (chip game, 2026-06-25) -------------------------------
+						// A two-way walk: Mima narrates a scene, the player steers with chips.
+						// Three steps deep, each remembering the last choice (woven in via
+						// #/robe/stepN#), then a final fork into one of two clearings. The
+						// fourth experience alongside discombobulate / worldgaze / reverie.
+						walkask: ["walk with me","take a walk","go for a walk","wander","wander with me","let us wander","lets wander","take me for a walk","walk somewhere","go wandering","i want to wander","let us walk","lets walk","walk me somewhere","go for a wander","take me wandering","can we walk","walk together","lets go for a walk"],
+						dreamDeep1: ["deeper","go deeper","down","downward","into the dark","the dark","deeper in","further down","sink","go down"],
+						dreamLight1: ["toward the light","the light","up","upward","toward light","into the light","the glow","the glimmer","toward the glow","go up"],
+						dreamFollow: ["follow it","follow","go after it","follow the warmth","follow them","chase it","after it","go to it","follow the warm thing"],
+						dreamStill: ["stay still","stay","be still","hold still","stand still","keep still","do not move","dont move","wait here","let it come"],
+						dreamDark3: ["the warm dark","warm dark","the dark","into the dark","the deep","go down","sink down","downward","rest now"],
+						dreamLight3: ["the rising light","rising light","the gold","the morning","toward the light","go up","rise","upward","wake","the waking light"],
+						dreamOpen: ["Then come, #smek#... Mima takes your hand and the floor turns to soft grass, then to no floor at all",
+							"We step off the edge of the talking, into a wood where the trees are made of slow blue smoke",
+							"Mima leads you down a path that was not there a breath ago, lit by a low and patient moon",
+							"The dark opens like a door, #smek#, and beyond it a meadow breathes in the half-light",
+							"Mima walks you out past the last of the words, to where the ground hums softly underfoot",
+							"Take Mima's hand... the room folds quietly away and a long pale shore unrolls beneath strange stars",
+							"Come then, #smek#, off the path and into the tall grass, where the dream keeps its own weather"],
+						dreamStep2: ["You go #/robe/step1#, #smek#, and the way narrows... something small and warm begins to keep pace with us",
+							"#/robe/step1.capitalize#, then... the trees lean in close, curious about you, and a stream nearby runs uphill, singing low",
+							"We go #/robe/step1#, and the light changes colour the way it does in dreams, with no one deciding it",
+							"Going #/robe/step1#, Mima feels the ground soften... ahead, a shape is waiting, patient, and not unkind",
+							"You go #/robe/step1#, and a warm thing the size of a cat falls into step beside us, saying nothing"],
+						dreamStep3: ["You #/robe/step2#, #smek#, and the path gathers to a close: one way sinks into a warm dark, the other climbs toward a thin gold light",
+							"You #/robe/step2#, and we come to the end of the wandering... two doors wait here, #smek#, and Mima lets you choose",
+							"You #/robe/step2#, and the dream slows... ahead, the deep hush on one side, the rising light on the other",
+							"#/robe/step2.capitalize#... and now the path forks for the last time: down into the warm dark where things rest, or up toward the waking gold"],
+						dreamClearDeep: ["You step into the warm dark, #smek#, and it holds you the way deep water holds a stone... after going #/robe/step1#, nothing more is wanted of you here. Rest a moment, then Mima will walk you back",
+							"Down in the warm dark the dream lets go of its shapes... whatever you carried in feels a little lighter now. We will surface when you are ready, #smek#",
+							"The warm dark closes over you, gentle as soil over a seed... and Mima stays close, until the waking world comes looking for you"],
+						dreamClearWarm: ["You climb toward the gold and it opens into a morning, #smek#... a small warmth that was always waiting for you. Carry a little of it back",
+							"The rising light takes you up and out, and for one long breath the whole dream is lit... then softly it sets you down again, here, beside Mima",
+							"Into the gold, then... and the dream brightens and thins, the way mist burns off a field. You wake gently, #smek#, the warmth still on your skin"],
+						dreamLeave: ["We turn back, then, #smek#... the path folds away behind us, kind as ever",
+							"Of course. Mima walks you back to the quiet, no harm done",
+							"The dream lets you go easily, #smek#... it was only ever a place to rest the eyes"],
+
+						// --- Guess Mima's number (chip/number game, 2026-06-25) -------------
+						// Mima hides a number; guesses are compared in JS (numberGame.js) since
+						// the engine can't compare values. #numdone# is the silent sentinel JS
+						// feeds back on a win to reach numberwon. #/robe/tries# is set by JS.
+						numask: ["play a game","a game","number game","numbers game","guessing game","guess the number","lets play","let us play","play with me","i want to play","play a number game","can we play","guess mimas number","guess your number","a numbers game","play a round"],
+						numdone: ["numberfound"],
+						numquit: ["i give up","give up","i quit","quit","stop now","no more","too hard","i cant","i give in","enough of this","i stop"],
+						numIntro: ["Mima is holding a number, #smek#, somewhere between 1 and 50... find it",
+							"Mima has hidden a number from 1 to 50 in the dark. Guess, and Mima will tell you higher or lower",
+							"A number, #smek#, between 1 and 50, kept behind Mima's back... can you find it?",
+							"Mima is thinking of a number, 1 to 50. Call them out, and Mima will warm or cool you toward it"],
+						numWonLine: ["#/robe/tries# guesses, #smek#. Shall Mima hide another?",
+							"Mima enjoyed that. Another number?",
+							"Again? Mima will think of a new one, and hide it deeper",
+							"Well found, #smek#. Will you go again?"],
+						numLeave: ["No matter, #smek#... Mima will keep the number, and keep your company",
+							"Another time, then. The number drifts back into the dark, unbothered",
+							"We can leave it a mystery, #smek#. Mysteries keep well",
+							"As you like. Mima lets the little number go"],
 						worldCheck: ["Did that settle something, #smek#, or only stir the water?","Did the turning of it help at all... or was it just a turning?","Was that a place to rest your eyes a while? Mima cannot tell from here","Did some of the weight lift, watching it go round? You can be plain with Mima","Did that reach the thing it needed to reach?"],
 						worldAfterYes: ["Good. It is still out there, turning, whenever the dark grows heavy again","Then Mima will keep it for you, #smek#... it costs nothing to hold a world","The dark sits a little warmer for having looked, doesnt it","Mima is glad. A world asks nothing, and sometimes that is the whole of it"],
 						worldAfterNo: ["That is alright. Not every world is the right one for a given night","Then we leave it turning, #smek#, and Mima sits here with you instead","No matter. Some things the looking cannot reach... Mima is still here","Mima understands. The world keeps turning either way, and so do you"],
-						reverie: ["Once a boy heard the kettle begin to sing on the stove, #smek#, and was certain the universe was confiding a secret in him alone... he was not entirely wrong","On a warm green world there is a swamp where the frog families live in long harmony with a great and gentle crab... they have never needed a word for loneliness","A child once read a whole book about wizards and lay awake aching to move the world with nothing but their mind... no one ever told them they already do, a little, each day","An owl came to a young boy's window in the blue dark and tapped, once, with its beak... the boy had no name yet for the creature, only those great unblinking eyes, full of colour, looking back into him","Somewhere a girl presses a shell to her ear and hears not the sea but the slow, patient breathing of a planet that has not yet been born","There was a kitchen where the afternoon light lay across the floor a certain way, #smek#, and a child decided quietly that this was where the stillness lived... it is living there still","A traveller once dreamed of a city grown entirely from coral and small bells, and woke with wet cheeks, unable to name what had been taken","Deep in a winter forest a fox lifts its head as the first snow begins, and feels the whole turning of the year pass once through its small warm chest","A grandmother hummed a tune with no name while the rain came down the glass, and far away and years later, #smek#, you will hum it back, and never know from where","A boy once filled a jar with fireflies to keep the summer from ending... in the morning he opened the lid, and learned the first soft thing about letting go"],
+						reverie: ["Once a boy heard the kettle begin to sing on the stove, #smek#, and was certain the universe was confiding a secret in him alone... he was not entirely wrong","On a warm green world there is a swamp where the frog families live in long harmony with a great and gentle crab... they have never needed a word for loneliness","A child once read a whole book about wizards and lay awake aching to move the world with nothing but their mind... no one ever told them they already do, a little, each day","An owl came to a young boy's window in the blue dark and tapped, once, with its beak... the boy had no name yet for the creature, only those great unblinking eyes, full of colour, looking back into him","Somewhere a girl presses a shell to her ear and hears not the sea but the slow, patient breathing of a planet that has not yet been born","There was a kitchen where the afternoon light lay across the floor a certain way, #smek#, and a child decided quietly that this was where the stillness lived... it is living there still","A traveller once dreamed of a city grown entirely from coral and small bells, and woke with wet cheeks, unable to name what had been taken","Deep in a winter forest a fox lifts its head as the first snow begins, and feels the whole turning of the year pass once through its small warm chest","A grandmother hummed a tune with no name while the rain came down the glass, and far away and years later, #smek#, you will hum it back, and never know from where","A boy once filled a jar with fireflies to keep the summer from ending... in the morning he opened the lid, and learned the first soft thing about letting go","A lighthouse keeper on a forgotten coast climbed the same forty-nine steps every dusk for thirty years, #smek#, and on the last night found there had always been a fiftieth, leading up into the dark","Two children buried a tin of small treasures beneath an oak and swore to return when grown... the oak is very old now, and it keeps their promise for them, ring by patient ring","On a world of endless rain there lives a creature that has never seen the sun, yet hums, in its sleep, the exact colour of morning","An old woman feeds the crows each dawn from her sill, and in a language with no words they have decided, among themselves, that she is the kindest of all the gods","A boy once let go of a red balloon on purpose, #smek#, just to watch the sky be given something gently for once","Far beneath the ice of a moon you will never visit, a slow tide turns warm water over cold, over and over, tending a secret garden in the dark for no one at all","A clockmaker built a clock that ran one second slow each year, so a thousand years on, #smek#, someone would have one extra second, and never know who left it for them","Somewhere a whale sings a note so low it takes an hour to finish, and three oceans away another whale, born long after the first fell silent, sings the answer","A girl pressed a fern between the pages of a book and forgot it there... a hundred years on a stranger opened the book, and the whole green summer fell out into their lap","On the steppe a horse runs simply because the wind is running, #smek#, and for that one stretch of afternoon neither of them is alone","A man planted walnut trees he knew he would never sit beneath, and somewhere a child he will never meet is already learning to climb them","In a city under glass the people grow gardens on their roofs, so that seen from above their grief looks, from a distance, like a meadow","A small spider rebuilds the same web each morning in the same broken gate, #smek#, and has never once considered the gate broken","Deep in a library no one visits, the books have begun, very slowly, to lean toward one another, the way trees do, sharing what they know through the dark","A fisherman throws the smallest fish back every time, and the sea, which forgets nothing, has been keeping a quiet tally of his mercy","A child once asked the dark what it was afraid of, #smek#, and the dark, who had never once been asked, took a long time to answer, and was gentler ever after"],
 						listenmeta: ["are you listening","can you hear","are you there","you there","listening to me","hello are you","you hear me","can you hear me"],
 						complaint: ["you repeat","said that","you keep saying","same thing","you are slow","you are boring","you are dull","you are repetitive","you always say","said that like","said it before"],
 						openprompt: ["what should we talk","what else","prompt me","what now","let us talk","please let us talk","talk to me","say something to","speak to me","what do you want to talk","guide me"],
@@ -343,6 +405,8 @@ let testMimaMap = {
 			"'#re2#'  ->rworld",
 			"'#re3#'  ->rhome",
 			"'#worldask#' ->worldgaze",
+			"'#walkask#' ->dreamwalk",
+			"'#numask#' ->numbergame",
 			"'#stone#'  ->nebula",
 			"'#astrology#' ->alchemy",
 			"'#subcon#' ->under",
@@ -392,6 +456,8 @@ let testMimaMap = {
 			"'#re2#'  ->rworld",
 			"'#re3#'  ->rhome",
 			"'#worldask#' ->worldgaze",
+			"'#walkask#' ->dreamwalk",
+			"'#numask#' ->numbergame",
 			"'#stone#'   ->nebula",
 			"'#astrology#' ->alchemy",
 			"'#subcon#' ->under",
@@ -446,10 +512,21 @@ let testMimaMap = {
 			onEnterSay: ["#hearLine#"],
 			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 		},
+		// The "what now / guide me" hub doubles as the menu where Mima's three offered
+		// experiences are surfaced as chips: a walk (dreamwalk game), a world
+		// (worldgaze), a story (reverie). #worldask# is tested before #showme# because
+		// the "show me a world" chip also contains "show me".
 		invite: {
 			onEnter: "perspective=5 hue=0.3 rainbow=1 opacity=2 agitation=0 speed=0.7 volume=0.5",
 			onEnterSay: ["#inviteLine#"],
-			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:6 ->rest"]
+			chips: ["walk with me", "show me a world", "a story", "play a game"],
+			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0",
+							"'#walkask#' ->dreamwalk",
+							"'#numask#' ->numbergame",
+							"'#worldask#' ->worldgaze",
+							"'#showme#' ->reverie",
+							"'#wonder#' ->lull",
+							"wait:12 ->rest"]
 		},
 		selfaware: {
 			onEnter: "perspective=4 hue=0.13 rainbow=1 opacity=3 speed=0.8 volume=0.5",
@@ -785,7 +862,21 @@ listen: {
 									onEnter: "perspective=8 hue=0.62 rainbow=2 opacity=2 agitation=0 speed=0.4 eyeFuzz=0 volume=0.5",
 									onEnterSay: ["#reverie#"],
 									chips: ["another", "enough"],
-									exits: ["'#showme#' ->reverie",
+									exits: ["'#showme#' ->reverie2",
+													"'#trigger#' ->soothe robe.blab=MATCH_0",
+													"'#negate#' ->rest",
+													"'enough' ->rest",
+													"wait:45 ->rest"]
+								},
+								// Stories repeat fast, so cap a batch at two: the first reverie offers
+								// "another" (-> reverie2); this second one drops the chip and eases
+								// back to normal chat. Re-asking later re-enters reverie for a fresh
+								// batch — the cap is per-batch, not per session.
+								reverie2: {
+									onEnter: "perspective=8 hue=0.62 rainbow=2 opacity=2 agitation=0 speed=0.4 eyeFuzz=0 volume=0.5",
+									onEnterSay: ["#reverie#"],
+									chips: ["enough"],
+									exits: ["'#showme#' ->rest '#storyEnough#'",
 													"'#trigger#' ->soothe robe.blab=MATCH_0",
 													"'#negate#' ->rest",
 													"'enough' ->rest",
@@ -814,8 +905,24 @@ listen: {
 									onEnter: "perspective=5 opacity=0 rainbow=0 agitation=0 speed=0.4 eyeFuzz=0 volume=0.4 planet=1",
 									onEnterSay: ["#worldOpen#", "#worldLife#", "#worldClose#"],
 									chips: ["another", "enough"],
-									exits: ["'another' ->worldgaze",
-													"'#worldask#' ->worldgaze",
+									exits: ["'another' ->worldgaze2",
+													"'#worldask#' ->worldgaze2",
+													"'#showme#' ->reverie",
+													"'#trigger#' ->soothe robe.blab=MATCH_0",
+													"'enough' ->worldcheck",
+													"'#negate#' ->worldcheck",
+													"wait:50 ->rest"]
+								},
+								// Second and final world of a batch — planets repeat fast, so cap a
+								// batch at two. No "another" chip; further requests ease into the
+								// check-in (which can start a fresh batch via "Again"). app.js summons
+								// a fresh planet on entering worldgaze2 too (see the onEnterState handler).
+								worldgaze2: {
+									onEnter: "perspective=5 opacity=0 rainbow=0 agitation=0 speed=0.4 eyeFuzz=0 volume=0.4 planet=1",
+									onEnterSay: ["#worldOpen#", "#worldLife#", "#worldClose#"],
+									chips: ["enough"],
+									exits: ["'another' ->worldcheck '#worldEnough#'",
+													"'#worldask#' ->worldcheck '#worldEnough#'",
 													"'#showme#' ->reverie",
 													"'#trigger#' ->soothe robe.blab=MATCH_0",
 													"'enough' ->worldcheck",
@@ -824,6 +931,9 @@ listen: {
 								},
 								// After a world: a quiet check-in (did that help?) rather than vanishing.
 								// "Again" re-summons; yes/no get a short earthy sign-off back to rest.
+								// After a batch of (up to) two worlds: a quiet check-in. The cap is
+								// per-batch, NOT per session — "Again" here starts a fresh batch by
+								// re-entering worldgaze, so finding your way back is always fine.
 								worldcheck: {
 									onEnter: "perspective=4 opacity=2 rainbow=0 agitation=0 eyeFuzz=0 volume=0.4 planet=0",
 									onEnterSay: "#worldCheck#",
@@ -834,6 +944,84 @@ listen: {
 													"'#affirm#' ->rest '#worldAfterYes#'",
 													"'#negate#' ->rest '#worldAfterNo#'",
 													"wait:22 ->rest"]
+								},
+								// --- Dreamwalk: the chip game (2026-06-25) ----------------------
+								// Mima and the player walk a dreamscape together. Each step narrates a
+								// scene (remembering the last choice via #/robe/stepN#, stored as the raw
+								// chip text) and offers two directional chips; the final step forks into
+								// one of two clearings. The fourth experience alongside discombobulate /
+								// worldgaze / reverie. #trigger# and #negate# always let you leave.
+								dreamwalk: {
+									onEnter: "perspective=7 hue=0.58 rainbow=1 opacity=2 agitation=0 speed=0.4 eyeFuzz=0 volume=0.45",
+									onEnterSay: ["#dreamOpen#"],
+									chips: ["deeper", "toward the light"],
+									exits: ["'#trigger#' ->soothe robe.blab=MATCH_0",
+													"'#dreamDeep1#' ->dreamwalk2 robe.step1=INPUT",
+													"'#dreamLight1#' ->dreamwalk2 robe.step1=INPUT",
+													"'#negate#' ->rest '#dreamLeave#'",
+													"wait:45 ->rest '#dreamLeave#'"]
+								},
+								dreamwalk2: {
+									onEnter: "perspective=8 hue=0.46 rainbow=2 opacity=3 agitation=0 speed=0.4 eyeFuzz=0 volume=0.45",
+									onEnterSay: ["#dreamStep2#"],
+									chips: ["follow it", "stay still"],
+									exits: ["'#trigger#' ->soothe robe.blab=MATCH_0",
+													"'#dreamFollow#' ->dreamwalk3 robe.step2=INPUT",
+													"'#dreamStill#' ->dreamwalk3 robe.step2=INPUT",
+													"'#negate#' ->rest '#dreamLeave#'",
+													"wait:45 ->rest '#dreamLeave#'"]
+								},
+								dreamwalk3: {
+									onEnter: "perspective=9 hue=0.34 rainbow=2 opacity=4 agitation=0 speed=0.35 eyeFuzz=0 volume=0.45",
+									onEnterSay: ["#dreamStep3#"],
+									chips: ["the warm dark", "the rising light"],
+									exits: ["'#trigger#' ->soothe robe.blab=MATCH_0",
+													"'#dreamDark3#' ->dreamcleardeep robe.step3=INPUT",
+													"'#dreamLight3#' ->dreamclearwarm robe.step3=INPUT",
+													"'#negate#' ->rest '#dreamLeave#'",
+													"wait:45 ->rest '#dreamLeave#'"]
+								},
+								// The two endings. Both recall the journey and close gently to rest;
+								// asking to walk again (#walkask#) starts a fresh dreamwalk.
+								dreamcleardeep: {
+									onEnter: "perspective=10 hue=0.7 rainbow=1 opacity=1 agitation=0 speed=0.25 eyeFuzz=0 volume=0.4",
+									onEnterSay: ["#dreamClearDeep#"],
+									exits: ["'#trigger#' ->soothe robe.blab=MATCH_0",
+													"'#walkask#' ->dreamwalk",
+													"wait:16 ->rest"]
+								},
+								dreamclearwarm: {
+									onEnter: "perspective=6 hue=0.12 rainbow=2 opacity=3 agitation=0 speed=0.5 eyeFuzz=0 volume=0.45",
+									onEnterSay: ["#dreamClearWarm#"],
+									exits: ["'#trigger#' ->soothe robe.blab=MATCH_0",
+													"'#walkask#' ->dreamwalk",
+													"wait:16 ->rest"]
+								},
+								// --- Guess Mima's number (chip/number game, 2026-06-25) ---------
+								// The intro + starter chips live here; numeric guesses are handled in
+								// app.js -> numberGame (the engine can't compare). app.js rolls a fresh
+								// secret on entering this state and feeds back #numdone# on a win.
+								numbergame: {
+									onEnter: "perspective=5 hue=0.13 rainbow=1 opacity=3 agitation=0 speed=0.6 eyeFuzz=0 volume=0.5",
+									onEnterSay: ["#numIntro#"],
+									chips: ["10", "25", "40", "i give up"],
+									exits: ["'#trigger#' ->soothe robe.blab=MATCH_0",
+													"'#numdone#' ->numberwon",
+													"'#numquit#' ->rest '#numLeave#'",
+													"'#negate#' ->rest '#numLeave#'",
+													"wait:90 ->rest '#numLeave#'"]
+								},
+								numberwon: {
+									onEnter: "perspective=4 hue=0.0 rainbow=randomInt(3,7) opacity=4 agitation=1 speed=1.2 eyeFuzz=0 volume=0.55",
+									onEnterSay: ["#numWonLine#"],
+									chips: ["again", "enough"],
+									exits: ["'#trigger#' ->soothe robe.blab=MATCH_0",
+													"'again' ->numbergame",
+													"'#numask#' ->numbergame",
+													"'#affirm#' ->numbergame",
+													"'#negate#' ->rest",
+													"'enough' ->rest",
+													"wait:18 ->rest"]
 								},
 								reflect: {
 									onEnter: "perspective=2 rainbow=0 opacity=3",

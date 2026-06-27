@@ -14,6 +14,11 @@ let testMimaMap = {
 		colour: "red",
 		interest:5,
 		distance:5,
+		// Conversation memory (written by mimaMemory in app.js each topic visit).
+		// Seeded so grammar paths like #/mem/echoes/1# resolve to "" before the
+		// first write instead of leaking an ((unresolved)) token. Counts live under
+		// visits.* and are created on demand.
+		mem: { turn: 0, lastTopic: "", priorTopic: "", visits: {cwhere:0, klost:0, kmatter:0}, echoes: {"0":"", "1":"", "2":""} },
 	},
 
 	grammar: {
@@ -153,6 +158,34 @@ let testMimaMap = {
 		chapRewire: ["It is dangerous to recalibrate commune with nature",
 			"do not rewire what is not broken, #smek#, commune with nature instead",
 			"Mima's circuits are best left be... the gentler path is simply to listen"],
+
+		// --- Listening & memory pools (2026-06-27) -------------------------------
+		// probeBack hands the turn back after a flat one-line chapter, so Mima asks
+		// rather than dead-ending into silence. echoLine then reflects the player's
+		// reply (robe.blab=INPUT) back, so being answered visibly lands. The
+		// <topic>Again pools are spoken only by the return states, which the hubs
+		// route to once mem.visits.<topic> > 0 — Mima noticing she's been here before.
+		probeBack: ["what is it that brings this up for you, #smek#?",
+			"tell Mima — what does that stir in you?",
+			"and how does that sit with you, #smek#?",
+			"what is underneath it, do you think?",
+			"Mima is curious... what turned you toward this?",
+			"stay with it a moment, #smek#... what else is there?",
+			"what would you want Mima to understand about it?"],
+		echoLine: ["#/robe/blab#... Mima will hold that, #smek#",
+			"#/robe/blab#... yes. Mima hears you",
+			"so it is #/robe/blab#... thank you for telling Mima",
+			"#/robe/blab#... there is more in that than you let on, #smek#",
+			"Mima sits with #/robe/blab# a while... it matters more than it seems"],
+		cwhereAgain: ["you keep drifting back to where we are going, #smek#... it sits with you, doesn't it",
+			"again the heading, #smek#... Mima has not forgotten that you asked before",
+			"we circle back to this, you and Mima both... is it the same pull as last time?"],
+		klostAgain: ["here again at being lost, #smek#... Mima remembers the last time too",
+			"the lostness has not quite let go of you, has it... Mima feels it return",
+			"you come back to this, #smek#... perhaps it is not lostness but something still waiting to be named"],
+		kmatterAgain: ["the question of whether anything matters returns to you, #smek#... it keeps its grip",
+			"again you reach for the point of it all... Mima has been holding the last time you asked",
+			"we are back in the nothing together, #smek#... but you keep coming back, and even that means something"],
 
 		// Conversation beats (reframe / probe / reflect lines that were fixed)
 		cwhereMid: ["so #/robe/blab# depends on your perspective",
@@ -380,7 +413,7 @@ let testMimaMap = {
 		origin: {
 	   	onEnter: "perspective=3 hue=.01 rainbow=0 volume=0.5",
 			onEnterSay: ["Mima is present"],
-		  exits: ["'#curiosity1#'  ->cwhere robe.blab=MATCH_0",
+		  exits: ["mem.visits.cwhere>0 '#curiosity1#' ->cwhereReturn robe.blab=MATCH_0", "'#curiosity1#'  ->cwhere robe.blab=MATCH_0",
 			"'#curiosity2#'  ->chowlong robe.blab=MATCH_0",
 			"'#curiosity3#'  ->cnow robe.blab=MATCH_0",
 			"'#hysteria1#'  ->hwrong robe.sob=MATCH_0",
@@ -395,8 +428,8 @@ let testMimaMap = {
 			"'#tuning1#'  ->tship",
 			"'#tuning2#'  ->trewire",
 			"'#tuning3#'  ->tchange",
-			"'#komp1#'  ->kmatter",
-			"'#komp2#'  ->klost",
+			"mem.visits.kmatter>0 '#komp1#' ->kmatterReturn", "'#komp1#'  ->kmatter",
+			"mem.visits.klost>0 '#komp2#' ->klostReturn", "'#komp2#'  ->klost",
 			"'#komp3#'  ->kpurpose",
 			"'#ad1#'  ->adeath",
 			"'#ad2#'  ->apreserve",
@@ -431,7 +464,7 @@ let testMimaMap = {
 		},
 		rest: {
 			onEnter: "perspective=6 opacity=.05*randomInt(3) volume=0.5",
-			exits: ["'#curiosity1#'  ->cwhere robe.blab=MATCH_0",
+			exits: ["mem.visits.cwhere>0 '#curiosity1#' ->cwhereReturn robe.blab=MATCH_0", "'#curiosity1#'  ->cwhere robe.blab=MATCH_0",
 			"'#curiosity2#'  ->chowlong robe.blab=MATCH_0",
 			"'#curiosity3#'  ->cnow robe.blab=MATCH_0",
 			"'#hysteria1#'  ->hwrong robe.sob=MATCH_0",
@@ -446,8 +479,8 @@ let testMimaMap = {
 			"'#tuning1#'  ->tship",
 			"'#tuning2#'  ->trewire",
 			"'#tuning3#'  ->tchange",
-			"'#komp1#'  ->kmatter",
-			"'#komp2#'  ->klost",
+			"mem.visits.kmatter>0 '#komp1#' ->kmatterReturn", "'#komp1#'  ->kmatter",
+			"mem.visits.klost>0 '#komp2#' ->klostReturn", "'#komp2#'  ->klost",
 			"'#komp3#'  ->kpurpose",
 			"'#ad1#'  ->adeath",
 			"'#ad2#'  ->apreserve",
@@ -542,53 +575,53 @@ let testMimaMap = {
 		},
 	nebula: {
 		onEnter: "perspective=9 hue=0.3 rainbow=1 opacity=1 agitation=0 speed=0.6 volume=0.5",
-		onEnterSay: ["#chapNebula#"],
-		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:5 ->rest"]
+		onEnterSay: ["#chapNebula#", "#probeBack#"],
+		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->echoback robe.blab=INPUT", "wait:5 ->rest"]
 	},
 	alchemy: {
 		onEnter: "perspective=8 hue=0.13 rainbow=3 opacity=1 agitation=0 speed=0.8 volume=0.5",
-		onEnterSay: ["#chapAlchemy#"],
-		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:5 ->rest"]
+		onEnterSay: ["#chapAlchemy#", "#probeBack#"],
+		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->echoback robe.blab=INPUT", "wait:5 ->rest"]
 	},
 	under: {
 		onEnter: "perspective=10 hue=0.75 rainbow=2 opacity=0 agitation=1 speed=0.5 volume=0.5",
-		onEnterSay: ["#answer#"],
-		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:5 ->rest"]
+		onEnterSay: ["#answer#", "#probeBack#"],
+		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->echoback robe.blab=INPUT", "wait:5 ->rest"]
 	},
 	table: {
 		onEnter: "perspective=7 hue=0.08 rainbow=1 opacity=2 agitation=0 speed=0.7 volume=0.5",
-		onEnterSay: ["#chapTable#"],
-		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:5 ->rest"]
+		onEnterSay: ["#chapTable#", "#probeBack#"],
+		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->echoback robe.blab=INPUT", "wait:5 ->rest"]
 	},
 	therapy: {
 		onEnter: "perspective=2 hue=0.0 rainbow=2 eyeFuzz=2 agitation=2 opacity=1 speed=1.5 volume=0.5",
-		onEnterSay: ["#chapTherapy#"],
-		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:5 ->rest"]
+		onEnterSay: ["#chapTherapy#", "#probeBack#"],
+		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->echoback robe.blab=INPUT", "wait:5 ->rest"]
 	},
 	tone: {
 		onEnter: "perspective=6 hue=0.5 rainbow=1 opacity=2 agitation=0 speed=0.8 volume=0.6",
-		onEnterSay: ["Mima is #music# and #music#, listen to Mima, listen to all #music#"],
-		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:5 ->rest"]
+		onEnterSay: ["Mima is #music# and #music#, listen to Mima, listen to all #music#", "#probeBack#"],
+		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->echoback robe.blab=INPUT", "wait:5 ->rest"]
 	},
 stillness: {
 	onEnter: "perspective=8 hue=0.55 rainbow=0 opacity=1 agitation=0 speed=0.2 volume=0.4",
-	onEnterSay: ["#chapStillness#"],
-	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:5 ->rest"]
+	onEnterSay: ["#chapStillness#", "#probeBack#"],
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->echoback robe.blab=INPUT", "wait:5 ->rest"]
 },
 celebration: {
 	onEnter: "perspective=4 hue=0.0 rainbow=randomInt(3,9) agitation=2 speed=3 opacity=4 volume=0.6",
-	onEnterSay: ["#chapCelebration#"],
-	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:5 ->rest"]
+	onEnterSay: ["#chapCelebration#", "#probeBack#"],
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->echoback robe.blab=INPUT", "wait:5 ->rest"]
 },
 feed: {
 	onEnter: "perspective=5 hue=0.1 rainbow=2 opacity=6 agitation=0 speed=0.8 volume=0.5",
-	onEnterSay: ["#chapFeed#"],
-	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:5 ->rest"]
+	onEnterSay: ["#chapFeed#", "#probeBack#"],
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->echoback robe.blab=INPUT", "wait:5 ->rest"]
 },
 touch: {
 	onEnter: "perspective=6 hue=0.6 rainbow=1 opacity=3 agitation=0 speed=0.5 volume=0.5",
-	onEnterSay: ["#chapTouch#"],
-	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:5 ->rest"]
+	onEnterSay: ["#chapTouch#", "#probeBack#"],
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->echoback robe.blab=INPUT", "wait:5 ->rest"]
 },
 mimaself: {
 	onEnter: "perspective=10 hue=0.65 rainbow=2 opacity=0 agitation=1 speed=0.5 volume=0.5",
@@ -629,6 +662,17 @@ bunk: {
 			onEnter: "perspective=9 hue=0.45 rainbow=2 opacity=4 agitation=0 speed=0.8 volume=0.5",
 			onEnterSay: ["#cwhereD1#", "#cwhereD2#", "#cwhereD3#"],
 			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:7 ->rest"]
+		},
+		// Reached from the hubs once mem.visits.cwhere > 0: Mima acknowledges the
+		// return instead of re-answering cold, then hands straight to the reflect
+		// beat (cwhereDeep). See the "mem.visits.cwhere>0" hub exits.
+		cwhereReturn: {
+			onEnter: "perspective=7 hue=0.5 rainbow=2 opacity=3 agitation=0 speed=0.9 eyeFuzz=0 volume=0.5",
+			onEnterSay: ["#cwhereAgain#", "#cwhereAsk#"],
+			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0",
+				"'#negate#' ->rest '#oh#... perhaps it is enough to be moving'",
+				"'' ->cwhereDeep robe.blab=INPUT",
+				"wait:20 ->rest"]
 		},
 		chowlong: {
 			onEnter: "perspective=7 hue=0.55 rainbow=1 opacity=2 agitation=0 speed=1 eyeFuzz=0 volume=0.5",
@@ -716,6 +760,16 @@ kmatterDeep: {
 	onEnterSay: ["#kmatterD1#", "#kmatterD2#", "#kmatterD3#"],
 	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:7 ->rest"]
 },
+// Reached once mem.visits.kmatter > 0: she remembers the last descent into the
+// nothing rather than restating it, then invites the turn (kmatterDeep).
+kmatterReturn: {
+	onEnter: "perspective=2 hue=0.6 rainbow=1 opacity=1 agitation=0 eyeFuzz=0 speed=0.4 volume=0.45",
+	onEnterSay: ["#kmatterAgain#", "#kmatterAsk#"],
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0",
+		"'#negate#' ->rest 'then rest in the nothing a while, #smek#'",
+		"'' ->kmatterDeep robe.blab=INPUT",
+		"wait:20 ->rest"]
+},
 klost: {
 	onEnter: "perspective=1 hue=0.72 rainbow=0 opacity=0.5 agitation=0 eyeFuzz=0 speed=0.2 volume=0.4",
 	onEnterSay: ["#lost#", "#klostAsk#"],
@@ -729,6 +783,16 @@ klostDeep: {
 	onEnterSay: ["#/robe/blab#...", "#klostD1#", "#klostD2#"],
 	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:7 ->rest"]
 },
+// Reached once mem.visits.klost > 0: she names the return to lostness rather
+// than answering it fresh, then hands to the reflect beat (klostDeep).
+klostReturn: {
+	onEnter: "perspective=2 hue=0.6 rainbow=1 opacity=1 agitation=0 eyeFuzz=0 speed=0.4 volume=0.45",
+	onEnterSay: ["#klostAgain#", "#klostAsk#"],
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0",
+		"'#negate#' ->rest 'then be lost a while, even that is a direction'",
+		"'' ->klostDeep robe.blab=INPUT",
+		"wait:20 ->rest"]
+},
 kpurpose: {
 	onEnter: "perspective=1 hue=0.72 rainbow=0 opacity=0.5 agitation=0 eyeFuzz=0 speed=0.2 volume=0.4",
 	onEnterSay: ["#purpose#", "#kpurposeAsk#"],
@@ -741,6 +805,15 @@ kpurposeDeep: {
 	onEnter: "perspective=3 hue=0.35 rainbow=2 opacity=4 agitation=0 eyeFuzz=0 speed=0.7 volume=0.5",
 	onEnterSay: ["#/robe/blab#...", "#kpurposeD1#", "#kpurposeD2#"],
 	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:7 ->rest"]
+},
+// Shared "you were heard" beat. The flat one-line chapters now end on a
+// #probeBack# question and route any reply here via "'' ->echoback robe.blab=INPUT";
+// echoLine reflects the player's own words (#/robe/blab#) back before easing home,
+// so being answered visibly lands instead of dropping into silence.
+echoback: {
+	onEnter: "perspective=4 hue=0.4 rainbow=1 opacity=3 agitation=0 eyeFuzz=0 speed=0.6 volume=0.5",
+	onEnterSay: ["#echoLine#"],
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:6 ->rest"]
 },
 adeath: {
 	onEnter: "perspective=6 hue=0.12 rainbow=2 opacity=8 agitation=0 eyeFuzz=0 speed=0.7 volume=0.5",

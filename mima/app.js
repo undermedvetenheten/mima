@@ -10,6 +10,62 @@ let settings = {
 	chirpChance: 0.25,
 }
 
+// --- Conversation memory (2026-06-27) ----------------------------------------
+// The Chancery engine keeps no history: it stores only the last matched input
+// (robe.blab) and wipes activeInput on every transition. To make Mima feel like
+// she's tracking where the conversation is at, we record a small mem.* namespace
+// on the blackboard each time she enters a *topic* state. Grammar reads it back
+// via #/mem/.../# (e.g. #/mem/echoes/1#) and value-gated exits branch on it
+// (e.g. "mem.visits.cwhere > 1 ->cwhereReturn").
+//
+// Counts are stored NUMERIC — they're only ever used in exit comparisons; a
+// number thrown into Tracery text breaks path resolution (see the robe.tries
+// note in userInput). Echoes (the player's own words) are STRINGS, safe to weave
+// into lines.
+let mimaMemory = {
+	// Hub / transition / beat-continuation states that shouldn't count as topics.
+	structural: new Set(["origin", "rest", "muse", "hear", "invite", "selfaware",
+		"driftidle", "idle", "cryo", "pause", "lull", "discombobulate"]),
+
+	// Collapse multi-beat chains onto one topic label, so a whole exchange counts
+	// once and a return is detected on the entry state's name. Extend as chains grow.
+	topicOf: {
+		cwhereDeep: "cwhere", chowlongDeep: "chowlong", cnowDeep: "cnow",
+		// Return states count as their base topic, so a comeback keeps climbing
+		// the same visit counter rather than spawning a parallel one.
+		cwhereReturn: "cwhere", klostReturn: "klost", kmatterReturn: "kmatter",
+		klostDeep: "klost", kmatterDeep: "kmatter", kpurposeDeep: "kpurpose",
+	},
+
+	record(bb, stateID) {
+		if (!bb || this.structural.has(stateID)) return
+		let topic = this.topicOf[stateID] || stateID
+		let get = (path, dflt) => { try { return bb.getAtPath(path) } catch (e) { return dflt } }
+
+		// Length of the topical conversation so far.
+		bb.setAtPath(["mem", "turn"], (get(["mem", "turn"], 0) || 0) + 1)
+
+		// Per-topic visit count (numeric — drives "mem.visits.<topic> > 1" exits).
+		bb.setAtPath(["mem", "visits", topic], (get(["mem", "visits", topic], 0) || 0) + 1)
+
+		// Topic trail.
+		let last = get(["mem", "lastTopic"], undefined)
+		if (last !== undefined && last !== topic)
+			bb.setAtPath(["mem", "priorTopic"], last)
+		bb.setAtPath(["mem", "lastTopic"], topic)
+
+		// Rolling ring of the last few player phrases, so she can reference
+		// something said earlier, not just the immediately-prior robe.blab. Only
+		// push a genuinely new phrase (dedupe against the most recent echo).
+		let blab = get(["robe", "blab"], undefined)
+		if (typeof blab === "string" && blab.length && blab !== get(["mem", "echoes", "0"], undefined)) {
+			bb.setAtPath(["mem", "echoes", "2"], get(["mem", "echoes", "1"], ""))
+			bb.setAtPath(["mem", "echoes", "1"], get(["mem", "echoes", "0"], ""))
+			bb.setAtPath(["mem", "echoes", "0"], blab)
+		}
+	}
+}
+
 let app = {
 	devMode: false,
 	time: {},
@@ -17,6 +73,8 @@ let app = {
 	face: new Face(),
 
 	isActive: false,
+	isThinking: false,       // true while Mima formulates a reply -> chat shows the listening dots
+	particleMode: "chaos",   // which background formation drawSpace shows (chaos|planet|firefly)
 	valueTracker: {},
 	values: {
 	},
@@ -63,6 +121,35 @@ let app = {
 		app.liveAgitation  += (target - app.liveAgitation)  * (1 - Math.pow(0.5, dt / 0.10))  // ~0.1s
 		app.swellAgitation += (target - app.swellAgitation) * (1 - Math.pow(0.5, dt / 1.20))  // ~1.2s
 		app.values.agitation = app.liveAgitation        // what the face renders from
+	},
+
+	// Called on each keypress from the chat input (see chat-window @typing). Spawns
+	// a small burst of particles that rise from the caret's screen position toward
+	// the face, and pulses micro-agitation so Mima visibly reacts to the user
+	// composing. Suppressed while a calm formation is showing (planet/firefly), so
+	// typing doesn't scatter particles across the constellation or fireflies.
+	userTyping({ clientX, clientY } = {}) {
+		const now = Date.now()
+		if (now - (app._lastTypingPulse || 0) >= 350) {
+			app._lastTypingPulse = now
+			app.flareAgitation(0.35)
+		}
+		const f = app.face
+		if (!f || !f._canvas || !clientX) return
+		// Match the touch-spawn gate (face.update): no new particles once the field
+		// has settled into a planet constellation or firefly storytime.
+		if (app.particleMode && app.particleMode !== 'chaos') return
+		const pos = f.clientToCanvas(clientX, clientY)
+		const z2  = f._z2 || 1
+		const tx  = pos.x / z2
+		const ty  = pos.y / z2
+		for (let i = 0; i < 2; i++) {
+			let p     = new TouchParticle(tx + (Math.random() - 0.5) * 28, ty + (Math.random() - 0.5) * 12)
+			p.vx      = (Math.random() - 0.5) * 70
+			p.vy      = -140 - Math.random() * 90
+			p.age     = 0
+			f.typeParticles.push(p)
+		}
 	},
 
 	blink() {
@@ -122,6 +209,11 @@ let app = {
 		handlers: {
 			onEnterState: (stateID, lastStateID) => {
 				console.log("ENTER STATE HANDLER:" + stateID)
+
+				// Record the conversation arc (turn count, per-topic visits, topic
+				// trail, recent player phrases) so Mima can notice returns and refer
+				// back to earlier moments. See mimaMemory above.
+				mimaMemory.record(app.instance.blackboard, stateID)
 				// One fade sound per state change, so every transition has an
 				// audible whoosh (see playFade in sound.js).
 				playFade()
@@ -156,14 +248,13 @@ let app = {
 					else numberGame.active = false
 				}
 
-				// Storytime (the reverie states) turns the roaming background particles
-				// into drifting fireflies; any other state lets them return to chaos.
-				// Lerped slowly (2.5s) so the weight shift is gentle; drawSpace also eases
-				// each particle's position, so together they drift rather than dash.
-				if (app.valueTracker.firefly) {
-					let story = (stateID === "reverie" || stateID === "reverie2")
-					app.valueTracker.firefly.set(story ? 1 : 0, app.time.current, 2.5)
-				}
+				// Background particle formation: planet mode -> a still star constellation,
+				// storytime (reverie) -> drifting fireflies, anything else -> roaming chaos.
+				// drawSpace (face.js) crossfades between them — the old formation fades out
+				// and the new one fades in, so there's no frantic in-between movement.
+				if (stateID === "worldgaze" || stateID === "worldgaze2") app.particleMode = "planet"
+				else if (stateID === "reverie" || stateID === "reverie2") app.particleMode = "firefly"
+				else app.particleMode = "chaos"
 
 				// Calling into the void and being ignored escalates her agitation;
 				// each idle utterance pushes harder until the player engages.
@@ -181,6 +272,7 @@ let app = {
 
 				return new Promise((resolve) => {
 					setTimeout(() => {
+						app.isThinking = false   // her reply has arrived -> hide the listening dots
 						app.messages.push({
 							owner: "bot",
 							text: [output]
@@ -251,13 +343,28 @@ let app = {
 			synthBed.start()
 
 			let blinkCount = 0
+			let idlePulseCount = 0
+			let nextIdlePulse = 150 + Math.floor(Math.random() * 200)
 			app.tickInterval = setInterval(() => {
 				app.instance.tick()
 				blinkCount++
+				idlePulseCount++
 
 				if (blinkCount > 50 + 60*Math.random()) {
 					app.blink()
 					blinkCount = 0
+				}
+
+				// During quiet listening states, occasionally pulse the face so she
+				// feels present even when nothing is being said. NOTE: the Chancery
+				// instance exposes the current state as `stateID` (not `currentState`).
+				if (idlePulseCount >= nextIdlePulse) {
+					const listeningStates = ["rest", "hear", "origin"]
+					if (listeningStates.includes(app.instance.stateID)) {
+						app.flareAgitation(0.5 + Math.random() * 0.4)
+					}
+					idlePulseCount = 0
+					nextIdlePulse = 150 + Math.floor(Math.random() * 250)
 				}
 			}, 100)
 		}
@@ -277,6 +384,10 @@ let app = {
 
 		// Send it to the chat
 		app.messages.push(msg)
+
+		// Show the listening indicator while Mima formulates her response (cleared
+		// when her line arrives via onOutput / say).
+		app.isThinking = true
 
 		// Ambient flare while she prepares her answer (swells in, doesn't snap on);
 		// engaging cools the "being ignored" spiral.
@@ -316,6 +427,7 @@ let app = {
 	// flattens Tracery tokens (#smek# etc.) through the chancery grammar context so
 	// Mima's voice stays consistent.
 	say(raw) {
+		app.isThinking = false   // a direct line is being spoken -> hide the listening dots
 		let output = app.instance.context.flatten(raw)
 		app.messages.push({ owner: "bot", text: [output] })
 		return app.speakWords(output)
@@ -493,7 +605,7 @@ window.addEventListener("keydown", e => {
 new Vue({
 	template: `
 	<div id="mima-controls">
-		<chat-window v-if="app.isActive" :messages="app.messages" :chips="app.chips" @sendInput='app.userInput' />
+		<chat-window v-if="app.isActive" :messages="app.messages" :chips="app.chips" :showListening="app.isThinking" @sendInput='app.userInput' @typing='app.userTyping' />
 
 		<div v-else id="start-controls">
 		<button @click="app.start">Hello?</button>

@@ -4,7 +4,7 @@ Vue.component('chat-window', {
 
 	template: `
 	<div class="chatwindow">
-		
+
 		<div class="chatwindow-messages" ref="messages">
 
 			<!-- show the message, who it's from, any images, etc -->
@@ -22,12 +22,17 @@ Vue.component('chat-window', {
 				<div class="chatwindow-message-author">
 				</div>
 			</div>
+			<div class="chatwindow-message chatwindow-message-bot listening-indicator" v-if="showListening">
+				<div class="listening-dots">
+					<span></span><span></span><span></span>
+				</div>
+			</div>
 		</div>
 		<div class="chatwindow-controls">
 			<div class="chatwindow-chips">
 				<button class="chat-chip" @click="chipInput(chip)" v-for="chip in chips">{{chip}}</button>
 			</div>
-			<input class="chatwindow-input" v-model="input" ref="input" @keyup="typeInput"></input>
+			<input class="chatwindow-input" v-model="input" ref="input" @keyup="typeInput" @input="onTyping"></input>
 			<button v-if="sendButton">▶︎</button>
 		</div>
 	</div>
@@ -60,11 +65,27 @@ Vue.component('chat-window', {
 		chipInput(text) {
 			this.input = text
 			this.sendInput()
-		
 		},
 		typeInput(event) {
-			if(event.key == "Enter") 
+			if(event.key == "Enter")
 			 	this.sendInput()
+		},
+		onTyping() {
+			const input = this.$refs.input
+			const rect  = input.getBoundingClientRect()
+			// Estimate the cursor's screen X by measuring text width up to the caret.
+			let clientX = rect.left + rect.width * 0.25
+			try {
+				if (!window._mimaMeasCtx)
+					window._mimaMeasCtx = document.createElement('canvas').getContext('2d')
+				const ctx = window._mimaMeasCtx
+				ctx.font = getComputedStyle(input).font
+				const cur  = input.selectionStart != null ? input.selectionStart : input.value.length
+				const tw   = ctx.measureText(input.value.slice(0, cur)).width
+				const pl   = parseFloat(getComputedStyle(input).paddingLeft) || 8
+				clientX    = Math.min(rect.right - 4, rect.left + pl + tw)
+			} catch (e) {}
+			this.$emit('typing', { clientX, clientY: rect.top + rect.height * 0.45 })
 		},
 
 		sendInput() {
@@ -76,9 +97,14 @@ Vue.component('chat-window', {
 		messages() {
 			Vue.nextTick(() => {
 				var container = this.$refs.messages;
-				container.scrollTop = container.scrollHeight;	
+				container.scrollTop = container.scrollHeight;
 			})
-			
+		},
+		showListening() {
+			Vue.nextTick(() => {
+				var container = this.$refs.messages;
+				container.scrollTop = container.scrollHeight;
+			})
 		}
 	},
 	data() {
@@ -97,6 +123,10 @@ Vue.component('chat-window', {
 		messages: {
 			type: Array,
 			required: true
+		},
+		showListening: {
+			type: Boolean,
+			default: false
 		}
 	}
 	

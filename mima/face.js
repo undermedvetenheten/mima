@@ -161,6 +161,7 @@ function Face() {
 	this._z2 = 1
 	this._canvasH = 600
 	this.touchParticles = []
+	this.typeParticles = []   // particles rising from the chat caret as the user types (see app.userTyping)
 	this._touchSpawnTimer = 0
 	this.flowmap = new FlowMap()
 	this._prevTouchSpace = null
@@ -225,7 +226,7 @@ Face.prototype.update = function(t) {
 		// Spawn touch particles — but not once the field has settled into a planet
 		// constellation or firefly storytime; touch shouldn't scatter new particles
 		// across those calm formations.
-		let formMode = (app.values.planet || 0) > 0.05 || (app.values.firefly || 0) > 0.05
+		let formMode = app.particleMode && app.particleMode !== 'chaos'
 		this._touchSpawnTimer += t.elapsed
 		if (!formMode && this._touchSpawnTimer > 0.12) {
 			this._touchSpawnTimer = 0
@@ -273,6 +274,19 @@ Face.prototype.update = function(t) {
 		p.y += p.vy * dt
 	})
 	this.touchParticles = this.touchParticles.filter(p => p.age < 1)
+
+	// Typing particles: float upward from the input caret toward the face, with
+	// horizontal spread and gentle drag. No flowmap or touch attraction — they
+	// just drift up and fade.
+	this.typeParticles.forEach(p => {
+		const dt = t.elapsed || 0.016
+		p.vx *= Math.pow(0.5, dt / 2.0)
+		p.vy *= Math.pow(0.5, dt / 3.5)
+		p.x  += p.vx * dt
+		p.y  += p.vy * dt
+		p.age += dt * 0.18
+	})
+	this.typeParticles = this.typeParticles.filter(p => p.age < 1)
 }
 
 // Convert a client (screen) coordinate into the centred canvas space the
@@ -388,13 +402,26 @@ Face.prototype.drawSpace = function(g, t) {
 	// when she's worked up rather than darting in sync with every spoken word.
 	let stress = app.swellAgitation || 0
 
-	// Three moods, blended per particle: chaos (the roaming ring), planet mode
-	// (settle into a still white-star constellation), storytime (drift as warm
-	// fireflies). planet/firefly are lerped 0..1 in app.js, so the morph is smooth.
-	let planet = Math.max(0, Math.min(1, app.values.planet  || 0))
-	let fire   = Math.max(0, Math.min(1, app.values.firefly || 0))
-	let chaos  = Math.max(0, 1 - planet - fire)
-	let formAmt = Math.min(1, planet + fire)
+	// One formation is shown at a time: chaos (the roaming ring), planet mode (a still
+	// white-star constellation) or storytime (drifting fireflies). Rather than morph
+	// positions between them (which looks frantic), we crossfade: when the desired mode
+	// changes, the current formation fades OUT, then the new one fades IN already in
+	// place — a brief dark beat between, no particles seen flying across the frame.
+	let desired = app.particleMode || 'chaos'
+	let dt = (this._lastSpaceT !== undefined) ? Math.min(0.1, Math.max(0, t - this._lastSpaceT)) : 0.016
+	this._lastSpaceT = t
+	if (this._partMode === undefined) { this._partMode = desired; this._partFade = 1 }
+	const FADE = 0.7                                          // seconds for each half (out / in)
+	if (desired !== this._partMode) {
+		this._partFade -= dt / FADE                          // fade the old formation out
+		if (this._partFade <= 0) { this._partFade = 0; this._partMode = desired }  // swap while dark
+	} else {
+		this._partFade = Math.min(1, this._partFade + dt / FADE)  // fade the new one in
+	}
+	let mode = this._partMode
+	let fade = this._partFade * this._partFade * (3 - 2 * this._partFade)   // smoothstep
+	if (fade <= 0.001) return                                 // fully dark mid-transition — nothing to draw
+
 	let W = g.width, H = g.height
 	// drawSpace is rendered inside a g.scale(z2) zoom, so raw canvas coords only fill
 	// the centre. Spread the star/firefly formations by 1/z2 so they reach the actual
@@ -402,87 +429,59 @@ Face.prototype.drawSpace = function(g, t) {
 	let z2 = this._z2 || 1
 	let coverX = W / (2 * z2), coverY = H / (2 * z2)
 
-	// Each particle keeps a persistent position that EASES toward its target rather
-	// than snapping to it. While roving the ease is quick (it tracks the ring); as a
-	// formation takes over the ease slows right down, so particles seem to halt where
-	// they are and drift very slowly into place instead of dashing across the frame.
-	if (!this.spaceP) this.spaceP = []
-	let dt = (this._lastSpaceT !== undefined) ? Math.min(0.1, Math.max(0, t - this._lastSpaceT)) : 0.016
-	this._lastSpaceT = t
-	let easeHalfLife = 0.15 + formAmt * 2.6                 // ~0.15s roving → ~2.75s settling
-	let ease = 1 - Math.pow(0.5, dt / easeHalfLife)
-
 	let p = new Vector()
 	let count = 100
 	for (var i = 0; i < count; i++) {
 		let pct = i/count
-
-		// --- chaos target: the original roaming lissajous ring (+ flowmap drift) ---
-		p.setToPolar(200*(1.2 + Math.sin(4*pct*(2 + stress*.08 + .7*Math.sin(t*.2)) + t*.1)), 20*Math.sin(20*(2 + 1*Math.sin(t*.001))*pct))
-		// Arrival: start far off-frame and sweep inward to gather around her.
-		p.x *= this._arrRadius
-		p.y *= this._arrRadius
-		const [fvx, fvy] = this.flowmap.sample(p.x, p.y)
-		p.x += fvx * 0.5
-		p.y += fvy * 0.5
-		let cx = p.x, cy = p.y
-
-		// --- star target: a fixed scatter filling the whole screen ---
-		let sx = (_hash(i) * 2 - 1) * coverX * 0.98
-		let sy = (_hash(i + 57.3) * 2 - 1) * coverY * 0.98
-
-		// --- firefly target: a small, slow wander around a fixed anchor spread over the
-		// whole screen (no Perlin — integer-lattice noise biased them all to one side).
-		// Hashed rates/phases so each drifts on its own gentle path. ---
-		let ax = (_hash(i + 11.1) * 2 - 1) * coverX * 0.95
-		let ay = (_hash(i + 71.9) * 2 - 1) * coverY * 0.95
-		let wr1 = 0.16 + _hash(i + 5.5) * 0.12, wr2 = 0.14 + _hash(i + 8.2) * 0.12
-		let fx = ax + Math.sin(t * wr1 + i * 2.1) * 13
-		let fy = ay + Math.cos(t * wr2 + i * 1.3) * 10
-
-		// --- blend the three targets, then ease the live position toward it ---
-		let tx = cx * chaos + sx * planet + fx * fire
-		let ty = cy * chaos + sy * planet + fy * fire
-		let sp = this.spaceP[i] || (this.spaceP[i] = { x: tx, y: ty })
-		sp.x += (tx - sp.x) * ease
-		sp.y += (ty - sp.y) * ease
-		p.x = sp.x
-		p.y = sp.y
-
 		let r = 1 + Math.sin(pct*100 + t*.4)
-		let pa = this._arrParticleA
-
+		let pa = this._arrParticleA * fade
 		g.noStroke()
 
-		// Chaos: rainbow halo + white core (the original look).
-		if (chaos > 0.01) {
-			g.fill((i*.01 + t*3)%1, .9, .6, .2*pa*chaos)
+		if (mode === 'chaos') {
+			// Roaming lissajous ring (+ flowmap drift) — rainbow halo + white core.
+			p.setToPolar(200*(1.2 + Math.sin(4*pct*(2 + stress*.08 + .7*Math.sin(t*.2)) + t*.1)), 20*Math.sin(20*(2 + 1*Math.sin(t*.001))*pct))
+			// Arrival: start far off-frame and sweep inward to gather around her.
+			p.x *= this._arrRadius
+			p.y *= this._arrRadius
+			const [fvx, fvy] = this.flowmap.sample(p.x, p.y)
+			p.x += fvx * 0.5
+			p.y += fvy * 0.5
+			g.fill((i*.01 + t*3)%1, .9, .6, .2*pa)
 			p.drawCircle(g, 3*r)
-			g.fill(1, 0, 1, pa*chaos)
+			g.fill(1, 0, 1, pa)
 			p.drawCircle(g, 1*r + .1)
-		}
-		// Planet: still white stars that twinkle with a tad of red/blue, plus a fast,
-		// low-amplitude scintillation — light wavering as if seen through atmosphere.
-		if (planet > 0.01) {
+
+		} else if (mode === 'planet') {
+			// Still white stars filling the screen, twinkling with a tad of red/blue,
+			// plus a fast, low-amplitude scintillation — light wavering as if through
+			// atmosphere.
+			p.x = (_hash(i) * 2 - 1) * coverX * 0.98
+			p.y = (_hash(i + 57.3) * 2 - 1) * coverY * 0.98
 			let tw = 0.5 + 0.5 * Math.sin(t * 0.7 + i * 1.7)            // slow brightness twinkle
 			let scint = 0.82 + 0.18 * Math.sin(t * (5 + _hash(i + 21.3) * 5) + i * 4.1)  // atmospheric flicker
 			let bright = (0.4 + 0.6 * tw) * scint
 			let chroma = Math.sin(t * 0.5 + i * 2.3)                   // drifts red <-> blue
 			let hue = chroma >= 0 ? 0.02 : 0.60                        // a touch of red / blue
 			let sat = 0.45 * Math.abs(chroma)                         // mostly white
-			g.fill(hue, sat, 1, 0.10 * pa * planet * bright)
+			g.fill(hue, sat, 1, 0.10 * pa * bright)
 			p.drawCircle(g, 2.3)
-			g.fill(hue, sat * 0.6, 1, pa * planet * bright)
+			g.fill(hue, sat * 0.6, 1, pa * bright)
 			p.drawCircle(g, 1.0)
-		}
-		// Firefly: warm gold-green glow whose OPACITY blinks (sharp, out-of-unison, on
-		// its own hashed rate) while its size stays steady — no rapid scaling.
-		if (fire > 0.01) {
+
+		} else if (mode === 'firefly') {
+			// Warm gold-green glow spread over the whole screen, drifting slowly around a
+			// fixed anchor (hashed rates/phases). OPACITY blinks (sharp, out-of-unison);
+			// size stays steady — no rapid scaling.
+			let ax = (_hash(i + 11.1) * 2 - 1) * coverX * 0.95
+			let ay = (_hash(i + 71.9) * 2 - 1) * coverY * 0.95
+			let wr1 = 0.16 + _hash(i + 5.5) * 0.12, wr2 = 0.14 + _hash(i + 8.2) * 0.12
+			p.x = ax + Math.sin(t * wr1 + i * 2.1) * 13
+			p.y = ay + Math.cos(t * wr2 + i * 1.3) * 10
 			let glow = Math.pow(Math.max(0, Math.sin(t * (0.5 + _hash(i + 3.3)) + _hash(i + 9.7) * 6.283)), 4)
 			let sz = 2.0
-			g.fill(0.17, 0.80, 0.95, (0.03 + 0.34 * glow) * pa * fire)
+			g.fill(0.17, 0.80, 0.95, (0.03 + 0.34 * glow) * pa)
 			p.drawCircle(g, sz * 1.7)
-			g.fill(0.13, 0.50, 1, (0.05 + 0.92 * glow) * pa * fire)
+			g.fill(0.13, 0.50, 1, (0.05 + 0.92 * glow) * pa)
 			p.drawCircle(g, sz * 0.55)
 		}
 	}
@@ -495,6 +494,17 @@ Face.prototype.drawSpace = function(g, t) {
 		g.ellipse(p.x, p.y, 3.5, 3.5)
 		g.fill(1, 0, 1, a * 0.7)
 		g.ellipse(p.x, p.y, 1.5, 1.5)
+	})
+
+	// Typing particles: same visual language as the touch particles but slightly
+	// smaller and dimmer — they rise from the caret position and fade as they climb.
+	this.typeParticles.forEach(p => {
+		g.noStroke()
+		let a = 1 - p.age
+		g.fill(p.hue, 0.55, 0.95, a * 0.28)
+		g.ellipse(p.x, p.y, 2.8, 2.8)
+		g.fill(1, 0, 1, a * 0.6)
+		g.ellipse(p.x, p.y, 1.2, 1.2)
 	})
 }
 
@@ -600,7 +610,12 @@ Face.prototype.drawFaceBG = function(g, t) {
 			g.noStroke()
 			let rainbowJiggle = shimmerAmp*utilities.noise(i + 4*t*jiggle , 100 + j + 4*t*jiggle, t )
 
-			this.faceColor.hueShift(rainbowJiggle).fill(g, .2 + (.2*stress + .3)*utilities.noise(i, j, t), alpha)
+			// Per-cell opacity twinkle — each square has its own stable phase + rate
+				// (from _hash) so they breathe out of unison instead of all together.
+				let twSeed = i*16 + j
+				let twRate = 0.5 + _hash(twSeed + 3.1)*0.9
+				let twinkle = 0.45 + 0.55*(0.5 + 0.5*Math.sin(t*twRate + _hash(twSeed)*6.283))
+				this.faceColor.hueShift(rainbowJiggle).fill(g, .2 + (.2*stress + .3)*utilities.noise(i, j, t), alpha*twinkle)
 
 			let r = Math.pow(stress, 3)*5*pw
 			// console.log(r)

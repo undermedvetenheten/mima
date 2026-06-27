@@ -144,10 +144,46 @@
 		
 	}
 
+	// No-repeat selection (shuffle-bag): rather than picking purely at random
+	// (which lets a 3-variant pool say the same line twice in a row — the most
+	// obvious "stale" tell), we keep a shuffled queue per ruleset and serve from
+	// it, only reshuffling once it's exhausted. So every variant is heard before
+	// any repeats, and a fresh shuffle never leads with the line we just served.
+	// Keyed by the ruleset ARRAY reference via a WeakMap; grammar arrays are
+	// stable across calls (getRuleset returns this.grammar[key]), and the
+	// transient single-element arrays from worldObject paths hit the length<=1
+	// guard below, so they never touch the bag.
+	let shuffleBags = new WeakMap()
+
+	function shuffle(arr) {
+		let a = arr.slice()
+		for (let i = a.length - 1; i > 0; i--) {
+			let j = Math.floor(Math.random() * (i + 1))
+			;[a[i], a[j]] = [a[j], a[i]]
+		}
+		return a
+	}
+
 	Context.prototype.selectRule = function(ruleset) {
 		if (Array.isArray(ruleset)) {
-			let index = Math.floor(Math.random()*ruleset.length)
-			return ruleset[index]
+			if (ruleset.length <= 1)
+				return ruleset[0]
+
+			let bag = shuffleBags.get(ruleset)
+			if (!bag || bag.queue.length === 0) {
+				let queue = shuffle(ruleset)
+				// Avoid an immediate repeat across a reshuffle: if the new bag would
+				// lead with the line we just served, swap it deeper in.
+				if (bag && queue[0] === bag.last && queue.length > 1) {
+					let swap = 1 + Math.floor(Math.random() * (queue.length - 1))
+					;[queue[0], queue[swap]] = [queue[swap], queue[0]]
+				}
+				bag = { queue: queue, last: bag ? bag.last : undefined }
+				shuffleBags.set(ruleset, bag)
+			}
+			let rule = bag.queue.shift()
+			bag.last = rule
+			return rule
 		}
 		console.warn("Non-array rulest", ruleset)
 	}

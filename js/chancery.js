@@ -204,6 +204,8 @@ Chancery.prototype.evaluateExpression = function(expression) {
 				return lhs<=rhs
 			case ">=":
 				return lhs>=rhs
+			case ">":
+				return lhs>rhs
 			case "<":
 				return lhs<rhs
 			case "==":
@@ -278,8 +280,16 @@ Chancery.prototype.updateExitMap = function() {
 					
 
 					break
-				case "expression": 
+				case "expression":
+					// Value-gated exit: the condition is a plain expression (e.g.
+					// "mem.visits.cwhere > 1"). It opens the exit when truthy. Missing
+					// blackboard paths evaluate to undefined (getAtPath throws ->
+					// evaluateExpression returns undefined), so an exit that reads a
+					// not-yet-written memory value simply stays closed — e.g. a "have we
+					// been here before" exit is shut on the first visit.
 					let result = this.evaluateExpression(condition.template.expression)
+					condition.isFulfilled = !!result
+					condition.pctFulfilled = result ? 1 : 0
 
 					break
 				case "command": 

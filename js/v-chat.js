@@ -71,7 +71,21 @@ Vue.component('chat-window', {
 			 	this.sendInput()
 		},
 		onTyping() {
-			this.$emit('typing')
+			const input = this.$refs.input
+			const rect  = input.getBoundingClientRect()
+			// Estimate the cursor's screen X by measuring text width up to the caret.
+			let clientX = rect.left + rect.width * 0.25
+			try {
+				if (!window._mimaMeasCtx)
+					window._mimaMeasCtx = document.createElement('canvas').getContext('2d')
+				const ctx = window._mimaMeasCtx
+				ctx.font = getComputedStyle(input).font
+				const cur  = input.selectionStart != null ? input.selectionStart : input.value.length
+				const tw   = ctx.measureText(input.value.slice(0, cur)).width
+				const pl   = parseFloat(getComputedStyle(input).paddingLeft) || 8
+				clientX    = Math.min(rect.right - 4, rect.left + pl + tw)
+			} catch (e) {}
+			this.$emit('typing', { clientX, clientY: rect.top + rect.height * 0.45 })
 		},
 
 		sendInput() {

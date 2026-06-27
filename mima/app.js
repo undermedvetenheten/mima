@@ -66,13 +66,31 @@ let app = {
 		app.values.agitation = app.liveAgitation        // what the face renders from
 	},
 
-	// Throttled micro-agitation while the user is typing — makes the face
-	// subtly perk up with each keypress without spamming the energy queue.
-	userTyping() {
-		let now = Date.now()
-		if (now - (app._lastTypingPulse || 0) < 350) return
-		app._lastTypingPulse = now
-		app.flareAgitation(0.35)
+	// Called on each keypress from the chat input. Spawns a small burst of
+	// particles that rise from the cursor's position toward the face, and
+	// pulses micro-agitation so Mima reacts to the user composing.
+	userTyping({ clientX, clientY } = {}) {
+		const now = Date.now()
+		if (now - (app._lastTypingPulse || 0) >= 350) {
+			app._lastTypingPulse = now
+			app.flareAgitation(0.35)
+		}
+		// Spawn rising particles from the cursor's canvas position.
+		const f = app.face
+		if (!f || !f._canvas || !clientX) return
+		const formMode = (app.values.planet || 0) > 0.05 || (app.values.firefly || 0) > 0.05
+		if (formMode) return
+		const pos = f.clientToCanvas(clientX, clientY)
+		const z2  = f._z2 || 1
+		const tx  = pos.x / z2
+		const ty  = pos.y / z2
+		for (let i = 0; i < 2; i++) {
+			let p     = new TouchParticle(tx + (Math.random() - 0.5) * 28, ty + (Math.random() - 0.5) * 12)
+			p.vx      = (Math.random() - 0.5) * 70
+			p.vy      = -140 - Math.random() * 90
+			p.age     = 0
+			f.typeParticles.push(p)
+		}
 	},
 
 	blink() {

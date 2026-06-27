@@ -161,6 +161,7 @@ function Face() {
 	this._z2 = 1
 	this._canvasH = 600
 	this.touchParticles = []
+	this.typeParticles = []
 	this._touchSpawnTimer = 0
 	this.flowmap = new FlowMap()
 	this._prevTouchSpace = null
@@ -273,6 +274,19 @@ Face.prototype.update = function(t) {
 		p.y += p.vy * dt
 	})
 	this.touchParticles = this.touchParticles.filter(p => p.age < 1)
+
+	// Typing particles: float upward from the input cursor toward the face,
+	// with horizontal spread and gentle drag. No flowmap or touch attraction —
+	// they just drift up and fade.
+	this.typeParticles.forEach(p => {
+		const dt = t.elapsed
+		p.vx *= Math.pow(0.5, dt / 2.0)
+		p.vy *= Math.pow(0.5, dt / 3.5)
+		p.x  += p.vx * dt
+		p.y  += p.vy * dt
+		p.age += dt * 0.18
+	})
+	this.typeParticles = this.typeParticles.filter(p => p.age < 1)
 }
 
 // Convert a client (screen) coordinate into the centred canvas space the
@@ -495,6 +509,17 @@ Face.prototype.drawSpace = function(g, t) {
 		g.ellipse(p.x, p.y, 3.5, 3.5)
 		g.fill(1, 0, 1, a * 0.7)
 		g.ellipse(p.x, p.y, 1.5, 1.5)
+	})
+
+	// Typing particles: same visual language as touch particles but slightly
+	// smaller — they rise from the cursor position and fade as they climb.
+	this.typeParticles.forEach(p => {
+		g.noStroke()
+		let a = 1 - p.age
+		g.fill(p.hue, 0.55, 0.95, a * 0.28)
+		g.ellipse(p.x, p.y, 2.8, 2.8)
+		g.fill(1, 0, 1, a * 0.6)
+		g.ellipse(p.x, p.y, 1.2, 1.2)
 	})
 }
 

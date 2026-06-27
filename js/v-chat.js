@@ -4,7 +4,7 @@ Vue.component('chat-window', {
 
 	template: `
 	<div class="chatwindow">
-		
+
 		<div class="chatwindow-messages" ref="messages">
 
 			<!-- show the message, who it's from, any images, etc -->
@@ -22,12 +22,17 @@ Vue.component('chat-window', {
 				<div class="chatwindow-message-author">
 				</div>
 			</div>
+			<div class="chatwindow-message chatwindow-message-bot listening-indicator" v-if="showListening">
+				<div class="listening-dots">
+					<span></span><span></span><span></span>
+				</div>
+			</div>
 		</div>
 		<div class="chatwindow-controls">
 			<div class="chatwindow-chips">
 				<button class="chat-chip" @click="chipInput(chip)" v-for="chip in chips">{{chip}}</button>
 			</div>
-			<input class="chatwindow-input" v-model="input" ref="input" @keyup="typeInput"></input>
+			<input class="chatwindow-input" v-model="input" ref="input" @keyup="typeInput" @input="onTyping"></input>
 			<button v-if="sendButton">▶︎</button>
 		</div>
 	</div>
@@ -60,11 +65,13 @@ Vue.component('chat-window', {
 		chipInput(text) {
 			this.input = text
 			this.sendInput()
-		
 		},
 		typeInput(event) {
-			if(event.key == "Enter") 
+			if(event.key == "Enter")
 			 	this.sendInput()
+		},
+		onTyping() {
+			this.$emit('typing')
 		},
 
 		sendInput() {
@@ -76,9 +83,14 @@ Vue.component('chat-window', {
 		messages() {
 			Vue.nextTick(() => {
 				var container = this.$refs.messages;
-				container.scrollTop = container.scrollHeight;	
+				container.scrollTop = container.scrollHeight;
 			})
-			
+		},
+		showListening() {
+			Vue.nextTick(() => {
+				var container = this.$refs.messages;
+				container.scrollTop = container.scrollHeight;
+			})
 		}
 	},
 	data() {
@@ -97,6 +109,10 @@ Vue.component('chat-window', {
 		messages: {
 			type: Array,
 			required: true
+		},
+		showListening: {
+			type: Boolean,
+			default: false
 		}
 	}
 	

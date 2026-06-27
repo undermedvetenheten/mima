@@ -17,6 +17,7 @@ let app = {
 	face: new Face(),
 
 	isActive: false,
+	isThinking: false,
 	valueTracker: {},
 	values: {
 	},
@@ -63,6 +64,15 @@ let app = {
 		app.liveAgitation  += (target - app.liveAgitation)  * (1 - Math.pow(0.5, dt / 0.10))  // ~0.1s
 		app.swellAgitation += (target - app.swellAgitation) * (1 - Math.pow(0.5, dt / 1.20))  // ~1.2s
 		app.values.agitation = app.liveAgitation        // what the face renders from
+	},
+
+	// Throttled micro-agitation while the user is typing — makes the face
+	// subtly perk up with each keypress without spamming the energy queue.
+	userTyping() {
+		let now = Date.now()
+		if (now - (app._lastTypingPulse || 0) < 350) return
+		app._lastTypingPulse = now
+		app.flareAgitation(0.35)
 	},
 
 	blink() {
@@ -181,6 +191,7 @@ let app = {
 
 				return new Promise((resolve) => {
 					setTimeout(() => {
+						app.isThinking = false
 						app.messages.push({
 							owner: "bot",
 							text: [output]
@@ -251,13 +262,27 @@ let app = {
 			synthBed.start()
 
 			let blinkCount = 0
+			let idlePulseCount = 0
+			let nextIdlePulse = 150 + Math.floor(Math.random() * 200)
 			app.tickInterval = setInterval(() => {
 				app.instance.tick()
 				blinkCount++
+				idlePulseCount++
 
 				if (blinkCount > 50 + 60*Math.random()) {
 					app.blink()
 					blinkCount = 0
+				}
+
+				// During quiet listening states, occasionally pulse the face so she
+				// feels present even when nothing is being said.
+				if (idlePulseCount >= nextIdlePulse) {
+					const listeningStates = ["rest", "hear", "origin"]
+					if (listeningStates.includes(app.instance.currentState)) {
+						app.flareAgitation(0.5 + Math.random() * 0.4)
+					}
+					idlePulseCount = 0
+					nextIdlePulse = 150 + Math.floor(Math.random() * 250)
 				}
 			}, 100)
 		}
@@ -277,6 +302,9 @@ let app = {
 
 		// Send it to the chat
 		app.messages.push(msg)
+
+		// Show the listening indicator while Mima formulates her response.
+		app.isThinking = true
 
 		// Ambient flare while she prepares her answer (swells in, doesn't snap on);
 		// engaging cools the "being ignored" spiral.
@@ -316,6 +344,7 @@ let app = {
 	// flattens Tracery tokens (#smek# etc.) through the chancery grammar context so
 	// Mima's voice stays consistent.
 	say(raw) {
+		app.isThinking = false
 		let output = app.instance.context.flatten(raw)
 		app.messages.push({ owner: "bot", text: [output] })
 		return app.speakWords(output)
@@ -493,7 +522,7 @@ window.addEventListener("keydown", e => {
 new Vue({
 	template: `
 	<div id="mima-controls">
-		<chat-window v-if="app.isActive" :messages="app.messages" :chips="app.chips" @sendInput='app.userInput' />
+		<chat-window v-if="app.isActive" :messages="app.messages" :chips="app.chips" :showListening="app.isThinking" @sendInput='app.userInput' @typing='app.userTyping' />
 
 		<div v-else id="start-controls">
 		<button @click="app.start">Hello?</button>

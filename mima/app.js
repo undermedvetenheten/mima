@@ -24,17 +24,19 @@ let settings = {
 // into lines.
 let mimaMemory = {
 	// Hub / transition / beat-continuation states that shouldn't count as topics.
-	structural: new Set(["origin", "rest", "muse", "hear", "invite", "selfaware",
+	structural: new Set(["origin", "rest", "muse", "museBright", "museHeavy", "museGray",
+		"museLoop", "museMind", "museShould", "museFlow", "museScale",
+		"hear", "invite", "selfaware",
 		"driftidle", "idle", "cryo", "pause", "lull", "discombobulate"]),
 
-	// Collapse multi-beat chains onto one topic label, so a whole exchange counts
-	// once and a return is detected on the entry state's name. Extend as chains grow.
+	// Return states count as their base topic, so a comeback keeps climbing the
+	// same visit counter rather than spawning a parallel one. Deep/beat-2 states
+	// are deliberately NOT folded in: one engagement enters the entry state AND
+	// its Deep beat, so mapping Deep->base would count a single ask twice and
+	// throw off the "visits.<topic> > N" return/fixation thresholds. They simply
+	// count as themselves (harmless), while echoes/lastTopic still update.
 	topicOf: {
-		cwhereDeep: "cwhere", chowlongDeep: "chowlong", cnowDeep: "cnow",
-		// Return states count as their base topic, so a comeback keeps climbing
-		// the same visit counter rather than spawning a parallel one.
 		cwhereReturn: "cwhere", klostReturn: "klost", kmatterReturn: "kmatter",
-		klostDeep: "klost", kmatterDeep: "kmatter", kpurposeDeep: "kpurpose",
 	},
 
 	record(bb, stateID) {
@@ -145,8 +147,8 @@ let app = {
 		const ty  = pos.y / z2
 		for (let i = 0; i < 2; i++) {
 			let p     = new TouchParticle(tx + (Math.random() - 0.5) * 28, ty + (Math.random() - 0.5) * 12)
-			p.vx      = (Math.random() - 0.5) * 70
-			p.vy      = -140 - Math.random() * 90
+			p.vx      = (Math.random() - 0.5) * 10   // ~at rest; dragged into motion by the flowmap (see face.update)
+			p.vy      = (Math.random() - 0.5) * 10   // no upward launch — they rise by drifting toward her face
 			p.age     = 0
 			f.typeParticles.push(p)
 		}
@@ -231,11 +233,16 @@ let app = {
 					playDiscombobulate()
 				}
 
-				// worldgaze summons a fresh procedural planet (see planet.js); its
-				// onEnter raises planet=1 so the facebox fades fully out. Any other
-				// state eases the planet back down so it never lingers.
+				// worldgaze summons a fresh vision (a world, sun, nebula, atom, ocean,
+				// comet… see planet.js); its onEnter raises planet=1 so the facebox fades
+				// fully out. We stash the subject's name on the blackboard so her grammar
+				// can name what she's showing (#/robe/subject#). Any other state eases the
+				// vision back down so it never lingers.
 				if (stateID === "worldgaze" || stateID === "worldgaze2") {
-					if (typeof planet !== "undefined") planet.summon()
+					if (typeof planet !== "undefined") {
+						planet.summon()
+						if (app.blackboard) app.blackboard.setAtPath(["robe", "subject"], planet.subjectName)
+					}
 				} else if (app.valueTracker.planet) {
 					app.valueTracker.planet.set(0, app.time.current, 2.0)
 				}

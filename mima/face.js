@@ -280,11 +280,25 @@ Face.prototype.update = function(t) {
 	// just drift up and fade.
 	this.typeParticles.forEach(p => {
 		const dt = t.elapsed || 0.016
-		p.vx *= Math.pow(0.5, dt / 2.0)
-		p.vy *= Math.pow(0.5, dt / 3.5)
+		// Released at ~0 velocity (see app.userTyping) and then *dragged* into motion,
+		// mirroring the roaming particles: ease onto the flowmap when it has signal, and
+		// drift slowly up toward Mima's face (just above centre) — never a launch.
+		const [fvx, fvy] = this.flowmap.sample(p.x, p.y)
+		if (Math.sqrt(fvx*fvx + fvy*fvy) > 2) {
+			p.vx += (fvx - p.vx) * 0.04
+			p.vy += (fvy - p.vy) * 0.04
+		}
+		// Gentle gravity toward her face (origin sits ~40u below the eyes here)
+		p.vx -= p.x * 0.35 * dt
+		p.vy -= (p.y + 40) * 0.35 * dt
+		// A whisper of buoyancy so they tend to drift upward as they migrate
+		p.vy -= 10 * dt
+		// Light drag (half-life ~1.6s) — they coast, they don't stop dead
+		p.vx *= Math.pow(0.5, dt / 1.6)
+		p.vy *= Math.pow(0.5, dt / 1.6)
 		p.x  += p.vx * dt
 		p.y  += p.vy * dt
-		p.age += dt * 0.18
+		p.age += dt * 0.14
 	})
 	this.typeParticles = this.typeParticles.filter(p => p.age < 1)
 }
@@ -430,6 +444,7 @@ Face.prototype.drawSpace = function(g, t) {
 	let coverX = W / (2 * z2), coverY = H / (2 * z2)
 
 	let p = new Vector()
+	let ep = new Vector()   // scratch — the energetic (vortex) position for chaos mode
 	let count = 100
 	for (var i = 0; i < count; i++) {
 		let pct = i/count
@@ -438,17 +453,47 @@ Face.prototype.drawSpace = function(g, t) {
 		g.noStroke()
 
 		if (mode === 'chaos') {
-			// Roaming lissajous ring (+ flowmap drift) — rainbow halo + white core.
-			p.setToPolar(200*(1.2 + Math.sin(4*pct*(2 + stress*.08 + .7*Math.sin(t*.2)) + t*.1)), 20*Math.sin(20*(2 + 1*Math.sin(t*.001))*pct))
+			// Roaming halo: subtle by default (slow drift + per-particle twinkle), with the
+				// lissajous vortex + fast rainbow reserved for high agitation. Touch flowmap drift still rides on top.
+			let ag    = Math.max(0, Math.min(1, stress / 2.5))   // 0..1 agitation
+				let swirl = ag * ag                                  // keep the vortex for the big moments only
+				let ph    = _hash(i) * 6.283                         // per-particle phase offset
+				// Calm: the whole halo orbits Mima as one (shared rotation) and the ring
+					// breathes in/out together. Per-particle radius offsets give the band
+					// thickness; a whisper of sway keeps it from feeling rigid. Brightness,
+					// though, blinks per-particle (below) so the twinkle stays out of unison.
+				let ph2   = _hash(i + 13.7) * 6.283                 // a second, independent phase
+				let orbit  = t * 0.05                                // SHARED slow rotation — the whole halo orbits Mima as one
+				let breath = 1 + 0.20 * Math.sin(t * 0.16)          // SHARED breath — the ring expands & draws in together (slow)
+				let cAng = 2 * Math.PI * pct + orbit                // every particle shares the orbit angle
+				let cBase = 150 + _hash(i + 19.3) * 80              // own slot in the band — gives the ring thickness
+				let cR    = cBase * breath                          // ...but the whole band breathes together
+				let cx   = Math.cos(cAng) * cR + Math.sin(t * 0.2 + ph2) * 5    // whisper of per-particle sway so it isn't rigid
+				let cy   = Math.sin(cAng) * cR * 0.6 + Math.cos(t * 0.17 + ph2) * 5
+				// Energetic: the original churning lissajous, blended in by `swirl` (which
+				// drifts slowly, so the transition is smooth). Reserved for high agitation.
+				ep.setToPolar(200*(1.2 + Math.sin(4*pct*(2 + stress*.08 + .7*Math.sin(t*.2)) + t*.1)), 20*Math.sin(20*(2 + 1*Math.sin(t*.001))*pct))
+				p.x = cx + (ep.x - cx) * swirl
+				p.y = cy + (ep.y - cy) * swirl
 			// Arrival: start far off-frame and sweep inward to gather around her.
 			p.x *= this._arrRadius
 			p.y *= this._arrRadius
 			const [fvx, fvy] = this.flowmap.sample(p.x, p.y)
 			p.x += fvx * 0.5
 			p.y += fvy * 0.5
-			g.fill((i*.01 + t*3)%1, .9, .6, .2*pa)
+			// Brightness: each particle blinks on its OWN clock (two detuned waves),
+					// decoupled from agitation — they twinkle out of unison and do NOT
+				// pulse together when Mima speaks.
+				let brate = 0.25 + _hash(i + 2.7) * 0.5             // own blink rate
+				let tw1   = Math.sin(t * brate + ph)
+				let tw2   = Math.sin(t * brate * 1.7 + ph2)        // detuned, so the blink never settles into a beat
+				let blink = 0.5 + 0.25 * tw1 + 0.25 * tw2          // each particle on its OWN clock
+				let bright = 0.25 + 0.6 * Math.max(0.05, blink)    // NOT agitation — so they don't pulse when Mima speaks
+				// Hue drifts slowly at rest, cycles faster as she's roused (was always t*3).
+				let hue = (_hash(i + 30.1) + t * (0.04 + swirl * 2.2)) % 1   // per-particle base; rainbow churn only at high agitation
+				g.fill(hue, .9, .6, .2 * pa * bright)
 			p.drawCircle(g, 3*r)
-			g.fill(1, 0, 1, pa)
+			g.fill(1, 0, 1, pa * bright)
 			p.drawCircle(g, 1*r + .1)
 
 		} else if (mode === 'planet') {

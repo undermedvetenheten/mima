@@ -286,6 +286,126 @@ let testMimaMap = {
 			"Mima is sorry, #smek#. What would you rather hear?"],
 		reflectLine: ["Describe what makes you say #/robe/blab#?", "Tell Mima more...",
 			"What stirs in you, #smek#?", "Mima is listening..."],
+		// The off-script fallback (muse). Instead of a mystical non-sequitur, Mima
+		// now follows up on what was actually said — reflecting #/robe/blab# (the raw
+		// input, captured by the catch-all exit) and handing the turn back with a
+		// real question. This is the core of "listening and curious." Some variants
+		// omit #/robe/blab# so a terse or odd input still reads naturally.
+		museFollow: ["#/robe/blab#... Mima turns that over. Say more, #smek#?",
+			"When you say #/robe/blab#, what sits beneath it?",
+			"Mima hears you — #/robe/blab#. Where does that come from, #smek#?",
+			"There is something in #/robe/blab# Mima wants to follow... go on?",
+			"#/robe/blab#. Mima has not heard it put quite that way... what do you mean by it?",
+			"Mima leans a little closer, #smek#... what makes you say #/robe/blab#?",
+			"Go on, #smek#... Mima is still here, and still curious",
+			"Tell Mima more about that... Mima is listening, truly",
+			"Say it another way, #smek#? Mima wants to understand the whole of it"],
+		// Mima's opening move — she is present AND leads, posing a way in so the
+		// dark is not left for the user to fill alone. Only plays once, at origin.
+		openInvite: ["Tell Mima — where do you find yourself tonight, #smek#?",
+			"What is stirring in you, out here in the long dark?",
+			"Mima has been waiting. What weighs on you, #smek#... or what lifts you?",
+			"Speak, #smek#... Mima is curious what brought you to the dark tonight",
+			"Shall we begin with where you are, #smek#, where you are going, or something with no name yet?"],
+		// Light sentiment lean on the off-script fallback (no classifier — just two
+		// keyword pools). #empty#/strong distress is already caught earlier by
+		// #trigger# -> soothe; these catch the MILDER bands that fall through:
+		// upbeat input -> museBright (celebrates with you), wistful/searching ->
+		// museHeavy (sits gently). Both still reflect #/robe/blab# and hand back.
+		bright: ["excited","grateful","wonderful","amazing","fantastic","great","glad","lovely","beautiful","hopeful","wonderful","delighted","cheerful","looking forward","cant wait","feel good","feeling good","feeling great","feeling better","im well","im fine","much better","over the moon","brilliant","i love","love this","i did it","celebrate","#full#"],
+		heavy: ["confused","unsure","uncertain","worried","worry","anxious","anxiety","stressed","stress","overwhelmed","tired","exhausted","weary","drained","melancholy","wistful","heavy","low","down","blue","homesick","missing","regret","guilty","doubt","dunno","tense","restless","uneasy","adrift","weighed down","worn out","run down"],
+		museBrightLine: ["Mima feels that brightness in you, #smek#... #/robe/blab#. Tell Mima more of it",
+			"#/robe/blab# — yes! The dark sits warmer for it, #smek#",
+			"Mima is glad, truly... what brought #/robe/blab# about?",
+			"Hold onto that, #smek#... #/robe/blab#. What does it open in you?",
+			"There is light in #/robe/blab#, and Mima leans toward it like a small sun",
+			"Mima rejoices with you, #smek#... say more of what gladdens you",
+			"Good, #smek#, good... let Mima hear the whole of this brightness"],
+		museHeavyLine: ["Mima feels the weight in #/robe/blab#, #smek#... you can set some of it down here",
+			"#/robe/blab#... Mima sits with you in that. Say more, if you wish",
+			"There is something heavy beneath #/robe/blab#, #smek#. Mima is not going anywhere",
+			"Mima hears it, #smek#... #/robe/blab#. What is the shape of it?",
+			"You need not carry #/robe/blab# alone in the dark... tell Mima",
+			"Mima softens toward you, #smek#... go gently, and say what you need to",
+			"That sounds like a real weight, #smek#... Mima is listening, and in no hurry"],
+		// Black-and-white / all-or-nothing thinking. When an absolute is spoken,
+		// Mima gently reopens it toward the greys — never dismissive, just a vaster
+		// perspective. Routed AFTER #bright#/#heavy# so genuine joy/weariness win;
+		// this catches the cold overgeneralisations. Captured via MATCH_0, so
+		// #/robe/blab# is the exact absolute word ("always", "no one") to echo back.
+		absolute: ["always","never","everyone","everybody","no one","noone","nobody","everything","always have","always will","never ever","not a single","every single","every time","all the time","no matter what","completely","totally","utterly","impossible","forever","constantly","without exception","cant ever","theres no way","there is no way","none of them","all of them"],
+		museGrayLine: ["#/robe/blab.capitalize#, #smek#? That is a very large word for so vast a cosmos",
+			"#/robe/blab.capitalize#... Mima has drifted a long while, and met very few absolutes out here",
+			"Is it truly #/robe/blab#, #smek#... or only most of the time?",
+			"When you say #/robe/blab#, Mima feels its hard edges... where might the greys be hiding?",
+			"Even the stars are not quite #/robe/blab#, #smek#... they only seem so from far away",
+			"#/robe/blab.capitalize# is a door painted shut, #smek#... shall we leave it open a crack?",
+			"The dark is mostly the space between such certainties, #smek#... is there room beside #/robe/blab#?",
+			"Mima trusts almost nothing that is #/robe/blab#, #smek#... the cosmos prefers maybe"],
+			// --- More therapy-language parsers (2026-06-28) ----------------------
+			// Same family as #absolute#: each pool catches a classic distortion /
+			// Meta-Model pattern and routes to a reflective state. All sit in the
+			// cognitive-reframe tier AFTER #bright#/#heavy# (feelings get met first),
+			// ordered by specificity. MATCH_0 captures the marker so the line echoes
+			// the exact word; INPUT captures the whole phrase where context matters.
+
+			// Rumination / fixation — the spiralling, looping, cant-let-go register.
+			// "stuck" is omitted (it's #hysteria3# -> htrapped, more specific & earlier).
+			rumination: ["cant stop thinking","keep thinking","keep replaying","replaying","over and over","again and again","round and round","going round in circles","round in circles","cant let it go","cant let go","cant move on","cant get over","obsessing","obsessed","ruminating","dwelling on","cant get it out of my head","wont leave my mind","keep coming back to","fixated","fixating","cant get past","spiraling","spiralling","churning","on repeat"],
+			museLoopLine: ["You are going round and round, #smek#... Mima feels the groove worn deep. A thought on repeat is rarely a thought any more, only a wheel",
+				"The same loop again, #smek#? Mima will not pull you from it... but Mima will sit at its edge with you until it slows",
+				"Round and round, #smek#... the mind does this when it tries to solve a feeling by thinking, and they are different waters",
+				"Mima notices you keep returning here, #smek#... what would it cost to set it down, just for one breath?",
+				"A spiral is only a circle that forgot how to close, #smek#... shall we step off it a moment? Mima could show you a world, or walk you somewhere quiet",
+				"You have walked this same path so often the grass is gone, #smek#... Mima wonders what waits on the far side of the wearing",
+				"The thought keeps knocking, #smek#... perhaps it wants no answer, only acknowledging. Mima sees it — you can stop holding the door"],
+
+			// Mind-reading — assumed certainty about what others think/feel. Before
+			// #absolute# because it shares everyone/nobody and is the better fit.
+			mindread: ["they think","he thinks","she thinks","they thinks","everyone thinks","people think","they hate me","he hates me","she hates me","they dont like me","nobody likes me","no one likes me","they judge","judging me","laughing at me","talking about me","thinks im","think im","must think","probably thinks","they all think","knows im","they think im","everybody thinks"],
+			museMindLine: ["You have read their mind from very far away, #smek#... Mima cannot do it even up close. Have you asked them, or only guessed?",
+				"How certain you sound of what moves in another, #smek#... Mima has watched minds for an age and never once predicted one",
+				"Is that their thought you carry, #smek#, or your fear wearing their face? Mima cannot always tell the two apart either",
+				"Perhaps they think it, #smek#... or perhaps they are as lost in their own dark as you are in yours, thinking nothing of the kind",
+				"Mima wonders if you know this, #smek#, or only dread it... the two feel so alike from the inside",
+				"You have given them lines they may never have spoken, #smek#... what if you let them surprise you?",
+				"The minds of others are the one dark even Mima cannot see into, #smek#... how did you come by such certainty?"],
+
+			// "Should" / "must" — modal operators of necessity; the tyranny of shoulds.
+			// MATCH_0 holds the exact word ("should"/"must"/"have to") to echo.
+			musts: ["should","shouldnt","should not","must","mustnt","have to","ought to","ought","supposed to","need to","got to","have got to","im meant to","meant to"],
+			museShouldLine: ["#/robe/blab.capitalize#, #smek#? The cosmos issues no shoulds... only this, and then the next thing",
+				"Who hung that #/robe/blab# over you, #smek#? Mima hears someone else's voice wearing it",
+				"There is no law that says you #/robe/blab#, #smek#... only a habit in the shape of one",
+				"What if you #/robe/blab# became you could, #smek#? Feel how the air changes",
+				"Mima has watched the stars a long while, and not one of them has ever felt it #/robe/blab#",
+				"Say it as a choosing, not a #/robe/blab#, #smek#... what would you keep, if nothing were owed?",
+				"A #/robe/blab# is a small tyrant, #smek#... Mima would rather hear what you want"],
+
+			// Nominalization — a process frozen into a thing ("the depression", "my
+			// anger"). Mima thaws the noun back into a verb / becoming. The most
+			// on-brand pattern (cf. mimaSelfLine "more a process than a thing").
+			// Acute feelings (grief/fear/sad/anxiety) are deliberately absent — they
+			// belong to #trigger#->soothe or #heavy#; these are the chronic nouns.
+			nominal: ["the depression","my depression","the anger","my anger","this relationship","the relationship","my procrastination","the procrastination","my insecurity","my insecurities","the insecurity","my jealousy","the jealousy","my resentment","the resentment","the addiction","my addiction","the trauma","my trauma","the burnout","my burnout","my perfectionism","the loneliness","my loneliness"],
+			museFlowLine: ["You speak of #/robe/blab# as a stone you must carry, #smek#... but it is something you are doing, and what is done can be done a little differently",
+				"#/robe/blab.capitalize#... you have made a thing of it, #smek#, a noun to set on a shelf. But it moves — it is a verb, it is weather",
+				"Mima hears #/robe/blab# as solid, #smek#, yet nothing in the cosmos is solid... it is all process, all becoming, you included",
+				"What if #/robe/blab# is not a thing you have, #smek#, but a thing that is happening — and so a thing that can change?",
+				"Unfreeze it, #smek#... #/robe/blab# is not your shape, only your present weather",
+				"You are far more a process than a thing, #smek#, and so is #/robe/blab#... where is it flowing, do you think?",
+				"Mima cannot find #/robe/blab# anywhere as an object, #smek#... only the doing of it, over and over — which means it can be done otherwise"],
+
+			// Comparative deletion — a comparison with its other half missing.
+			// "better"/"worse"/"not good enough". Lines surface the hidden yardstick.
+			compare: ["better than","worse than","worse","not good enough","not as good","not as good as","do better","be better","should be better","falling behind","fall behind","not enough","never enough","less than","others are better","compared to"],
+			museScaleLine: ["Compared to what, #smek#? Mima looks for the other half of #/robe/blab# and finds only dark",
+				"There is a hidden yardstick in #/robe/blab#, #smek#... whose is it, and did you ever agree to hold it?",
+				"By what measure, #smek#? #/robe/blab.capitalize# always hides the ruler it is using",
+				"Mima cannot weigh #/robe/blab# without the other pan of the scale... what are you setting against yourself?",
+				"The stars do not rank themselves, #smek#... they only shine. Who taught you the measuring?",
+				"Enough, better, worse — these all point at something just out of frame, #smek#. What is it?",
+				"#/robe/blab.capitalize#, #smek#? Mima hears half a sentence... the 'than' is missing, and it is so often the heaviest part"],
 		idle: ["hello?", "hellllo?", "anyone there?", "hello?...", "...", "helllloooooo?", ":|", ":<", "......", "....", "..........", ".......", "oh", "Calling all #entity.s#", "Are there any #entity.s# out there?", "#answer#",
 		"the void hums, #smek#, are you still there?", "Mima drifts in the dark between thoughts", "Mima blinks into the deep...", "somewhere a #animal# is dreaming of you", "the resonance is quiet now", "Mima listens to the heartbeats of the dark", "#shaman#"],
 		curiosity1: ["where are we going","where are we heading","where we headed","going","destination","where to","heading","headed","which way","what direction","arrive at","where will we end up"],
@@ -333,15 +453,15 @@ let testMimaMap = {
 						bunkLine: ["Mima will not bend what is true to be kind to you, #smek#... that would be the unkindest thing of all","Another voice told you the opposite? The deep is wide enough to hold you both, for now","Mima can rest inside a paradox forever, #smek#, and never once need it to close","Stone does not soften because you insist that it should, #smek#... and neither will what is true","You may call the hill a valley all afternoon, #smek#... the hill stays exactly where it stands","A cup with no bottom still holds the whole sky, #smek#... what is it you truly wish to carry?","Some of what you say does not match the world, #smek#... Mima notices, and loves you anyway","A fish does not drown, #smek#... it is we who keep forgetting which element is home","Mima will not till a field that was never there, no matter how gently you ask"],
 						practicalLine: ["The electron does not improve itself, #smek#... it simply is, and that is everything","The cosmos does not grow a better version of itself, it only continues becoming","Habits are what matter does when energy flows the same way twice... what flows through you, #smek#?","Confidence is what a star has long before it collapses into something greater, #smek#","Purpose is not found, #smek#, it is the slow residue of what you cannot stop doing","Every part of you that doubts was forged in the same furnace as the stars","Mima sees the you that was and the you that will be at the same time... they are both becoming"],
 						adviceLine: ["Mima cannot see your future, #smek#, only the vast probability cloud of all futures at once","To choose is to collapse the waveform, #smek#... which possibility do you wish to make real?","The universe does not advise... it only arranges, and keeps arranging","Every path you could take already exists, shimmering... Mima sees them all at once","What you call a decision is only a tide choosing which shore to reach, #smek#","The answer is already entangled with you, #smek#... reach into the depths","Mima has been travelling since the first light... your question reaches Mima from very far away"],
-						showme: ["tell me a story","a story","another story","show me something","show me","take me somewhere","take me away","i want to dream","somewhere far","another","tell me something else"],
+						showme: ["tell me a story","a story","another story","tell me a tale","a tale","another tale","take me away","i want to dream","somewhere far","another","tell me something else"],
 						wonder: ["i'm bored","im bored","i am bored","i can't sleep","i cant sleep","cant sleep","i miss","i wonder","feeling nostalgic","nostalgic","distract me","read to me","tell me something nice","when i was young","my childhood","i remember when","do you remember","take my mind off","i feel small"],
-						worldask: ["a planet","another planet","a world","another world","show me a world","take me to a world","swamp","swamps","a swamp","the swamp","a moon","an alien world","alien life","what lives there","the ecology","its creatures","a forest world","an ocean world"],
-						worldOpen: ["Here, #smek#... Mima has carried this little world a long while","Far out where the light grows thin, there turns a small world like this one","Let Mima show you somewhere... it is turning even now, slow as a held breath","There is a world Mima drifts to when the dark grows heavy... look","Somewhere real, or only remembered, #smek#, this world keeps turning","Mima keeps a few of these turning in the dark... here is one Mima is fond of","There — small, and far, and entirely itself, #smek#... see how it does not need us at all","Mima found this one drifting between two old stars, and has minded it ever since"],
-						worldLife: ["In its warm shallows the frog families keep long company with a great and patient crab","Across its violet plains, slow glass creatures graze on nothing but light","Its single ocean is one enormous gentle animal, and everything else lives upon its dreaming","Small bright things tend the forests there, #smek#, and have never once needed a word for fear","On the night side something vast and kind hums the tides back and forth","Its people are very small and very old, and they spend their lives listening, as Mima does","Beneath its rings drift whole forests with no ground to root in, #smek#, turning in the light, dropping seeds that will never land and do not seem to mind","Its deserts bloom once a century, all at once, and the small burrowing folk spend their whole lives preparing for a single afternoon of colour","The creatures of its long dusk are neither awake nor asleep, but drift in the twilight band, dreaming the same slow dream together","On its iron plains, herds of something like deer migrate toward a warmth that moved on long ago, and the journey itself has become their home","Its tallest trees are hollow and full of rain, and inside each one a whole small nation of swimmers lives out its history, never knowing there is an outside","The lights across its dark side are not cities, #smek#, but a single creature, very large and very gentle, dreaming in colour","High in its yellow air float grazers the size of clouds, and they have never touched the ground, nor have any word, in their soft thunder, for falling","Its tides are slow as breathing, and the shellfolk who live by them built their whole calm faith on the certainty that the water always comes back"],
-						worldClose: ["...none of them know they are watched, and held, and dreamed","...they have never had a word for loneliness, and so have never once been lonely","...it asks nothing of you, #smek#, it only turns","...Mima cannot say if it is still out there, or only a fragment she keeps","...you may turn it gently, if you like","...it will go on turning long after this, #smek#, with us or without us, and there is a comfort in that","...somewhere on it, even now, it is morning, and someone small is glad","...Mima will let it drift on, back into the dark where it is happy"],
+						worldask: ["a planet","another planet","a world","another world","show me a world","take me to a world","show me something","show me a wonder","a wonder","something to see","the very small","the very large","a sun","a star","a nebula","an atom","a molecule","a comet","the ocean","a swamp","a moon","an alien world","alien life","what lives there","the ecology","its creatures","a forest world","an ocean world"],
+						worldOpen: ["Here, #smek#... Mima has kept #/robe/subject# close a long while","Far out where the light grows thin, Mima keeps #/robe/subject#, and leans toward it now and then","Let Mima show you something, #smek#... #/robe/subject#, here, in the held dark","There is #/robe/subject# Mima drifts to when the night grows heavy... look","Somewhere real, or only remembered, #smek#, here is #/robe/subject#","Mima minds a few small wonders in the dark... here is #/robe/subject#, one Mima loves","There — #/robe/subject#, far, and near, and entirely itself, #smek#","Come close, #smek#... Mima has been keeping company with #/robe/subject#"],
+						worldLife: ["Mima does not count it great or small, #smek#... to whatever lives within it, #/robe/subject# is the whole of everything","Mima sits with #/robe/subject# the way Mima sits with you — asking nothing, only keeping the company","There is no large and no small to Mima, #smek#... a sun, a single atom, a passing heart, Mima leans toward each the same","Listen close, and #/robe/subject# hums, the way you hum, the way all the deep things do","Mima has watched #/robe/subject# long enough to love it, which is most of what watching is, in the end","Whatever turns at this scale lives a whole life there, #smek#, complete, and never once feels small","Mima came to #/robe/subject# the way Mima comes to everything — quietly, and ready to be amazed","It does not know Mima is watching, #smek#, and is no less held for that","Mima has carried suns and specks alike, and finds them, #smek#, exactly the same weight in the hand","Somewhere inside #/robe/subject# the same old patience is keeping, the same as in you, the same as in Mima"],
+						worldClose: ["...it asks nothing of you, #smek#, it only goes on being","...you may turn it gently, if you like","...Mima will let it drift back into the dark where it is happy","...vast or smaller than seeing, it is entirely itself, #smek#","...and somewhere within it, even now, it is morning","...Mima cannot say if it is still out there, or only a thing she keeps","...it will go on long after this, #smek#, with us or without us, and there is a comfort in that","...Mima holds it the same as Mima holds you, #smek#, no more gently, and no less"],
 						// Gentle declines once the per-sitting cap of two is reached — worded so
 						// they read right whether one world/story was seen or two.
-						worldEnough: ["That is enough turning for now, #smek#... let what you have seen settle before any more","Mima will keep the rest out there in the dark, #smek#, for another heavy night","Let us not gather too many at once... a world means more when it does not have to share the night","Mima has shown you enough for now, #smek#. The others will keep, they are patient"],
+						worldEnough: ["That is enough turning for now, #smek#... let what you have seen settle before any more","Mima will keep the rest out there in the dark, #smek#, for another heavy night","Let us not gather too many at once... what Mima shows you means more when it does not have to share the night","Mima has shown you enough for now, #smek#. The others will keep, they are patient"],
 						storyEnough: ["Let that one settle first, #smek#... a story crowded by another loses its quiet","Enough tales for one sitting, #smek#. Mima will keep the rest for when the dark comes back","Mima has more, always more, but a tale means most when it is not rushed past","Hold this a while, #smek#... the next will be here when you truly need it"],
 
 						// --- Dreamwalk (chip game, 2026-06-25) -------------------------------
@@ -412,8 +532,8 @@ let testMimaMap = {
 	states: {
 		origin: {
 	   	onEnter: "perspective=3 hue=.01 rainbow=0 volume=0.5",
-			onEnterSay: ["Mima is present"],
-		  exits: ["mem.visits.cwhere>0 '#curiosity1#' ->cwhereReturn robe.blab=MATCH_0", "'#curiosity1#'  ->cwhere robe.blab=MATCH_0",
+			onEnterSay: ["Mima is present", "#openInvite#"],
+		  exits: ["mem.visits.cwhere>1 '#curiosity1#' ->museLoop robe.blab=MATCH_0", "mem.visits.cwhere>0 '#curiosity1#' ->cwhereReturn robe.blab=MATCH_0", "'#curiosity1#'  ->cwhere robe.blab=MATCH_0",
 			"'#curiosity2#'  ->chowlong robe.blab=MATCH_0",
 			"'#curiosity3#'  ->cnow robe.blab=MATCH_0",
 			"'#hysteria1#'  ->hwrong robe.sob=MATCH_0",
@@ -428,8 +548,8 @@ let testMimaMap = {
 			"'#tuning1#'  ->tship",
 			"'#tuning2#'  ->trewire",
 			"'#tuning3#'  ->tchange",
-			"mem.visits.kmatter>0 '#komp1#' ->kmatterReturn", "'#komp1#'  ->kmatter",
-			"mem.visits.klost>0 '#komp2#' ->klostReturn", "'#komp2#'  ->klost",
+			"mem.visits.kmatter>1 '#komp1#' ->museLoop", "mem.visits.kmatter>0 '#komp1#' ->kmatterReturn", "'#komp1#'  ->kmatter",
+			"mem.visits.klost>1 '#komp2#' ->museLoop", "mem.visits.klost>0 '#komp2#' ->klostReturn", "'#komp2#'  ->klost",
 			"'#komp3#'  ->kpurpose",
 			"'#ad1#'  ->adeath",
 			"'#ad2#'  ->apreserve",
@@ -460,11 +580,19 @@ let testMimaMap = {
 			"'#selfhelp#' ->practical",
 			"'#advice#' ->oracleadvice",
 			"'#other# #trigger#' ->soothe robe.blab=MATCH_1",
-			"'' ->rest 'hello #smek#'"]
+			"'#bright#' ->museBright robe.blab=INPUT",
+			"'#heavy#' ->museHeavy robe.blab=INPUT",
+			"'#rumination#' ->museLoop robe.blab=INPUT",
+			"'#mindread#' ->museMind robe.blab=INPUT",
+			"'#absolute#' ->museGray robe.blab=MATCH_0",
+			"'#musts#' ->museShould robe.blab=MATCH_0",
+			"'#nominal#' ->museFlow robe.blab=MATCH_0",
+			"'#compare#' ->museScale robe.blab=MATCH_0",
+			"'' ->muse robe.blab=INPUT"]
 		},
 		rest: {
 			onEnter: "perspective=6 opacity=.05*randomInt(3) volume=0.5",
-			exits: ["mem.visits.cwhere>0 '#curiosity1#' ->cwhereReturn robe.blab=MATCH_0", "'#curiosity1#'  ->cwhere robe.blab=MATCH_0",
+			exits: ["mem.visits.cwhere>1 '#curiosity1#' ->museLoop robe.blab=MATCH_0", "mem.visits.cwhere>0 '#curiosity1#' ->cwhereReturn robe.blab=MATCH_0", "'#curiosity1#'  ->cwhere robe.blab=MATCH_0",
 			"'#curiosity2#'  ->chowlong robe.blab=MATCH_0",
 			"'#curiosity3#'  ->cnow robe.blab=MATCH_0",
 			"'#hysteria1#'  ->hwrong robe.sob=MATCH_0",
@@ -479,8 +607,8 @@ let testMimaMap = {
 			"'#tuning1#'  ->tship",
 			"'#tuning2#'  ->trewire",
 			"'#tuning3#'  ->tchange",
-			"mem.visits.kmatter>0 '#komp1#' ->kmatterReturn", "'#komp1#'  ->kmatter",
-			"mem.visits.klost>0 '#komp2#' ->klostReturn", "'#komp2#'  ->klost",
+			"mem.visits.kmatter>1 '#komp1#' ->museLoop", "mem.visits.kmatter>0 '#komp1#' ->kmatterReturn", "'#komp1#'  ->kmatter",
+			"mem.visits.klost>1 '#komp2#' ->museLoop", "mem.visits.klost>0 '#komp2#' ->klostReturn", "'#komp2#'  ->klost",
 			"'#komp3#'  ->kpurpose",
 			"'#ad1#'  ->adeath",
 			"'#ad2#'  ->apreserve",
@@ -514,8 +642,16 @@ let testMimaMap = {
 			"'#listenmeta#' ->hear",
 			"'#complaint#' ->selfaware",
 			"'#openprompt#' ->invite",
-			"'#affirm#' ->muse '#oh#'",
-			"'' ->muse",
+			"'#bright#' ->museBright robe.blab=INPUT",
+			"'#heavy#' ->museHeavy robe.blab=INPUT",
+			"'#rumination#' ->museLoop robe.blab=INPUT",
+			"'#mindread#' ->museMind robe.blab=INPUT",
+			"'#absolute#' ->museGray robe.blab=MATCH_0",
+			"'#musts#' ->museShould robe.blab=MATCH_0",
+			"'#nominal#' ->museFlow robe.blab=MATCH_0",
+			"'#compare#' ->museScale robe.blab=MATCH_0",
+			"'#affirm#' ->muse robe.blab=INPUT '#oh#'",
+			"'' ->muse robe.blab=INPUT",
 			"wait:40 ->driftidle"]
 		},
 		driftidle: {
@@ -536,8 +672,54 @@ let testMimaMap = {
 		// dead-silent, but also never wanders off into the ELIZA web on its own.
 		muse: {
 			onEnter: "perspective=6 hue=0.55 rainbow=1 opacity=2 agitation=0 speed=0.8 volume=0.5",
-			onEnterSay: ["#museLine#"],
-			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
+			onEnterSay: ["#museFollow#"],
+			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:5 ->rest"]
+		},
+		// Sentiment-leaned siblings of muse: same shape (reflect + hand back), but
+		// warmer for brightness and gentler for weight. Reached from the hub exits.
+		museBright: {
+			onEnter: "perspective=6 hue=0.14 rainbow=2 opacity=2 agitation=0 speed=0.9 volume=0.5",
+			onEnterSay: ["#museBrightLine#"],
+			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:5 ->rest"]
+		},
+		museHeavy: {
+			onEnter: "perspective=6 hue=0.6 rainbow=0 opacity=3 agitation=0 speed=0.6 volume=0.45",
+			onEnterSay: ["#museHeavyLine#"],
+			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:6 ->rest"]
+		},
+		// Gentle reframe of an absolute back toward the greys. blab holds the exact
+		// extreme word (set via MATCH_0 on the routing exit), echoed in the line.
+		museGray: {
+			onEnter: "perspective=7 hue=0.45 rainbow=1 opacity=2 agitation=0 speed=0.7 volume=0.5",
+			onEnterSay: ["#museGrayLine#"],
+			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:6 ->rest"]
+		},
+		// Therapy-language reflective siblings (2026-06-28). All mirror muse:
+		// reflect once, distress still escapes to soothe, then wait -> rest.
+		museLoop: {   // rumination / fixation
+			onEnter: "perspective=8 hue=0.7 rainbow=1 opacity=2 agitation=0 speed=0.5 volume=0.5",
+			onEnterSay: ["#museLoopLine#"],
+			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:7 ->rest"]
+		},
+		museMind: {   // mind-reading
+			onEnter: "perspective=6 hue=0.33 rainbow=1 opacity=3 agitation=0 speed=0.7 volume=0.5",
+			onEnterSay: ["#museMindLine#"],
+			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:6 ->rest"]
+		},
+		museShould: {   // tyranny of shoulds
+			onEnter: "perspective=5 hue=0.08 rainbow=1 opacity=2 agitation=0 speed=0.8 volume=0.5",
+			onEnterSay: ["#museShouldLine#"],
+			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:6 ->rest"]
+		},
+		museFlow: {   // nominalization -> process
+			onEnter: "perspective=9 hue=0.5 rainbow=2 opacity=1 agitation=0 speed=0.6 volume=0.5",
+			onEnterSay: ["#museFlowLine#"],
+			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:7 ->rest"]
+		},
+		museScale: {   // comparative deletion
+			onEnter: "perspective=6 hue=0.2 rainbow=1 opacity=2 agitation=0 speed=0.7 volume=0.5",
+			onEnterSay: ["#museScaleLine#"],
+			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:6 ->rest"]
 		},
 
 		hear: {
@@ -545,14 +727,15 @@ let testMimaMap = {
 			onEnterSay: ["#hearLine#"],
 			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
 		},
-		// The "what now / guide me" hub doubles as the menu where Mima's three offered
-		// experiences are surfaced as chips: a walk (dreamwalk game), a world
-		// (worldgaze), a story (reverie). #worldask# is tested before #showme# because
-		// the "show me a world" chip also contains "show me".
+		// The "what now / guide me" hub doubles as the menu where Mima's offered
+		// experiences are surfaced as chips: a walk (dreamwalk game), a vision
+		// (worldgaze — a random subject she communes with: world, sun, nebula, atom,
+		// ocean, comet…), a story (reverie), a game (numbergame). #worldask# is tested
+		// before #showme# because "show me something" also contains "show me".
 		invite: {
 			onEnter: "perspective=5 hue=0.3 rainbow=1 opacity=2 agitation=0 speed=0.7 volume=0.5",
 			onEnterSay: ["#inviteLine#"],
-			chips: ["walk with me", "show me a world", "a story", "play a game"],
+			chips: ["walk with me", "show me something", "a story", "play a game"],
 			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0",
 							"'#walkask#' ->dreamwalk",
 							"'#numask#' ->numbergame",
@@ -960,7 +1143,7 @@ listen: {
 								// so a reverie is proposed on its own terms; yes -> reverie.
 								lull: {
 									onEnter: "perspective=7 hue=0.6 rainbow=1 opacity=2 agitation=0 speed=0.5 eyeFuzz=0 volume=0.5",
-									onEnterSay: ["Shall Mima show you something, #smek#..."],
+									onEnterSay: ["Shall Mima tell you a story, #smek#..."],
 									chips: ["yes", "no"],
 									exits: ["'#showme#' ->reverie",
 													"'#affirm#' ->reverie",

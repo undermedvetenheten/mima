@@ -447,8 +447,6 @@ Chancery.prototype.checkActions = function() {
 	if (this.currentAction === undefined && this.actionQueue.length > 0) {
 		this._queueWasBusy = true
 		this.currentAction = this.actionQueue.shift()
-
-		console.log(`Start action: '${this.currentAction.template.raw}' (${this.currentAction.template.subtype})` )
 		// DO ACTIONS
 		switch(this.currentAction.template.subtype) {
 

@@ -246,7 +246,6 @@ let app = {
 		metadata:{title:"mima"},
 		handlers: {
 			onEnterState: (stateID, lastStateID) => {
-				console.log("ENTER STATE HANDLER:" + stateID)
 
 				// Record the conversation arc (turn count, per-topic visits, topic
 				// trail, recent player phrases) so Mima can notice returns and refer

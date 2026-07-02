@@ -41,9 +41,22 @@ let mimaMemory = {
 	},
 
 	record(bb, stateID) {
-		if (!bb || this.structural.has(stateID)) return
-		let topic = this.topicOf[stateID] || stateID
+		if (!bb) return
 		let get = (path, dflt) => { try { return bb.getAtPath(path) } catch (e) { return dflt } }
+
+		// Consecutive off-script musings (muse only — the sentiment/therapy
+		// siblings mean she DID read something). The hubs gate on this
+		// ("mem.museStreak>1 '' ->invite") so a user who keeps missing every
+		// pool gets offered the menu instead of being reflected at forever.
+		// Structural states (rest, invite itself...) don't break the streak;
+		// any real topic does.
+		if (stateID === "muse")
+			bb.setAtPath(["mem", "museStreak"], (get(["mem", "museStreak"], 0) || 0) + 1)
+		else if (!this.structural.has(stateID))
+			bb.setAtPath(["mem", "museStreak"], 0)
+
+		if (this.structural.has(stateID)) return
+		let topic = this.topicOf[stateID] || stateID
 
 		// Length of the topical conversation so far.
 		bb.setAtPath(["mem", "turn"], (get(["mem", "turn"], 0) || 0) + 1)
@@ -435,6 +448,12 @@ let app = {
 	userInput(data) {
 		// Conversation log (see the MIMA line in onOutput).
 		console.log(`YOU: ${data}`)
+
+		// Retire the chips immediately: the engine only clears them when the
+		// exit activates (~2s responseDelay later), which left the buttons
+		// pressable — users spammed "no" seven times into the silence.
+		app.chips = []
+
 		let msg = {
 			owner: "user",
 			text: [data]

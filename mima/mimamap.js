@@ -27,7 +27,7 @@ let testMimaMap = {
 		// Seeded so grammar paths like #/mem/echoes/1# resolve to "" before the
 		// first write instead of leaking an ((unresolved)) token. Counts live under
 		// visits.* and are created on demand.
-		mem: { turn: 0, lastTopic: "", priorTopic: "", visits: {cwhere:0, klost:0, kmatter:0}, echoes: {"0":"", "1":"", "2":""} },
+		mem: { turn: 0, lastTopic: "", priorTopic: "", museStreak: 0, visits: {cwhere:0, klost:0, kmatter:0}, echoes: {"0":"", "1":"", "2":""} },
 	},
 
 	grammar: {
@@ -85,7 +85,12 @@ let testMimaMap = {
 		moods: "vexed indignant impassioned wistful astute courteous benevolent convivial mirthful lighthearted affectionate mournful inquisitive quizzical studious disillusioned angry bemused oblivious sophisticated elated skeptical morose gleeful curious sleepy hopeful ashamed alert energetic exhausted giddy grateful groggy grumpy irate jealous jubilant lethargic sated lonely relaxed restless surprised tired thankful".split(" "),
 		color: "ivory silver ecru scarlet red burgundy ruby crimson carnelian pink rose grey pewter charcoal slate onyx black mahogany brown green emerald blue sapphire turquoise aquamarine teal gold yellow carnation orange lavender purple magenta lilac ebony amethyst jade garnet".split(" "),
 		material: "fire water steel bronze brass pearl cloud sky great crystal rainbow iron gold silver titanium".split(" "),
-		empty: ["loss", "grief", "grieving", "alone", "lonely", "lost", "empty", "meaningless", "nothing", "nothing much", "bored", "boring", "negative", "hopeless", "numb", "despair"],
+		// "bored"/"boring" are not distress — they route to #boredask# -> invite.
+		empty: ["loss", "grief", "grieving", "alone", "lonely", "lost", "empty", "meaningless", "nothing", "nothing much", "negative", "hopeless", "numb", "despair"],
+		// A user who is aimless or frustrated ("nothing is happening", "this is
+		// boring") isn't asking a larp question — offer the menu (invite) instead
+		// of reflecting or soothing. Tested BEFORE the chapter pools and #trigger#.
+		boredask: ["bored","boring","im bored","this is boring","so boring","nothing to do","nothing is happening","nothing happens","nothing ever happens","trying to have fun","not fun","no fun","entertain me","amuse me","do something","something interesting","give me something to do","what can we do","what can i do","what is there to do","make this fun"],
 		full: ["happy", "content", "joyful", "Enjoy", "joy", "pleased", "happiness", "positive"],
 		// NOTE: keep this pool free of everyday ship-talk nouns ("ship", "vessel")
 		// — they hijacked ordinary sentences into soothe.
@@ -101,7 +106,9 @@ let testMimaMap = {
 		self: ["you", "your", "youre", "You are", "ye", "yer", "yoou", "who are you?", "what are you", "where are you"],
 		other: ["me", "my", "mine", "i am", "im", "mines", "myself", "self"],
 		music: ["sound", "music", "noise", "resonance", "reverb", "song", "vibration", "melody", "harmony"],
-		affirm: ["yes", "yeah", "yea", "yeh", "did", "do", "aye", "affirmative", "absolutely", "perfect", "ofcourse", "ja", "yep", "definitly", "obviously", "ya","#full#", "ok", "okay", "cool", "nice", "thank you"],
+		// No bare "do"/"did" — they read imperatives ("do something interesting")
+		// as a yes. The answer forms stay as phrases.
+		affirm: ["yes", "yeah", "yea", "yeh", "i did", "i do", "it did", "aye", "affirmative", "absolutely", "perfect", "ofcourse", "ja", "yep", "definitly", "obviously", "ya","#full#", "ok", "okay", "cool", "nice", "thank you"],
 		negate: ["no", "dont", "didnt" , "never", "no way", "nope", "nah", "noooo", "naaaah", "nej", "ofcourse not", "neeej", "#trigger#", "hmm", "whatever", "thanks for nothing", "meh"],
 		query: ["You alright", "Whats on your mind", "Something bothering you", "How do you feel", "Are you okay", "A penny for your thoughts", "Whats the matter"],
 		really: ["Really? Tell Mima more...", "Oh? Mima leans a little closer...", "Is that so, #smek#? Go on..."],
@@ -474,7 +481,9 @@ let testMimaMap = {
 																						// No bare "talking"/"saying" — they stole meta-complaints like
 																						// "you keep saying the same thing" from #complaint#.
 																						pelog: ["tone","frequency","this sound","the music","what is it saying","the frequency","this tone","vibration","humming"],
-																						still: ["stillness","quiet","silent","silence","peace","so quiet","the stillness","why is it so","nothing is happening"],
+																						// "nothing is happening" moved to #boredask# (a complaint, not the
+																						// stillness happening); "why is it so" was a greedy fragment.
+																						still: ["stillness","quiet","silent","silence","peace","so quiet","the stillness"],
 																						temp: ["temporary","celebration","party","ritual","ceremony","festival","the noise","excitement","whats this celebration","outburst"],
 																						boob: ["rules","the past","society","nurture","the rules","old rules","before we left","back on earth","new society","raise the children"],
 																						// No bare "within"/"moon" — too common; moon-viewing requests
@@ -659,6 +668,7 @@ let testMimaMap = {
 			"'#worldask#' ->worldgaze",
 			"'#walkask#' ->dreamwalk",
 			"'#numask#' ->numbergame",
+			"'#boredask#' ->invite",
 			"'#stone#'  ->nebula",
 			"'#astrology#' ->alchemy",
 			"'#subcon#' ->under",
@@ -696,6 +706,7 @@ let testMimaMap = {
 			"'#musts#' ->museShould robe.blab=MATCH_0",
 			"'#nominal#' ->museFlow robe.blab=MATCH_0",
 			"'#compare#' ->museScale robe.blab=MATCH_0",
+			"mem.museStreak>1 '' ->invite robe.blab=INPUT mem.museStreak=0",
 			"'' ->muse robe.blab=INPUT"]
 		},
 		rest: {
@@ -728,6 +739,7 @@ let testMimaMap = {
 			"'#worldask#' ->worldgaze",
 			"'#walkask#' ->dreamwalk",
 			"'#numask#' ->numbergame",
+			"'#boredask#' ->invite",
 			"'#stone#'   ->nebula",
 			"'#astrology#' ->alchemy",
 			"'#subcon#' ->under",
@@ -765,6 +777,7 @@ let testMimaMap = {
 			"'#musts#' ->museShould robe.blab=MATCH_0",
 			"'#nominal#' ->museFlow robe.blab=MATCH_0",
 			"'#compare#' ->museScale robe.blab=MATCH_0",
+			"mem.museStreak>1 '' ->invite robe.blab=INPUT mem.museStreak=0",
 			"'#affirm#' ->muse robe.blab=INPUT '#oh#'",
 			"'' ->muse robe.blab=INPUT",
 			"wait:40 ->driftidle"]

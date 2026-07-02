@@ -131,7 +131,8 @@ Chancery.prototype.input = function(msg) {
 	let text = msg.text.join("\n").replace(/['‘’]/g, "")
 
 	this.activeInput.push(text)
-	console.warn(`${this}: msg received '${text}'`)
+	// log, not warn: warn drags a stack trace into every pasted console log.
+	console.log(`${this}: msg received '${text}'`)
 
 	this.updateExitMap()	
 }

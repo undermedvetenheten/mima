@@ -224,6 +224,16 @@ async function expectRoute(from, input, expected) {
 	await expectRoute('rest', 'blorp fizzle unrecognized gibberish', 'muse')
 	await expectRoute('rest', 'yes', ['muse'])
 
+	console.log('\n=== AIMLESS / BORED USERS GET THE MENU ===')
+	await expectRoute('rest', 'do something interesting', 'invite')
+	await expectRoute('rest', 'im here trying to have fun and nothing is happening', 'invite')
+	await expectRoute('rest', 'this is boring', 'invite')
+	await expectRoute('rest', 'what do we do inside this stillness?', 'stillness')
+	// Streak: repeated off-script inputs escalate the catch-all to invite
+	// (mem.museStreak is written by app.js; poke it directly like the visit tests).
+	inst.blackboard.setAtPath(['mem', 'museStreak'], 2)
+	await expectRoute('rest', 'blorp fizzle again', 'invite')
+
 	console.log('\n=== MEMORY / RETURN VISITS ===')
 	sandbox.__outputs.length = 0
 	// simulate mem writes the way app.js does? app.js does it; harness lacks it.

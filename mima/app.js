@@ -430,8 +430,13 @@ let app = {
 		app.messages.push(msg)
 
 		// Show the listening indicator while Mima formulates her response (cleared
-		// when her line arrives via onOutput / say).
+		// when her line arrives via onOutput / say). Failsafe: some exits are
+		// legitimately silent (e.g. "no" -> rest), which would leave the dots on
+		// until the next idle line minutes later — if no output arrives within a
+		// normal reply window, stop indicating.
 		app.isThinking = true
+		clearTimeout(app._thinkingFailsafe)
+		app._thinkingFailsafe = setTimeout(() => { app.isThinking = false }, 7000)
 
 		// Ambient flare while she prepares her answer (swells in, doesn't snap on);
 		// engaging cools the "being ignored" spiral.

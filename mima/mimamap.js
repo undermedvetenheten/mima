@@ -102,6 +102,13 @@ let testMimaMap = {
 		negate: ["no", "dont", "didnt" , "never", "no way", "nope", "nah", "noooo", "naaaah", "nej", "ofcourse not", "neeej", "#trigger#", "hmm", "whatever", "thanks for nothing", "meh"],
 		query: ["You alright", "Whats on your mind", "Something bothering you", "How do you feel", "Are you okay", "A penny for your thoughts", "Whats the matter"],
 		really: ["Really? Tell Mima more...", "Oh? Mima leans a little closer...", "Is that so, #smek#? Go on..."],
+		// Gentle spoken sign-off for declining an offer / ending an experience.
+		// Every "no"/"enough" exit back to rest speaks one of these — a silent
+		// transition left the chat's listening dots hanging with no reply.
+		settleClose: ["very well, #smek#... Mima is here, all the same",
+			"then let it settle, #smek#",
+			"as you like... the dark keeps us company either way",
+			"mm... Mima rests beside you a while, then"],
 		time: ["Time is a place for you, since you go towards a time when you will be at a place...",
 			"Time is just another country you are travelling through, #smek#",
 			"You move through time the way a river moves to the sea, always arriving, never still"],
@@ -961,8 +968,8 @@ happening: {
 	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0",
 		"'spin again' ->*",
 		"'#spinask#' ->*",
-		"'enough' ->rest",
-		"'#negate#' ->rest",
+		"'enough' ->rest '#settleClose#'",
+		"'#negate#' ->rest '#settleClose#'",
 		"'' ->echoback robe.blab=INPUT",
 		"wait:40 ->rest"]
 },
@@ -1255,7 +1262,7 @@ listen: {
 								"'#bot#' ->oracle 'Everything is created in chaos and ends in chaos'",
 								"'knock knock' ->wisdom 'Ah a comedian'",
 								"'#music#' ->oracle 'Mima is #music.capitalize# and #music.capitalize#'",
-							"'#negate#' ->rest",
+							"'#negate#' ->rest '#settleClose#'",
 								"'#affirm#' ->discombobulate"]
 								},
 								aftercare: {
@@ -1280,8 +1287,8 @@ listen: {
 									chips: ["another", "enough"],
 									exits: ["'#showme#' ->reverie2",
 													"'#trigger#' ->soothe robe.blab=MATCH_0",
-													"'#negate#' ->rest",
-													"'enough' ->rest",
+													"'#negate#' ->rest '#settleClose#'",
+													"'enough' ->rest '#settleClose#'",
 													"wait:45 ->rest"]
 								},
 								// Stories repeat fast, so cap a batch at two: the first reverie offers
@@ -1294,8 +1301,8 @@ listen: {
 									chips: ["enough"],
 									exits: ["'#showme#' ->rest '#storyEnough#'",
 													"'#trigger#' ->soothe robe.blab=MATCH_0",
-													"'#negate#' ->rest",
-													"'enough' ->rest",
+													"'#negate#' ->rest '#settleClose#'",
+													"'enough' ->rest '#settleClose#'",
 													"wait:45 ->rest"]
 								},
 								// The story OFFER — deliberately distinct from soothe's "do you need
@@ -1435,8 +1442,8 @@ listen: {
 													"'again' ->numbergame",
 													"'#numask#' ->numbergame",
 													"'#affirm#' ->numbergame",
-													"'#negate#' ->rest",
-													"'enough' ->rest",
+													"'#negate#' ->rest '#numLeave#'",
+													"'enough' ->rest '#numLeave#'",
 													"wait:18 ->rest"]
 								},
 								reflect: {
@@ -1456,7 +1463,7 @@ listen: {
 										 "'#bot#' ->oracle 'Everything is created in chaos and ends in chaos'",
 										 "'knock knock' ->wisdom 'Ah a comedian'",
 										 "'#music#' ->oracle",
-									 "'#negate#' ->rest",
+									 "'#negate#' ->rest '#settleClose#'",
 										 "'#affirm#' ->aftercare", "''  ->rest 'hm...'"]},
 												ponder: {
 													onEnter: "perspective=3 rainbow=10",

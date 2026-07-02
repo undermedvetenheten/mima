@@ -243,6 +243,20 @@ async function expectRoute(from, input, expected) {
 	await send('somewhere warm i hope')
 	console.log('  -> reply state:', state(), '| says:', sandbox.__outputs.join(' | ').slice(0, 300))
 
+	console.log('\n=== SILENT EXITS SPEAK (no stuck listening dots) ===')
+	// Declining an offer must produce SOME spoken line — a silent transition
+	// left the chat's listening indicator on until the next idle utterance.
+	for (const [from, input] of [['soothe', 'no'], ['reverie', 'enough'], ['numberwon', 'no'], ['happening', 'enough']]) {
+		sandbox.__outputs.length = 0
+		inst.enterState(from)
+		await settle(3)
+		sandbox.__outputs.length = 0
+		await send(input)
+		await settle(3)
+		const spoke = sandbox.__outputs.length > 0
+		console.log(`${spoke ? 'PASS' : 'FAIL'}  [${from}] "${input}" -> ${state()} ${spoke ? 'speaks: ' + sandbox.__outputs[0].slice(0, 60) : 'SILENT'}`)
+	}
+
 	console.log('\n=== INTERROGATE PATH BUG CHECK ===')
 	sandbox.__outputs.length = 0
 	inst.blackboard.setAtPath(['robe', 'blab'], 'a strange dream')

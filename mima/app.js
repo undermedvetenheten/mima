@@ -27,7 +27,8 @@ let mimaMemory = {
 	structural: new Set(["origin", "rest", "muse", "museBright", "museHeavy", "museGray",
 		"museLoop", "museMind", "museShould", "museFlow", "museScale",
 		"hear", "invite", "selfaware",
-		"driftidle", "idle", "cryo", "pause", "lull", "discombobulate"]),
+		"driftidle", "idle", "cryo", "pause", "lull", "discombobulate",
+		"happening"]),   // the Happenings wheel is a game, not a topic — spins shouldn't pollute the visit memory
 
 	// Return states count as their base topic, so a comeback keeps climbing the
 	// same visit counter rather than spawning a parallel one. Deep/beat-2 states
@@ -347,7 +348,9 @@ let app = {
 			// fired once the fades are loaded — see fadeWhenReady in sound.js.
 			fadeWhenReady()
 			app.instance.start()
-			synthBed.start()
+			// Guarded like planet/numberGame: pages that don't load synthbed.js
+			// (or a failed script load) shouldn't kill the whole start sequence.
+			if (typeof synthBed !== "undefined") synthBed.start()
 
 			let blinkCount = 0
 			let idlePulseCount = 0

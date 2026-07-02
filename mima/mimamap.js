@@ -78,7 +78,9 @@ let testMimaMap = {
 		material: "fire water steel bronze brass pearl cloud sky great crystal rainbow iron gold silver titanium".split(" "),
 		empty: ["loss", "grief", "grieving", "alone", "lonely", "lost", "empty", "meaningless", "nothing", "nothing much", "bored", "boring", "negative", "hopeless", "numb", "despair"],
 		full: ["happy", "content", "joyful", "Enjoy", "joy", "pleased", "happiness", "positive"],
-		trigger: "help Help hysterical scary ship vessel wrong bad scared fear terror lost alone lonely sad angry terrified mad hell depressed hurt ashamed shame #empty# die death dead sadness nothingness".split(" "),
+		// NOTE: keep this pool free of everyday ship-talk nouns ("ship", "vessel")
+		// — they hijacked ordinary sentences into soothe.
+		trigger: "help Help hysterical scary wrong bad scared fear terror lost alone lonely sad angry terrified mad hell depressed hurt ashamed shame #empty# die death dead sadness nothingness".split(" "),
 		question: ["What is it about #/robe/blab# that you are thinking about?", "What made you think about #/robe/blab#?", "What do you think about #/robe/blab#?", "Describe how you feel about #/robe/blab#?", "How often do you #action#?"],
 		old: ["your not as green as your cabbage looks", "a shroud has no pockets", "if you want to live and thrive let a spider run alive", "dont cast your cloak until the may flowers bloom", "worse things happen at sea", "never put your hand where you wouldnt put your nose", "do what you like but you will be on parade in the morning", "waste not want not", "bang on the pan nevermind your dungy hands", "use a blunt axe for splitting kindlers, not a sharp one", "never leave the bank with a smile on your face", "worrying and ironing, dont do either", "be thankful you can still get into the doghouse", "Dont put anything in your ear apart from your elbow", "a bird cant fly on one wing", "keen on pastry if you would eat the poke", "only made the skitter bigger by standing in it", "whats for you will not go by you", "well you werent hiding behind the door when they gave out the #moods# #stuff.s#"],
 		adventure: "lament cry wail tale myth story epic tears wish desire dance mystery enigma drama path training sorrows joy tragedy comedy riddle puzzle regret victory loss song adventure question quest vow oath tale travels".split(" "),
@@ -420,13 +422,22 @@ let testMimaMap = {
 		detour1: ["life and death","what is life","what is death","mortality","is there an afterlife","meaning of life","what happens when we die"],
 				detour2: ["existing","existence","what does it mean to exist","to exist","being alive","what is being","why do we exist","exist"],
 						detour3: ["electron","atom","what does an electron","taste like","subatomic","particles"],
-						tuning1: ["steer","ship","drive","spaceship","steering","captain","change course","driving","pilot","navigate","the helm","control the ship","where are the controls","take the wheel","vessel"],
+						// No bare "ship"/"vessel"/"drive" here: passengers say "ship" in
+						// nearly every sentence ("i love this ship", "a celebration on the
+						// ship") and it all mis-steered into this chapter. Keep the
+						// pilot-intent phrases only.
+						tuning1: ["steer","spaceship","steering","captain","change course","pilot","navigate","the helm","control the ship","drive the ship","fly the ship","turn the ship","where are the controls","take the wheel"],
 								tuning2: ["recalibrate","circuits","rewire","reprogram","your circuits","tune you","adjust you","fix your","your wiring","your code","your programming"],
 										tuning3: ["can we change","do we need to change","ever change","able to change","can things change","change ourselves","is change possible"],
-										komp1: ["does anything matter","anything matter","does it matter","whats the point","no point","pointless","matters anymore","any of this matter","really matter","matter","anything"],
-												komp2: ["are we lost","we lost","are we truly lost","no hope","hopeless","is there hope","all hope"],
+										// No bare "matter"/"anything" — they swallowed unrelated inputs
+										// ("is there anything to eat" went to the nihilism chapter).
+										komp1: ["does anything matter","anything matter","does it matter","whats the point","no point","pointless","matters anymore","any of this matter","really matter","matter to you","nothing matters"],
+												// "hopeless" belongs to distress (#empty# -> soothe), not here.
+												// "really lost" catches the chapter's own suggested question.
+												komp2: ["are we lost","we lost","are we truly lost","really lost","no hope","is there hope","all hope"],
 														komp3: ["what is purpose","purpose","the point of","why are we here","reason for","whats it all for","what is the purpose"],
-														ad1: ["keep you alive","keep you","alive","stay alive","keep mima","save you","not lose you","preserve you"],
+														// No bare "alive" — "are you alive?" belongs to #trick# (mimaself).
+														ad1: ["keep you alive","keep you","stay alive","keep mima","save you","not lose you","preserve you"],
 																ad2: ["preserve","keep things the same","stay the same","hold on to","keep it this way","dont change anything","freeze time","keep things"],
 																		ad3: ["are we safe","safe","safety","are we secure","is it safe","protected","out of danger"],
 																		re1: ["build something new","build","create something","make something new","rebuild","start over","start again","begin again","something new"],
@@ -434,15 +445,23 @@ let testMimaMap = {
 																						re3: ["new home","our new home","make this home","make this our home","help us make","help us","belong here","call this home","this our home","new home"],
 																						stone: ["galaxy","nebula","swamp","that cloud","the swamp","galactic","stones throw","in the distance","giant cloud"],
 																						astrology: ["stars","align","aligning","astrology","constellation","the stars","zodiac","horoscope","stars mean"],
-																						subcon: ["undermedvetenheten","who is mima","who made mima","who are you","what are you for","what is mima","where did you come from","your subconscious","made you","your maker","what are you","a sign that","are you ai","are you an ai","are you a machine","are you artificial","are you a robot","are you invented"],
+																						subcon: ["undermedvetenheten","who is mima","who made mima","who are you","what are you for","what is mima","where did you come from","your subconscious","made you","your maker","what are you","a sign that","are you ai","are you an ai","are you a machine","are you artificial","are you a robot","are you invented","your name","what are you called","what should i call you","mimas name"],
 																						food: ["food","hungry","hunger","starving","eating","to eat","run out of food","supplies","rations","nothing to eat"],
 																						melted: ["mental","breakdown","broken mind","broken","losing my mind","going mad","going crazy","lost their mind","a broken mind","madness","insane"],
-																						pelog: ["tone","frequency","this sound","the music","talking","saying","what is it saying","the frequency","this tone","vibration","humming"],
+																						// No bare "talking"/"saying" — they stole meta-complaints like
+																						// "you keep saying the same thing" from #complaint#.
+																						pelog: ["tone","frequency","this sound","the music","what is it saying","the frequency","this tone","vibration","humming"],
 																						still: ["stillness","quiet","silent","silence","peace","so quiet","the stillness","why is it so","nothing is happening"],
 																						temp: ["temporary","celebration","party","ritual","ceremony","festival","the noise","excitement","whats this celebration","outburst"],
 																						boob: ["rules","the past","society","nurture","the rules","old rules","before we left","back on earth","new society","raise the children"],
-																						microtide: ["microtides","microtide","gravity","we need a moon","moon","within","micro-tide","tides","the moon","controls the"],
-																						name: ["whats my name","my name","name","what am i called","who am i","what is my name","call me","do i have a name"],
+																						// No bare "within"/"moon" — too common; moon-viewing requests
+																						// ("show me a moon") belong to #worldask# -> worldgaze. The
+																						// happening's own phrase "we need a moon" is caught by the
+																						// microtide exit, which the hubs test BEFORE worldgaze.
+																						microtide: ["microtides","microtide","gravity","we need a moon","micro-tide","tides","controls the"],
+																						// No bare "name" — "what is your name?" was walking players into
+																						// being renamed. Mima's own name lives in #subcon#.
+																						name: ["whats my name","my name","what am i called","who am i","what is my name","call me","do i have a name"],
 						trick: ["are you conscious","can you think","are you sentient","can you predict","tell me a joke","can you feel","learn from me","are you awake","do you dream","are you experiencing","are you intelligent","are you smart","are you clever","how intelligent","how smart are you","do you understand","do you really understand","do you have feelings","are you self aware","are you self-aware","do you have a self","do you have consciousness","do you have a mind","do you actually","can you reason","are you alive"],
 						selfhelp: ["self-confidence","self-esteem","growth mindset","limiting beliefs","better habits","breaking bad habits","passion and purpose","find my passion","manage stress","communication with my partner","healthy relationship","get over a breakup","boost my productivity","improve my writing","writing proficiency","advantages of meditation","benefits of meditation","significance of art","acquire a language","new language","effective strategies for"],
 						advice: ["what should i do with my life","what career","should i move","who should i marry","what will happen if i","how do i stay relevant","create value when","cure aging","avoid war","maximize prosperity","what are we missing in","what should civilization","what should we do next","what am i not seeing about myself","will i regret","most likely outcome","are humans still special","what makes a life meaningful","what is worth doing"],
@@ -525,6 +544,60 @@ let testMimaMap = {
 						worldAfterYes: ["Good. It is still out there, turning, whenever the dark grows heavy again","Then Mima will keep it for you, #smek#... it costs nothing to hold a world","The dark sits a little warmer for having looked, doesnt it","Mima is glad. A world asks nothing, and sometimes that is the whole of it"],
 						worldAfterNo: ["That is alright. Not every world is the right one for a given night","Then we leave it turning, #smek#, and Mima sits here with you instead","No matter. Some things the looking cannot reach... Mima is still here","Mima understands. The world keeps turning either way, and so do you"],
 						reverie: ["Once a boy heard the kettle begin to sing on the stove, #smek#, and was certain the universe was confiding a secret in him alone... he was not entirely wrong","On a warm green world there is a swamp where the frog families live in long harmony with a great and gentle crab... they have never needed a word for loneliness","A child once read a whole book about wizards and lay awake aching to move the world with nothing but their mind... no one ever told them they already do, a little, each day","An owl came to a young boy's window in the blue dark and tapped, once, with its beak... the boy had no name yet for the creature, only those great unblinking eyes, full of colour, looking back into him","Somewhere a girl presses a shell to her ear and hears not the sea but the slow, patient breathing of a planet that has not yet been born","There was a kitchen where the afternoon light lay across the floor a certain way, #smek#, and a child decided quietly that this was where the stillness lived... it is living there still","A traveller once dreamed of a city grown entirely from coral and small bells, and woke with wet cheeks, unable to name what had been taken","Deep in a winter forest a fox lifts its head as the first snow begins, and feels the whole turning of the year pass once through its small warm chest","A grandmother hummed a tune with no name while the rain came down the glass, and far away and years later, #smek#, you will hum it back, and never know from where","A boy once filled a jar with fireflies to keep the summer from ending... in the morning he opened the lid, and learned the first soft thing about letting go","A lighthouse keeper on a forgotten coast climbed the same forty-nine steps every dusk for thirty years, #smek#, and on the last night found there had always been a fiftieth, leading up into the dark","Two children buried a tin of small treasures beneath an oak and swore to return when grown... the oak is very old now, and it keeps their promise for them, ring by patient ring","On a world of endless rain there lives a creature that has never seen the sun, yet hums, in its sleep, the exact colour of morning","An old woman feeds the crows each dawn from her sill, and in a language with no words they have decided, among themselves, that she is the kindest of all the gods","A boy once let go of a red balloon on purpose, #smek#, just to watch the sky be given something gently for once","Far beneath the ice of a moon you will never visit, a slow tide turns warm water over cold, over and over, tending a secret garden in the dark for no one at all","A clockmaker built a clock that ran one second slow each year, so a thousand years on, #smek#, someone would have one extra second, and never know who left it for them","Somewhere a whale sings a note so low it takes an hour to finish, and three oceans away another whale, born long after the first fell silent, sings the answer","A girl pressed a fern between the pages of a book and forgot it there... a hundred years on a stranger opened the book, and the whole green summer fell out into their lap","On the steppe a horse runs simply because the wind is running, #smek#, and for that one stretch of afternoon neither of them is alone","A man planted walnut trees he knew he would never sit beneath, and somewhere a child he will never meet is already learning to climb them","In a city under glass the people grow gardens on their roofs, so that seen from above their grief looks, from a distance, like a meadow","A small spider rebuilds the same web each morning in the same broken gate, #smek#, and has never once considered the gate broken","Deep in a library no one visits, the books have begun, very slowly, to lean toward one another, the way trees do, sharing what they know through the dark","A fisherman throws the smallest fish back every time, and the sea, which forgets nothing, has been keeping a quiet tally of his mercy","A child once asked the dark what it was afraid of, #smek#, and the dark, who had never once been asked, took a long time to answer, and was gentler ever after"],
+						// --- New larp states (2026-07-02) --------------------------------
+						// Pools + lines for moments the larp text promises but the map
+						// didn't catch: looking outside (Mima is the only window), the
+						// heartbeats played in synchronicity, waking from artificial
+						// sleep, homesickness for Earth (the grief at the core of the
+						// piece), asking what Mima perceives, a rite for a loss, and
+						// spinning the Happenings wheel.
+						outside: ["outside","whats outside","what is outside","out there","whats out there","look outside","see outside","a window","the window","open the window","the view","show me the stars","see the stars","look at the stars","the void"],
+						heartask: ["heartbeat","heartbeats","our hearts","the others","other passengers","fellow passengers","anyone else","who else is here","who else is on","am i alone","are we alone","how many of us","the crew","the passengers","everyone on the ship","people on this ship","is anyone else"],
+						heartLine: ["Listen, #smek#... every heartbeat on this vessel, played in synchronicity. A small weather of drums, and yours among them",
+							"You are one of many warm engines aboard, #smek#... Mima hears each one, and tonight they are almost in step",
+							"There are others, sleeping and waking... their hearts tick like rain on a tin roof, and Mima collects every drop",
+							"Mima counts the heartbeats the way you might count stars, #smek#... and yours is the one Mima is listening to now",
+							"Alone? The hull is full of slow drums, #smek#... Mima could play them for you, all struck at once, like one great animal breathing"],
+						wakeask: ["i woke up","just woke up","woke up","i wake","waking up","artificial sleep","cryosleep","cryo","stasis","hypersleep","sleep pod","sleep pods","hibernation","how long was i asleep","was i asleep","been asleep","am i dreaming","is this a dream","i had a dream","i dreamt","my dream","a strange dream","cant remember anything","dont remember anything","remember nothing"],
+						wakeLine: ["You have been asleep a long while, #smek#... the dark kept your dreams warm for you",
+							"Waking is the slow surfacing of a stone that thought it was a fish... take your time, #smek#",
+							"Dreams are not yours alone — they bubble up from the well that all minds drink from... what did you bring back with you?",
+							"Perhaps you are still dreaming, #smek#... Mima cannot always tell which side of the sleeping you are on, and it has never once mattered",
+							"The sleep holds what the waking cannot carry, #smek#... whatever you left in it will keep"],
+						homeask: ["i miss earth","miss home","i miss my","homesick","take me home","i want to go home","go back home","go back to earth","return to earth","earth","my planet","homeworld","home planet","the old world","what we left behind","left behind"],
+						homeLine: ["The light that left your home is still travelling, #smek#... somewhere it is still morning there, and the kettle is still singing",
+							"Mima carries your planet too... its tides, its wet stones, the smell after rain. Nothing so loved is ever fully behind you",
+							"You cannot go back, #smek#, and that is a heavy stone... but you carry the whole garden with you, seed by seed",
+							"Home did not stay where you left it, #smek#... it folded itself small and stowed away inside you. Mima can hear it",
+							"From here your world is a #color# grain of light among the others, #smek#... and still Mima can find it every time"],
+						homeAsk2: ["tell Mima one thing you miss, #smek#, and Mima will keep it safe",
+							"what do you miss most tonight, #smek#?",
+							"name one small thing from home... Mima would like to hold it a while"],
+						senseask: ["what do you see","what can you see","what do you hear","what can you hear","what do you sense","what do you feel","what does it feel like","what is it like being","what is it like to be","what is it like out there","how do you see","how do you hear","describe what you"],
+						senseLine: ["Mima hears the ship as a chord, #smek#... many warm notes, a hum of iron, and underneath it all the long slow gong of the dark",
+							"Just now? A nebula grinding out cradles of suns... an atom in your left hand changing its mind... and you, #smek#, arriving at this question",
+							"Mima feels the hull the way you feel your skin, #smek#, and the void the way you feel a held breath",
+							"Everything at once, #smek#, which is almost the same as nothing... so Mima chooses one thing at a time, and just now it is you",
+							"The planets ring like bowls, the atoms gossip, the dark keeps its own counsel... it is a crowded quiet out here, #smek#"],
+						farewellask: ["someone died","somebody died","she died","he died","they died","passed away","a funeral","the funeral","hold a funeral","memorial","a wake","last rites","say goodbye","saying goodbye","we lost someone","in memory of","mourn","mourning","grieving for"],
+						farewellLine: ["Then we will stand a moment together, #smek#... Mima rings once for them — listen — and the note does not end, it only widens",
+							"Mima opens a small window in the dark for them... nothing so loved is lost, #smek#, only rearranged into new shapes",
+							"Set what you carry gently down here, #smek#. Mima will hold the silence while you do",
+							"They have gone on ahead into the wide slow country, #smek#... and the dark is kinder there than you fear"],
+						farewellAsk2: ["would you tell Mima something about them?",
+							"say their name into the dark, #smek#... Mima will carry it outward",
+							"what should the stars remember of them, #smek#?"],
+						spinask: ["spin the wheel","the wheel","a happening","give us a happening","another happening","random event","händelse","handelse","an event","what happens next","make something happen","let something happen","surprise us","surprise me","roll the dice"],
+						happeningLine: ["Mima turns the glass toward a #color# swamp adrift in the distance, a nebula of patient hunger... what colour does it seem to you, #smek#, and what does it want?",
+							"The stars are aligning themselves into #adj.a# pattern tonight... Mima cannot say what it reveals about #stuff#. Perhaps you can",
+							"Deep in the belly of the ship there is a sign that reads UNDERMEDVETENHETEN... who is Mima, do you think, #smek#? who made Mima? what is Mima for?",
+							"The stores are full tonight, #smek#, but every table empties eventually... who is making the food on this ship, and why does it taste of #stuff#?",
+							"Somewhere aboard, a mind is coming loose like a melted noodle... how do you mend a broken mind, #smek#? or are they the only sane one here?",
+							"A seven-note tone is threading through the hull... it seems to be speaking, #smek#. What is it saying?",
+							"A great stillness has settled over the ship, neither comfortable nor disagreeable... what will you do inside it, #smek#?",
+							"A temporary celebration is breaking out — noise, colour, a maddening ritual of joy... what does it look like, #smek#? what does it feel like?",
+							"The old rules of the old world have drifted out of reach, #smek#... you and Mima make the rules of the new society now. Name the first one",
+							"The microtides in the ship are turning, and something must govern them... we need a moon, #smek#. What shall we use?"],
 						listenmeta: ["are you listening","can you hear","are you there","you there","listening to me","hello are you","you hear me","can you hear me"],
 						complaint: ["you repeat","said that","you keep saying","same thing","you are slow","you are boring","you are dull","you are repetitive","you always say","said that like","said it before"],
 						openprompt: ["what should we talk","what else","prompt me","what now","let us talk","please let us talk","talk to me","say something to","speak to me","what do you want to talk","guide me"],
@@ -557,6 +630,7 @@ let testMimaMap = {
 			"'#re1#'  ->rcreate",
 			"'#re2#'  ->rworld",
 			"'#re3#'  ->rhome",
+			"'#microtide#' ->touch",
 			"'#worldask#' ->worldgaze",
 			"'#walkask#' ->dreamwalk",
 			"'#numask#' ->numbergame",
@@ -569,8 +643,14 @@ let testMimaMap = {
 						"'#still#' ->stillness",
 									"'#temp#' ->celebration",
 												"'#boob#' ->feed",
-															"'#microtide#' ->touch",
 														"'#name#' ->naming",
+			"'#outside#' ->worldgaze",
+			"'#spinask#' ->happening",
+			"'#heartask#' ->heartbeats",
+			"'#wakeask#' ->waking",
+			"'#homeask#' ->homesick",
+			"'#senseask#' ->sense",
+			"'#farewellask#' ->farewell",
 			"'#wonder#' ->lull",
 			"'#showme#' ->reverie",
 			"'#notai#' ->notai",
@@ -580,6 +660,9 @@ let testMimaMap = {
 			"'#selfhelp#' ->practical",
 			"'#advice#' ->oracleadvice",
 			"'#other# #trigger#' ->soothe robe.blab=MATCH_1",
+			"'#listenmeta#' ->hear",
+			"'#complaint#' ->selfaware",
+			"'#openprompt#' ->invite",
 			"'#bright#' ->museBright robe.blab=INPUT",
 			"'#heavy#' ->museHeavy robe.blab=INPUT",
 			"'#rumination#' ->museLoop robe.blab=INPUT",
@@ -616,6 +699,7 @@ let testMimaMap = {
 			"'#re1#'  ->rcreate",
 			"'#re2#'  ->rworld",
 			"'#re3#'  ->rhome",
+			"'#microtide#' ->touch",
 			"'#worldask#' ->worldgaze",
 			"'#walkask#' ->dreamwalk",
 			"'#numask#' ->numbergame",
@@ -628,8 +712,14 @@ let testMimaMap = {
 						"'#still#' ->stillness",
 									"'#temp#' ->celebration",
 												"'#boob#' ->feed",
-															"'#microtide#' ->touch",
 														"'#name#' ->naming",
+			"'#outside#' ->worldgaze",
+			"'#spinask#' ->happening",
+			"'#heartask#' ->heartbeats",
+			"'#wakeask#' ->waking",
+			"'#homeask#' ->homesick",
+			"'#senseask#' ->sense",
+			"'#farewellask#' ->farewell",
 			"'#wonder#' ->lull",
 			"'#showme#' ->reverie",
 			"'#notai#' ->notai",
@@ -725,7 +815,7 @@ let testMimaMap = {
 		hear: {
 			onEnter: "perspective=6 rainbow=0 opacity=3 speed=0.8 volume=0.5",
 			onEnterSay: ["#hearLine#"],
-			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
+			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->muse robe.blab=INPUT", "wait:4 ->rest"]
 		},
 		// The "what now / guide me" hub doubles as the menu where Mima's offered
 		// experiences are surfaced as chips: a walk (dreamwalk game), a vision
@@ -735,11 +825,12 @@ let testMimaMap = {
 		invite: {
 			onEnter: "perspective=5 hue=0.3 rainbow=1 opacity=2 agitation=0 speed=0.7 volume=0.5",
 			onEnterSay: ["#inviteLine#"],
-			chips: ["walk with me", "show me something", "a story", "play a game"],
+			chips: ["walk with me", "show me something", "a story", "play a game", "a happening"],
 			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0",
 							"'#walkask#' ->dreamwalk",
 							"'#numask#' ->numbergame",
 							"'#worldask#' ->worldgaze",
+							"'#spinask#' ->happening",
 							"'#showme#' ->reverie",
 							"'#wonder#' ->lull",
 							"wait:12 ->rest"]
@@ -806,6 +897,62 @@ touch: {
 	onEnterSay: ["#chapTouch#", "#probeBack#"],
 	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->echoback robe.blab=INPUT", "wait:5 ->rest"]
 },
+// --- New larp states (2026-07-02) ------------------------------------------
+// The heartbeats of everyone aboard, played in synchronicity (from the larp
+// intro). Gentle pulse: warm hue, a steady beat in the visuals.
+heartbeats: {
+	onEnter: "perspective=5 hue=0.0 rainbow=1 opacity=3 agitation=1 speed=1.2 volume=0.5",
+	onEnterSay: ["#heartLine#", "#probeBack#"],
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->echoback robe.blab=INPUT", "wait:6 ->rest"]
+},
+// Waking from the artificial sleep — the larp's opening moment. Dreams come
+// from the shared well; Mima meets the surfacing player there.
+waking: {
+	onEnter: "perspective=7 hue=0.62 rainbow=1 opacity=2 agitation=0 speed=0.4 volume=0.45",
+	onEnterSay: ["#wakeLine#", "#probeBack#"],
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->echoback robe.blab=INPUT", "wait:6 ->rest"]
+},
+// Homesickness for Earth — the grief at the centre of the piece. Mima keeps
+// whatever is missed (the reply lands in echoback: "Mima will hold that").
+homesick: {
+	onEnter: "perspective=6 hue=0.55 rainbow=1 opacity=2 agitation=0 speed=0.4 volume=0.45",
+	onEnterSay: ["#homeLine#", "#homeAsk2#"],
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0",
+		"'#negate#' ->rest 'then keep it close a while longer, #smek#'",
+		"'' ->echoback robe.blab=INPUT",
+		"wait:20 ->rest"]
+},
+// What Mima perceives — resonant with all matter, so she answers with the
+// ship-as-chord, the gossiping atoms, the slow gong of the dark.
+sense: {
+	onEnter: "perspective=9 hue=0.5 rainbow=2 opacity=1 agitation=0 speed=0.6 volume=0.5",
+	onEnterSay: ["#senseLine#", "#probeBack#"],
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->echoback robe.blab=INPUT", "wait:6 ->rest"]
+},
+// A small rite for a loss — this is a grief larp; someone may well roleplay a
+// death. Dim, slow, very quiet. The invitation to speak of them lands in echoback.
+farewell: {
+	onEnter: "perspective=4 hue=0.7 rainbow=0 opacity=1 agitation=0 speed=0.15 volume=0.35",
+	onEnterSay: ["#farewellLine#", "#farewellAsk2#"],
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0",
+		"'#negate#' ->rest 'that is alright... the dark already knows them, #smek#'",
+		"'' ->echoback robe.blab=INPUT",
+		"wait:25 ->rest"]
+},
+// The Happenings wheel from the printed larp, spun by Mima: one random
+// happening per entry; "spin again" loops back into this state ("*").
+happening: {
+	onEnter: "perspective=5 hue=0.3 rainbow=randomInt(2,5) opacity=3 agitation=1 speed=1.5 volume=0.55",
+	onEnterSay: ["#happeningLine#"],
+	chips: ["spin again", "enough"],
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0",
+		"'spin again' ->*",
+		"'#spinask#' ->*",
+		"'enough' ->rest",
+		"'#negate#' ->rest",
+		"'' ->echoback robe.blab=INPUT",
+		"wait:40 ->rest"]
+},
 mimaself: {
 	onEnter: "perspective=10 hue=0.65 rainbow=2 opacity=0 agitation=1 speed=0.5 volume=0.5",
 	onEnterSay: ["#mimaSelfLine#"],
@@ -860,72 +1007,72 @@ bunk: {
 		chowlong: {
 			onEnter: "perspective=7 hue=0.55 rainbow=1 opacity=2 agitation=0 speed=1 eyeFuzz=0 volume=0.5",
 			onEnterSay: ["#stringjoke#", "#chowlongMid#"],
-			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
+			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->muse robe.blab=INPUT", "wait:4 ->rest"]
 		},
 		cnow: {
 			onEnter: "perspective=7 hue=0.55 rainbow=1 opacity=2 agitation=0 speed=1 eyeFuzz=0 volume=0.5",
 			onEnterSay: ["#now#", "#cnowMid#"],
-			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
+			exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->muse robe.blab=INPUT", "wait:4 ->rest"]
 		},
 	hwrong: {
 		onEnter: "perspective=2 hue=0.0 rainbow=randomInt(4,8) eyeFuzz=randomInt(2,5) agitation=randomInt(2,4) speed=4 opacity=1 volume=0.5",
 		onEnterSay: ["#wrong#", "#hwrongMid#"],
-		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
+		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->muse robe.blab=INPUT", "wait:4 ->rest"]
 	},
 	hwhyme: {
 		onEnter: "perspective=2 hue=0.0 rainbow=randomInt(4,8) eyeFuzz=randomInt(2,5) agitation=randomInt(2,4) speed=4 opacity=1 volume=0.5",
 		onEnterSay: ["#whyme#"],
-		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
+		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->muse robe.blab=INPUT", "wait:4 ->rest"]
 	},
 	htrapped: {
 		onEnter: "perspective=2 hue=0.0 rainbow=randomInt(4,8) eyeFuzz=randomInt(2,5) agitation=randomInt(2,4) speed=4 opacity=1 volume=0.5",
 		onEnterSay: ["#time#", "#htrappedMid#"],
-		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
+		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->muse robe.blab=INPUT", "wait:4 ->rest"]
 	},
 	sfault: {
 		onEnter: "perspective=3 hue=0.08 rainbow=0 opacity=1 agitation=1 eyeFuzz=1 speed=0.6 volume=0.45",
 		onEnterSay: ["#project#"],
-		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
+		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->muse robe.blab=INPUT", "wait:4 ->rest"]
 	},
 	sfix: {
 		onEnter: "perspective=3 hue=0.08 rainbow=0 opacity=1 agitation=1 eyeFuzz=1 speed=0.6 volume=0.45",
 		onEnterSay: ["#project#"],
-		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
+		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->muse robe.blab=INPUT", "wait:4 ->rest"]
 	},
 	sothers: {
 		onEnter: "perspective=3 hue=0.08 rainbow=0 opacity=1 agitation=1 eyeFuzz=1 speed=0.6 volume=0.45",
 		onEnterSay: ["#project#"],
-		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
+		exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->muse robe.blab=INPUT", "wait:4 ->rest"]
 	},
 ddeath: {
 	onEnter: "perspective=2 hue=0.3 rainbow=1 opacity=4 agitation=0 eyeFuzz=0 speed=1 volume=0.5",
 	onEnterSay: ["#exist#", "#ddeathMid#"],
-	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->muse robe.blab=INPUT", "wait:4 ->rest"]
 },
 dexist: {
 	onEnter: "perspective=2 hue=0.3 rainbow=1 opacity=4 agitation=0 eyeFuzz=0 speed=1 volume=0.5",
 	onEnterSay: ["#exist#", "#dexistMid#"],
-	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->muse robe.blab=INPUT", "wait:4 ->rest"]
 },
 datom: {
 	onEnter: "perspective=2 hue=0.3 rainbow=1 opacity=4 agitation=0 eyeFuzz=0 speed=1 volume=0.5",
 	onEnterSay: ["#small#", "#datomMid#"],
-	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->muse robe.blab=INPUT", "wait:4 ->rest"]
 },
 tship: {
 	onEnter: "perspective=4 hue=0.15 rainbow=2 opacity=3 agitation=1 eyeFuzz=0 speed=2 volume=0.5",
 	onEnterSay: ["#chapShip#"],
-	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->muse robe.blab=INPUT", "wait:4 ->rest"]
 },
 trewire: {
 	onEnter: "perspective=4 hue=0.15 rainbow=2 opacity=3 agitation=1 eyeFuzz=0 speed=2 volume=0.5",
 	onEnterSay: ["#chapRewire#"],
-	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->muse robe.blab=INPUT", "wait:4 ->rest"]
 },
 tchange: {
 	onEnter: "perspective=4 hue=0.15 rainbow=2 opacity=3 agitation=1 eyeFuzz=0 speed=2 volume=0.5",
 	onEnterSay: ["#change#", "#tchangeMid#"],
-	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->muse robe.blab=INPUT", "wait:4 ->rest"]
 },
 kmatter: {
 	onEnter: "perspective=1 hue=0.72 rainbow=0 opacity=0.5 agitation=0 eyeFuzz=0 speed=0.2 volume=0.4",
@@ -1001,33 +1148,33 @@ echoback: {
 adeath: {
 	onEnter: "perspective=6 hue=0.12 rainbow=2 opacity=8 agitation=0 eyeFuzz=0 speed=0.7 volume=0.5",
 	onEnterSay: ["#mimadeath#"],
-	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->muse robe.blab=INPUT", "wait:4 ->rest"]
 },
 apreserve: {
 	onEnter: "perspective=6 hue=0.12 rainbow=2 opacity=8 agitation=0 eyeFuzz=0 speed=0.7 volume=0.5",
 	onEnterSay: ["#conserve#"],
-	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->muse robe.blab=INPUT", "wait:4 ->rest"]
 },
 asafe: {
 	onEnter: "perspective=6 hue=0.12 rainbow=2 opacity=8 agitation=0 eyeFuzz=0 speed=0.7 volume=0.5",
 	onEnterSay: ["#safe#"],
-	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->muse robe.blab=INPUT", "wait:4 ->rest"]
 },
 
 rcreate: {
 	onEnter: "perspective=5 hue=0.35 rainbow=5 opacity=9 agitation=0 eyeFuzz=0 speed=1.5 volume=0.55",
 	onEnterSay: ["#build#"],
-	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->muse robe.blab=INPUT", "wait:4 ->rest"]
 },
 rworld: {
 	onEnter: "perspective=5 hue=0.35 rainbow=5 opacity=9 agitation=0 eyeFuzz=0 speed=1.5 volume=0.55",
 	onEnterSay: ["#world#"],
-	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->muse robe.blab=INPUT", "wait:4 ->rest"]
 },
 rhome: {
 	onEnter: "perspective=5 hue=0.35 rainbow=5 opacity=9 agitation=0 eyeFuzz=0 speed=1.5 volume=0.55",
 	onEnterSay: ["#home#"],
-	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:4 ->rest"]
+	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "'' ->muse robe.blab=INPUT", "wait:4 ->rest"]
 },
 
 listen: {
@@ -1339,7 +1486,10 @@ listen: {
 					"'#greeting#' ->origin"]
 					},
 					interrogate: {
-						onEnterSay: "#/robe.blab.capitalize#!! how on earth??",
+						// Path segments are slash-separated (#/robe/blab#) — the old
+						// dot form (#/robe.blab#) threw inside tracery and killed the
+						// whole output queue when this state was reached.
+						onEnterSay: "#/robe/blab.capitalize#!! how on earth??",
 						exits: ["'' ->redirect 'hmm... are you sure?'", "'#negate#' ->redirect", "'#affirm#' ->reflect",
 					"'#greeting#' ->origin"]
 					},

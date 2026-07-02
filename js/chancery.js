@@ -125,8 +125,11 @@ Chancery.prototype.getAtPath = function(path) {
 
 
 Chancery.prototype.input = function(msg) {
-	let text = msg.text.join("\n")
-	
+	// Strip apostrophes (straight and curly) so typed "what's the point" /
+	// "can't leave" reach the keyword pools, which are written apostrophe-free
+	// ("whats the point", "cant leave") — as is Mima's own voice.
+	let text = msg.text.join("\n").replace(/['‘’]/g, "")
+
 	this.activeInput.push(text)
 	console.warn(`${this}: msg received '${text}'`)
 
@@ -516,12 +519,16 @@ Chancery.prototype.createExitMap = function() {
 			template: exitTemplate,
 			active: undefined,
 			open: undefined,
+			// pctFulfilled MUST start at 0: updateExitMap only raises it when a
+			// condition actually matches, and exit.isOpen multiplies these together
+			// — a random initial value >.999 made an unmatched exit start "open",
+			// so Mima would occasionally fire a random exit with no input at all.
 			conditionMap: exitTemplate.conditions.map(conditionTemplate => {
 				return {
 					template: conditionTemplate,
 					startedOn: undefined,
 					isFulfilled: false,
-					pctFulfilled: Math.random()
+					pctFulfilled: 0
 				}
 			}),
 			actionMap: exitTemplate.actions.map(actionTemplate => {
@@ -529,7 +536,7 @@ Chancery.prototype.createExitMap = function() {
 					template: actionTemplate,
 					startedOn: undefined,
 					isFulfilled: false,
-					pctFulfilled: Math.random()
+					pctFulfilled: 0
 				}
 			}),
 				

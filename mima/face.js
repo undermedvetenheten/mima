@@ -101,6 +101,7 @@ function TouchParticle(x, y) {
 	this.vy = (Math.random() - 0.5) * 30
 	this.hue = Math.random()
 	this.age = 0
+	this.born = 0   // real seconds since spawn — drives the grow-in (age is the lifespan clock, which runs at different speeds)
 }
 
 function Face() {
@@ -242,6 +243,7 @@ Face.prototype.update = function(t) {
 	// Update all touch particles (flowmap carries them after finger lifts)
 	this.touchParticles.forEach(p => {
 		const dt = t.elapsed
+		p.born += dt
 		if (this.touch) {
 			const z2 = this._z2 || 1
 			const tx = this.touch.x / z2, ty = this.touch.y / z2
@@ -280,6 +282,7 @@ Face.prototype.update = function(t) {
 	// just drift up and fade.
 	this.typeParticles.forEach(p => {
 		const dt = t.elapsed || 0.016
+		p.born += dt
 		// Released at ~0 velocity (see app.userTyping) and then *dragged* into motion,
 		// mirroring the roaming particles: ease onto the flowmap when it has signal, and
 		// drift slowly up toward Mima's face (just above centre) — never a launch.
@@ -534,11 +537,14 @@ Face.prototype.drawSpace = function(g, t) {
 	this.touchParticles.forEach(p => {
 		g.noStroke()
 		let a = 1 - p.age
+		// Grow-in: scale up over the first ~quarter second instead of popping
+		// into existence at full size (smoothstepped so the growth eases out).
+		let gr = Math.min(1, p.born / 0.25); gr = gr * gr * (3 - 2 * gr)
 		// Coloured halo + emissive white core, matching the space-ring particles.
 		g.fill(p.hue, 0.55, 0.95, a * 0.35)
-		g.ellipse(p.x, p.y, 3.5, 3.5)
+		g.ellipse(p.x, p.y, 3.5 * gr, 3.5 * gr)
 		g.fill(1, 0, 1, a * 0.7)
-		g.ellipse(p.x, p.y, 1.5, 1.5)
+		g.ellipse(p.x, p.y, 1.5 * gr, 1.5 * gr)
 	})
 
 	// Typing particles: same visual language as the touch particles but slightly
@@ -546,10 +552,12 @@ Face.prototype.drawSpace = function(g, t) {
 	this.typeParticles.forEach(p => {
 		g.noStroke()
 		let a = 1 - p.age
+		// Same grow-in as the touch particles — no popping at full size.
+		let gr = Math.min(1, p.born / 0.3); gr = gr * gr * (3 - 2 * gr)
 		g.fill(p.hue, 0.55, 0.95, a * 0.28)
-		g.ellipse(p.x, p.y, 2.8, 2.8)
+		g.ellipse(p.x, p.y, 2.8 * gr, 2.8 * gr)
 		g.fill(1, 0, 1, a * 0.6)
-		g.ellipse(p.x, p.y, 1.2, 1.2)
+		g.ellipse(p.x, p.y, 1.2 * gr, 1.2 * gr)
 	})
 }
 

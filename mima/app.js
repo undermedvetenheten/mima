@@ -176,17 +176,18 @@ let app = {
 		// Match the touch-spawn gate (face.update): no new particles once the field
 		// has settled into a planet constellation or firefly storytime.
 		if (app.particleMode && app.particleMode !== 'chaos') return
+		// One particle per ~120ms, not two per keystroke — fast typing was
+		// throwing off a swarm; now it leaves a sparse trail.
+		if (now - (app._lastTypeSpawn || 0) < 120) return
+		app._lastTypeSpawn = now
 		const pos = f.clientToCanvas(clientX, clientY)
 		const z2  = f._z2 || 1
 		const tx  = pos.x / z2
 		const ty  = pos.y / z2
-		for (let i = 0; i < 2; i++) {
-			let p     = new TouchParticle(tx + (Math.random() - 0.5) * 28, ty + (Math.random() - 0.5) * 12)
-			p.vx      = (Math.random() - 0.5) * 10   // ~at rest; dragged into motion by the flowmap (see face.update)
-			p.vy      = (Math.random() - 0.5) * 10   // no upward launch — they rise by drifting toward her face
-			p.age     = 0
-			f.typeParticles.push(p)
-		}
+		let p     = new TouchParticle(tx + (Math.random() - 0.5) * 28, ty + (Math.random() - 0.5) * 12)
+		p.vx      = (Math.random() - 0.5) * 10   // ~at rest; dragged into motion by the flowmap (see face.update)
+		p.vy      = (Math.random() - 0.5) * 10   // no upward launch — they rise by drifting toward her face
+		f.typeParticles.push(p)
 	},
 
 	blink() {
@@ -276,7 +277,15 @@ let app = {
 				if (stateID === "worldgaze" || stateID === "worldgaze2") {
 					if (typeof planet !== "undefined") {
 						planet.summon()
-						if (app.blackboard) app.blackboard.setAtPath(["robe", "subject"], planet.subjectName)
+						if (app.blackboard) {
+							app.blackboard.setAtPath(["robe", "subject"], planet.subjectName)
+							// Small-scale visions hang their host world in the sky (see
+							// planet._miniWorld); name it so it reads as intended, not as
+							// a stray planet. Empty when there is no host — the grammar
+							// weaves #/robe/hostline# inline, so "" adds nothing.
+							app.blackboard.setAtPath(["robe", "hostline"],
+								planet.hasHost ? ". Small in its sky hangs the world it belongs to" : "")
+						}
 					}
 				} else if (app.valueTracker.planet) {
 					app.valueTracker.planet.set(0, app.time.current, 2.0)
@@ -307,6 +316,10 @@ let app = {
 				}
 			},
 			onOutput: ({output, progress}) => {
+
+				// Conversation log — one greppable line per reply, tagged with the
+				// state that spoke it, so a pasted console log reads as a transcript.
+				console.log(`MIMA [${app.instance.stateID}]: ${output}`)
 
 				// A beat before a question — so after a string of statements Mima
 				// pauses, then asks. Applies to any line ending in '?'.
@@ -421,6 +434,8 @@ let app = {
 	},
 
 	userInput(data) {
+		// Conversation log (see the MIMA line in onOutput).
+		console.log(`YOU: ${data}`)
 		let msg = {
 			owner: "user",
 			text: [data]
@@ -478,6 +493,7 @@ let app = {
 	say(raw) {
 		app.isThinking = false   // a direct line is being spoken -> hide the listening dots
 		let output = app.instance.context.flatten(raw)
+		console.log(`MIMA [${app.instance.stateID} via say]: ${output}`)
 		app.messages.push({ owner: "bot", text: [output] })
 		return app.speakWords(output)
 	},

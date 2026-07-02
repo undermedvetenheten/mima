@@ -160,6 +160,10 @@ let planet = {
 		let w = this._makeSubject()
 		// Name it now (not at the fade swap) so her words match the vision arriving.
 		this.subjectName = this._nameFor(w.type)
+		// Small-scale subjects (atom, ocean, waterfall…) are drawn WITH the tiny
+		// world they belong to hanging in the sky (_miniWorld). Expose that so her
+		// opening line can name it — unannounced it reads as a stray planet.
+		this.hasHost = !!w.host
 		let visible = (app.values.planet || 0) > 0.5 && this._fade > 0.05 && this.S
 		if (visible) {
 			this._pending = w

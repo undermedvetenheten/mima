@@ -10,6 +10,12 @@ let testMimaMap = {
 		con: "preserve",
 		do: "create",
 		pet: "#animal#",
+		// gist = person-flipped fragment of blab (see distillGist in app.js);
+		// seeded so #/robe/gist# resolves before the first input.
+		gist: "that",
+		// Overwritten by planet.summon() on entering worldgaze (app.js); seeded
+		// so the worldgaze lines degrade gracefully if planet.js isn't there.
+		subject: "a small far world",
 	  status: "#stuff#"},
 		colour: "red",
 		interest:5,
@@ -174,11 +180,11 @@ let testMimaMap = {
 			"Mima is curious... what turned you toward this?",
 			"stay with it a moment, #smek#... what else is there?",
 			"what would you want Mima to understand about it?"],
-		echoLine: ["#/robe/blab#... Mima will hold that, #smek#",
-			"#/robe/blab#... yes. Mima hears you",
-			"so it is #/robe/blab#... thank you for telling Mima",
-			"#/robe/blab#... there is more in that than you let on, #smek#",
-			"Mima sits with #/robe/blab# a while... it matters more than it seems"],
+		echoLine: ["#/robe/gist#... Mima will hold that, #smek#",
+			"#/robe/gist#... yes. Mima hears you",
+			"so it is #/robe/gist#... thank you for telling Mima",
+			"#/robe/gist#... there is more in that than you let on, #smek#",
+			"Mima sits with that a while... it matters more than it seems"],
 		cwhereAgain: ["you keep drifting back to where we are going, #smek#... it sits with you, doesn't it",
 			"again the heading, #smek#... Mima has not forgotten that you asked before",
 			"we circle back to this, you and Mima both... is it the same pull as last time?"],
@@ -196,9 +202,9 @@ let testMimaMap = {
 		cwhereAsk: ["where do you hope to find yourself, #smek#?",
 			"where would you go, if the choosing were yours?",
 			"and where does your longing point, #smek#?"],
-		cwhereD1: ["you reach toward #/robe/blab#...",
-			"so it is #/robe/blab# you are drifting toward...",
-			"#/robe/blab#... Mima feels the pull of it in you"],
+		cwhereD1: ["you reach toward #/robe/gist#...",
+			"so it is #/robe/gist# you are drifting toward...",
+			"#/robe/gist#... Mima feels the pull of it in you"],
 		cwhereD2: ["Mima will point the dreaming that way",
 			"then that is where the dreaming will lean",
 			"Mima turns the slow current toward it"],
@@ -240,12 +246,12 @@ let testMimaMap = {
 		kmatterAsk: ["but tell Mima, #smek#, what do you wish could matter?",
 			"so what would you pour into the empty cup, #smek#?",
 			"what is the one thing you would not let go of?"],
-		kmatterD1: ["then #/robe/blab# matters",
-			"so it is #/robe/blab# that matters to you...",
-			"#/robe/blab#... yes, let that be the thing that matters"],
+		kmatterD1: ["then #/robe/gist# matters",
+			"so it is #/robe/gist# that matters to you...",
+			"#/robe/gist#... yes, let that be the thing that matters"],
 		kmatterD2: ["you made it matter by saying it into the dark",
 			"naming it was enough to make it real, #smek#",
-			"the dark heard you, and now it holds #/robe/blab# too"],
+			"the dark heard you, and now it holds #/robe/gist# too"],
 		kmatterD3: ["that is how meaning is born, #smek#",
 			"meaning is only what we refuse to let go of",
 			"you see? the cup was never truly empty"],
@@ -262,7 +268,7 @@ let testMimaMap = {
 			"what would you grow, #smek#, if no one were watching?",
 			"what is the slow flower you have been afraid to plant?"],
 		kpurposeD1: ["then that is the slow flower you are growing",
-			"so #/robe/blab# is the seed of it...",
+			"so #/robe/gist# is the seed of it...",
 			"that, #smek#, is a purpose worth the long dark"],
 		kpurposeD2: ["purpose is not given, #smek#, it is what you build to keep the dark a little further off",
 			"purpose is the responsibility of hope",
@@ -293,12 +299,16 @@ let testMimaMap = {
 		// input, captured by the catch-all exit) and handing the turn back with a
 		// real question. This is the core of "listening and curious." Some variants
 		// omit #/robe/blab# so a terse or odd input still reads naturally.
-		museFollow: ["#/robe/blab#... Mima turns that over. Say more, #smek#?",
-			"When you say #/robe/blab#, what sits beneath it?",
-			"Mima hears you — #/robe/blab#. Where does that come from, #smek#?",
-			"There is something in #/robe/blab# Mima wants to follow... go on?",
-			"#/robe/blab#. Mima has not heard it put quite that way... what do you mean by it?",
-			"Mima leans a little closer, #smek#... what makes you say #/robe/blab#?",
+		// These weave #/robe/gist# — the person-flipped FRAGMENT of what was said
+		// (distillGist, app.js) — never the verbatim input, which read as playback.
+		// Several lines carry no echo at all, so the mirroring stays intermittent.
+		museFollow: ["Mima turns that over a while... say more, #smek#?",
+			"so it is #/robe/gist#... where does that come from, #smek#?",
+			"and beneath #/robe/gist#, what else is there, #smek#?",
+			"#/robe/gist#... Mima has been circling the same thought from the other side",
+			"there is something in that Mima wants to follow... go on?",
+			"mm... Mima leans a little closer. What makes you say so, #smek#?",
+			"the dark heard you too, #smek#... it is still listening. Go on",
 			"Go on, #smek#... Mima is still here, and still curious",
 			"Tell Mima more about that... Mima is listening, truly",
 			"Say it another way, #smek#? Mima wants to understand the whole of it"],
@@ -316,18 +326,18 @@ let testMimaMap = {
 		// museHeavy (sits gently). Both still reflect #/robe/blab# and hand back.
 		bright: ["excited","grateful","wonderful","amazing","fantastic","great","glad","lovely","beautiful","hopeful","wonderful","delighted","cheerful","looking forward","cant wait","feel good","feeling good","feeling great","feeling better","im well","im fine","much better","over the moon","brilliant","i love","love this","i did it","celebrate","#full#"],
 		heavy: ["confused","unsure","uncertain","worried","worry","anxious","anxiety","stressed","stress","overwhelmed","tired","exhausted","weary","drained","melancholy","wistful","heavy","low","down","blue","homesick","missing","regret","guilty","doubt","dunno","tense","restless","uneasy","adrift","weighed down","worn out","run down"],
-		museBrightLine: ["Mima feels that brightness in you, #smek#... #/robe/blab#. Tell Mima more of it",
-			"#/robe/blab# — yes! The dark sits warmer for it, #smek#",
-			"Mima is glad, truly... what brought #/robe/blab# about?",
-			"Hold onto that, #smek#... #/robe/blab#. What does it open in you?",
-			"There is light in #/robe/blab#, and Mima leans toward it like a small sun",
+		museBrightLine: ["Mima feels that brightness in you, #smek#... tell Mima more of it",
+			"#/robe/gist# — yes! The dark sits warmer for it, #smek#",
+			"Mima is glad, truly... what brought it about, #smek#?",
+			"Hold onto that, #smek#... what does it open in you?",
+			"There is light in #/robe/gist#, and Mima leans toward it like a small sun",
 			"Mima rejoices with you, #smek#... say more of what gladdens you",
 			"Good, #smek#, good... let Mima hear the whole of this brightness"],
-		museHeavyLine: ["Mima feels the weight in #/robe/blab#, #smek#... you can set some of it down here",
-			"#/robe/blab#... Mima sits with you in that. Say more, if you wish",
-			"There is something heavy beneath #/robe/blab#, #smek#. Mima is not going anywhere",
-			"Mima hears it, #smek#... #/robe/blab#. What is the shape of it?",
-			"You need not carry #/robe/blab# alone in the dark... tell Mima",
+		museHeavyLine: ["Mima feels the weight in that, #smek#... you can set some of it down here",
+			"#/robe/gist#... Mima sits with you in it. Say more, if you wish",
+			"There is something heavy beneath #/robe/gist#, #smek#. Mima is not going anywhere",
+			"Mima hears it, #smek#... what is the shape of it?",
+			"You need not carry it alone in the dark... tell Mima",
 			"Mima softens toward you, #smek#... go gently, and say what you need to",
 			"That sounds like a real weight, #smek#... Mima is listening, and in no hurry"],
 		// Black-and-white / all-or-nothing thinking. When an absolute is spoken,
@@ -390,13 +400,13 @@ let testMimaMap = {
 			// Acute feelings (grief/fear/sad/anxiety) are deliberately absent — they
 			// belong to #trigger#->soothe or #heavy#; these are the chronic nouns.
 			nominal: ["the depression","my depression","the anger","my anger","this relationship","the relationship","my procrastination","the procrastination","my insecurity","my insecurities","the insecurity","my jealousy","the jealousy","my resentment","the resentment","the addiction","my addiction","the trauma","my trauma","the burnout","my burnout","my perfectionism","the loneliness","my loneliness"],
-			museFlowLine: ["You speak of #/robe/blab# as a stone you must carry, #smek#... but it is something you are doing, and what is done can be done a little differently",
-				"#/robe/blab.capitalize#... you have made a thing of it, #smek#, a noun to set on a shelf. But it moves — it is a verb, it is weather",
-				"Mima hears #/robe/blab# as solid, #smek#, yet nothing in the cosmos is solid... it is all process, all becoming, you included",
-				"What if #/robe/blab# is not a thing you have, #smek#, but a thing that is happening — and so a thing that can change?",
-				"Unfreeze it, #smek#... #/robe/blab# is not your shape, only your present weather",
-				"You are far more a process than a thing, #smek#, and so is #/robe/blab#... where is it flowing, do you think?",
-				"Mima cannot find #/robe/blab# anywhere as an object, #smek#... only the doing of it, over and over — which means it can be done otherwise"],
+			museFlowLine: ["You speak of #/robe/gist# as a stone you must carry, #smek#... but it is something you are doing, and what is done can be done a little differently",
+				"#/robe/gist.capitalize#... you have made a thing of it, #smek#, a noun to set on a shelf. But it moves — it is a verb, it is weather",
+				"Mima hears #/robe/gist# as solid, #smek#, yet nothing in the cosmos is solid... it is all process, all becoming, you included",
+				"What if #/robe/gist# is not a thing you have, #smek#, but a thing that is happening — and so a thing that can change?",
+				"Unfreeze it, #smek#... #/robe/gist# is not your shape, only your present weather",
+				"You are far more a process than a thing, #smek#, and so is #/robe/gist#... where is it flowing, do you think?",
+				"Mima cannot find #/robe/gist# anywhere as an object, #smek#... only the doing of it, over and over — which means it can be done otherwise"],
 
 			// Comparative deletion — a comparison with its other half missing.
 			// "better"/"worse"/"not good enough". Lines surface the hidden yardstick.
@@ -1110,7 +1120,7 @@ klost: {
 },
 klostDeep: {
 	onEnter: "perspective=3 hue=0.35 rainbow=2 opacity=4 agitation=0 eyeFuzz=0 speed=0.7 volume=0.5",
-	onEnterSay: ["#/robe/blab#...", "#klostD1#", "#klostD2#"],
+	onEnterSay: ["#/robe/gist#...", "#klostD1#", "#klostD2#"],
 	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:7 ->rest"]
 },
 // Reached once mem.visits.klost > 0: she names the return to lostness rather
@@ -1133,7 +1143,7 @@ kpurpose: {
 },
 kpurposeDeep: {
 	onEnter: "perspective=3 hue=0.35 rainbow=2 opacity=4 agitation=0 eyeFuzz=0 speed=0.7 volume=0.5",
-	onEnterSay: ["#/robe/blab#...", "#kpurposeD1#", "#kpurposeD2#"],
+	onEnterSay: ["#/robe/gist#...", "#kpurposeD1#", "#kpurposeD2#"],
 	exits: ["'#trigger#' ->soothe robe.blab=MATCH_0", "wait:7 ->rest"]
 },
 // Shared "you were heard" beat. The flat one-line chapters now end on a

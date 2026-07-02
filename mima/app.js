@@ -69,6 +69,40 @@ let mimaMemory = {
 	}
 }
 
+// Turn the player's raw words into a speakable fragment for Mima to weave into
+// her reply. Echoing the input VERBATIM reads as playback ("i miss my garden...
+// Mima turns that over"); this flips person (their i/my -> you/your, their
+// you -> Mima), drops lead-in filler, and keeps only the tail clause when the
+// input runs long — so the echo reads as listening, not parroting. Written to
+// robe.gist whenever robe.blab is set (see the onModify hook in init).
+function distillGist(text) {
+	let t = String(text).trim()
+		.replace(/^(well|but|and|so|also|oh|hmm|honestly|maybe|like|i mean|i think|i guess|i suppose)[,\s]+/i, "")
+	// Bigrams first (they consume two tokens), then single words. Tokens are
+	// compared stripped of punctuation; output is clean lowercase, "Mima" aside.
+	const bi = { "am i": "are you", "i am": "you are", "i was": "you were",
+		"you are": "Mima is", "are you": "is Mima", "do you": "does Mima",
+		"you were": "Mima was", "can you": "can Mima" }
+	const uni = { "i": "you", "im": "you are", "ive": "you have", "id": "you would",
+		"ill": "you will", "me": "you", "my": "your", "mine": "yours",
+		"myself": "yourself", "you": "Mima", "youre": "Mima is", "your": "Mima's" }
+	let words = t.split(/\s+/)
+	let out = []
+	for (let k = 0; k < words.length; k++) {
+		let w = words[k].toLowerCase().replace(/[^a-z0-9]/g, "")
+		if (!w) continue
+		let next = k + 1 < words.length ? words[k + 1].toLowerCase().replace(/[^a-z0-9]/g, "") : null
+		if (next && bi[w + " " + next] !== undefined) { out.push(bi[w + " " + next]); k++ }
+		else if (uni[w] !== undefined) out.push(uni[w])
+		else out.push(w)
+	}
+	// A long confession keeps only its tail clause — the payload usually lives
+	// at the end, and a fragment reads more like memory than transcription.
+	if (out.length > 9) out = out.slice(-7)
+	let gist = out.join(" ")
+	return gist.length ? gist : "that"
+}
+
 let app = {
 	devMode: false,
 	time: {},
@@ -465,6 +499,12 @@ let app = {
 
 		app.blackboard = app.instance.blackboard
 		app.blackboard.onModify((path, value) => {
+
+			// Whenever the player's words land in robe.blab, derive the speakable
+			// fragment the grammar echoes back (#/robe/gist#). Synchronous, so it's
+			// ready before the entered state's onEnterSay flattens.
+			if (path[0] === "robe" && path[1] === "blab" && typeof value === "string")
+				app.blackboard.setAtPath(["robe", "gist"], distillGist(value))
 
 			let key = path[0]
 			if (app.valueTracker[key] !== undefined) {

@@ -243,6 +243,23 @@ async function expectRoute(from, input, expected) {
 	await send('somewhere warm i hope')
 	console.log('  -> reply state:', state(), '| says:', sandbox.__outputs.join(' | ').slice(0, 300))
 
+	console.log('\n=== SLOW ANSWERS STILL LAND (wait clock restarts after speech) ===')
+	// homesick asks "name one small thing from home" (wait:20). A player who
+	// thinks for 15s must still reach echoback — before the clock fix, wait:N
+	// counted from state ENTRY, so multi-beat speech + thinking overshot it and
+	// the answer fell to rest -> muse ("where does that come from?").
+	{
+		sandbox.__outputs.length = 0
+		inst.enterState('homesick')
+		await settle(3)                       // speech beats drain; clock restarts here
+		await ticks(15)                       // the player thinks for 15 "seconds"
+		sandbox.__outputs.length = 0
+		await send('my cat maja')
+		const ok = state() === 'echoback'
+		console.log(`${ok ? 'PASS' : 'FAIL'}  [homesick +15s] "my cat maja" -> ${state()}${ok ? '' : ' (expected echoback)'}`)
+		console.log(`      says: ${sandbox.__outputs.join(' | ').slice(0, 120)}`)
+	}
+
 	console.log('\n=== SILENT EXITS SPEAK (no stuck listening dots) ===')
 	// Declining an offer must produce SOME spoken line — a silent transition
 	// left the chat's listening indicator on until the next idle utterance.

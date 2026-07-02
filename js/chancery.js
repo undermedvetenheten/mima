@@ -434,7 +434,18 @@ Chancery.prototype.performAction = function(action, allowAsync) {
 
 // Do we have any actions to execute?
 Chancery.prototype.checkActions = function() {
+	// The action queue just drained — Mima finished speaking her entry beats.
+	// Restart the state clock so `wait:N` timeouts measure N seconds of SILENCE
+	// after the turn is handed over, not N seconds from state entry: a state
+	// that speaks several slow beats and then asks a question was timing out
+	// on players who read and thought before answering.
+	if (this.currentAction === undefined && this.actionQueue.length === 0 && this._queueWasBusy) {
+		this._queueWasBusy = false
+		this.timeEnteredState = this.currentTime
+		this.timeInState = 0
+	}
 	if (this.currentAction === undefined && this.actionQueue.length > 0) {
+		this._queueWasBusy = true
 		this.currentAction = this.actionQueue.shift()
 
 		console.log(`Start action: '${this.currentAction.template.raw}' (${this.currentAction.template.subtype})` )

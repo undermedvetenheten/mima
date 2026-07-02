@@ -197,7 +197,11 @@ async function expectRoute(from, input, expected) {
 	await expectRoute('rest', 'are you alive?', ['mimaself'])
 
 	console.log('\n=== THERAPY PARSERS ===')
-	await expectRoute('rest', 'i cant stop thinking about home', 'museLoop')
+	await expectRoute('rest', 'i cant stop thinking about it', 'museLoop')
+	// Wistful reminiscence is NOT rumination: "keep thinking" alone must not
+	// trigger museLoop; home-flavoured nostalgia belongs to homesick.
+	await expectRoute('rest', 'i keep thinking about my garden back home', 'homesick')
+	await expectRoute('rest', 'i keep thinking about the future', 'muse')
 	await expectRoute('rest', 'everyone thinks im strange', 'museMind')
 	await expectRoute('rest', 'nothing ever works, it will always be like this', ['soothe', 'museGray'])
 	await expectRoute('rest', 'it will always be like this on board', ['museGray'])

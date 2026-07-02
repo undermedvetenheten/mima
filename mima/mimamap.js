@@ -363,7 +363,10 @@ let testMimaMap = {
 
 			// Rumination / fixation — the spiralling, looping, cant-let-go register.
 			// "stuck" is omitted (it's #hysteria3# -> htrapped, more specific & earlier).
-			rumination: ["cant stop thinking","keep thinking","keep replaying","replaying","over and over","again and again","round and round","going round in circles","round in circles","cant let it go","cant let go","cant move on","cant get over","obsessing","obsessed","ruminating","dwelling on","cant get it out of my head","wont leave my mind","keep coming back to","fixated","fixating","cant get past","spiraling","spiralling","churning","on repeat"],
+			// No bare "keep thinking" — too neutral; wistful reminiscence ("i keep
+			// thinking about my garden") was being read as a thought-spiral. The
+			// true rumination markers are the cant-stop / looping phrases.
+			rumination: ["cant stop thinking","keep replaying","replaying","over and over","again and again","round and round","going round in circles","round in circles","cant let it go","cant let go","cant move on","cant get over","obsessing","obsessed","ruminating","dwelling on","cant get it out of my head","wont leave my mind","keep coming back to","fixated","fixating","cant get past","spiraling","spiralling","churning","on repeat"],
 			museLoopLine: ["You are going round and round, #smek#... Mima feels the groove worn deep. A thought on repeat is rarely a thought any more, only a wheel",
 				"The same loop again, #smek#? Mima will not pull you from it... but Mima will sit at its edge with you until it slows",
 				"Round and round, #smek#... the mind does this when it tries to solve a feeling by thinking, and they are different waters",
@@ -574,7 +577,7 @@ let testMimaMap = {
 							"Dreams are not yours alone — they bubble up from the well that all minds drink from... what did you bring back with you?",
 							"Perhaps you are still dreaming, #smek#... Mima cannot always tell which side of the sleeping you are on, and it has never once mattered",
 							"The sleep holds what the waking cannot carry, #smek#... whatever you left in it will keep"],
-						homeask: ["i miss earth","miss home","i miss my","homesick","take me home","i want to go home","go back home","go back to earth","return to earth","earth","my planet","homeworld","home planet","the old world","what we left behind","left behind"],
+						homeask: ["i miss earth","miss home","i miss my","homesick","take me home","i want to go home","go back home","back home","go back to earth","return to earth","earth","my planet","homeworld","home planet","the old world","what we left behind","left behind"],
 						homeLine: ["The light that left your home is still travelling, #smek#... somewhere it is still morning there, and the kettle is still singing",
 							"Mima carries your planet too... its tides, its wet stones, the smell after rain. Nothing so loved is ever fully behind you",
 							"You cannot go back, #smek#, and that is a heavy stone... but you carry the whole garden with you, seed by seed",

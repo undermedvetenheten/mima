@@ -603,7 +603,19 @@ Chancery.prototype.activateExit = function(exit) {
 
 Chancery.prototype.enterState = function(stateID) {
 	if (stateID === "@") {
-		// Stay here
+		// Stay here: consume the exit WITHOUT re-entering the state — no onEnter
+		// actions, no handlers (so e.g. worldgaze keeps its summoned vision).
+		// The old bare `return` left activeExit set forever, deadlocking the
+		// state; rearm properly instead: clear the exit, rebuild the exit map
+		// (fresh input bids), restart the dwell clock, and re-offer the chips
+		// once any inline say has finished (stateCompleteEnter does that).
+		this.activeExit = undefined
+		this.timeEnteredState = this.currentTime
+		this.createExitMap()
+		this.enqueueActions([{
+			subtype: "stateCompleteEnter",
+			raw: "STAY"
+		}], {sourceType:"state",sourceID:this.stateID,direction:"enter",type:"completeTransition"})
 		return
 	}
 

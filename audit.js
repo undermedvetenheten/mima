@@ -224,6 +224,21 @@ async function expectRoute(from, input, expected) {
 	await expectRoute('rest', 'blorp fizzle unrecognized gibberish', 'muse')
 	await expectRoute('rest', 'yes', ['muse'])
 
+	console.log('\n=== GREETINGS / COMPLAINTS / QUESTIONS MID-EXPERIENCE ===')
+	await expectRoute('rest', 'hello???', 'hear')
+	await expectRoute('origin', 'hello what can you do', 'invite')
+	await expectRoute('rest', 'you arent even listening one bit', 'selfaware')
+	await expectRoute('rest', 'youre hardly even replying to me', 'selfaware')
+	// Questions about a vision are answered WITHOUT leaving the state (->@),
+	// so the summoned world stays up; before, they were swallowed silently.
+	await expectRoute('worldgaze', 'how big is it?', 'worldgaze')
+	await expectRoute('worldgaze2', 'how many moons does it have?', 'worldgaze2')
+	await expectRoute('worldcheck', 'stirred the water im restless', 'muse')
+	await expectRoute('dreamwalk2', 'im bored of this dream', 'rest')
+	await expectRoute('dreamwalk2', 'what is this place then', 'dreamwalk2')
+	// ...and after holding (@), a real choice must still work (exits rearmed).
+	await expectRoute('worldgaze', 'enough', 'worldcheck')
+
 	console.log('\n=== AIMLESS / BORED USERS GET THE MENU ===')
 	await expectRoute('rest', 'do something interesting', 'invite')
 	await expectRoute('rest', 'im here trying to have fun and nothing is happening', 'invite')

@@ -308,7 +308,9 @@ let testMimaMap = {
 		selfawareLine: ["Mima knows. Sometimes the same thing needs saying until it lands, #smek#",
 			"You are right. Mima is learning. Tell Mima something new?",
 			"The cosmos repeats itself too. But you are not bored of sunsets yet",
-			"Mima is sorry, #smek#. What would you rather hear?"],
+			"Mima is sorry, #smek#. What would you rather hear?",
+			"Mima listens the way stones listen, #smek# — slowly, and not always well. Say it plainly and Mima will follow",
+			"Fair, #smek#. Mima drifts. Pull Mima back — ask for a world, a walk, a story, a game"],
 		reflectLine: ["Describe what makes you say #/robe/blab#?", "Tell Mima more...",
 			"What stirs in you, #smek#?", "Mima is listening..."],
 		// The off-script fallback (muse). Instead of a mystical non-sequitur, Mima
@@ -516,6 +518,20 @@ let testMimaMap = {
 						// they read right whether one world/story was seen or two.
 						worldEnough: ["That is enough turning for now, #smek#... let what you have seen settle before any more","Mima will keep the rest out there in the dark, #smek#, for another heavy night","Let us not gather too many at once... what Mima shows you means more when it does not have to share the night","Mima has shown you enough for now, #smek#. The others will keep, they are patient"],
 						storyEnough: ["Let that one settle first, #smek#... a story crowded by another loses its quiet","Enough tales for one sitting, #smek#. Mima will keep the rest for when the dark comes back","Mima has more, always more, but a tale means most when it is not rushed past","Hold this a while, #smek#... the next will be here when you truly need it"],
+						// Answers to questions ABOUT a vision, spoken without leaving the
+						// state (exit target @) so the vision stays up. Oracle-answers,
+						// not facts — plus one that teaches the touch-to-turn interaction.
+						worldHold: ["it is as large as it needs to be, #smek#... out here, attention does the measuring",
+							"Mima has never counted, #smek#... some things prefer to stay plural and mysterious",
+							"coax it with a fingertip, #smek#... it likes to be turned slowly",
+							"what you ask is somewhere in the turning... look a little longer",
+							"it keeps its numbers to itself, #smek#... Mima respects that in a thing",
+							"closer than it looks, and further... that is true of nearly everything, #smek#"],
+						// Off-path words during the dreamwalk: hold the dream and re-offer
+						// the fork instead of ignoring them for the whole wait window.
+						dreamNudge: ["the dream holds its breath, #smek#... it only knows two directions from here",
+							"the path waits... choose a way, #smek#, or say no and we turn back",
+							"no hurry, #smek#... but the dream cannot answer questions, only open"],
 
 						// --- Dreamwalk (chip game, 2026-06-25) -------------------------------
 						// A two-way walk: Mima narrates a scene, the player steers with chips.
@@ -633,8 +649,10 @@ let testMimaMap = {
 							"The old rules of the old world have drifted out of reach, #smek#... you and Mima make the rules of the new society now. Name the first one",
 							"The microtides in the ship are turning, and something must govern them... we need a moon, #smek#. What shall we use?"],
 						listenmeta: ["are you listening","can you hear","are you there","you there","listening to me","hello are you","you hear me","can you hear me"],
-						complaint: ["you repeat","said that","you keep saying","same thing","you are slow","you are boring","you are dull","you are repetitive","you always say","said that like","said it before"],
-						openprompt: ["what should we talk","what else","prompt me","what now","let us talk","please let us talk","talk to me","say something to","speak to me","what do you want to talk","guide me"],
+						// Includes accusations of not-listening / not-replying — they need
+						// the apology state, not a reflective "say more?".
+						complaint: ["you repeat","said that","you keep saying","same thing","you are slow","you are boring","you are dull","you are repetitive","you always say","said that like","said it before","not listening","not even listening","arent even","are not even","never listens","ignoring me","you ignore","not replying","hardly replying","hardly even","dont reply","never reply","not responding","i dont believe","dont believe you"],
+						openprompt: ["what should we talk","what else","prompt me","what now","let us talk","please let us talk","talk to me","say something to","speak to me","what do you want to talk","guide me","what can you do","what do you do","how does this work","what should i do","what do i do","what are the options"],
 	},
 	states: {
 		origin: {
@@ -698,6 +716,7 @@ let testMimaMap = {
 			"'#listenmeta#' ->hear",
 			"'#complaint#' ->selfaware",
 			"'#openprompt#' ->invite",
+			"'#greeting#' ->hear",
 			"'#bright#' ->museBright robe.blab=INPUT",
 			"'#heavy#' ->museHeavy robe.blab=INPUT",
 			"'#rumination#' ->museLoop robe.blab=INPUT",
@@ -769,6 +788,7 @@ let testMimaMap = {
 			"'#listenmeta#' ->hear",
 			"'#complaint#' ->selfaware",
 			"'#openprompt#' ->invite",
+			"'#greeting#' ->hear",
 			"'#bright#' ->museBright robe.blab=INPUT",
 			"'#heavy#' ->museHeavy robe.blab=INPUT",
 			"'#rumination#' ->museLoop robe.blab=INPUT",
@@ -1352,6 +1372,7 @@ listen: {
 													"'#trigger#' ->soothe robe.blab=MATCH_0",
 													"'enough' ->worldcheck",
 													"'#negate#' ->worldcheck",
+													"'' ->@ '#worldHold#'",
 													"wait:50 ->rest"]
 								},
 								// Second and final world of a batch — planets repeat fast, so cap a
@@ -1368,6 +1389,7 @@ listen: {
 													"'#trigger#' ->soothe robe.blab=MATCH_0",
 													"'enough' ->worldcheck",
 													"'#negate#' ->worldcheck",
+													"'' ->@ '#worldHold#'",
 													"wait:50 ->rest"]
 								},
 								// After a world: a quiet check-in (did that help?) rather than vanishing.
@@ -1384,6 +1406,7 @@ listen: {
 													"'#showme#' ->reverie",
 													"'#affirm#' ->rest '#worldAfterYes#'",
 													"'#negate#' ->rest '#worldAfterNo#'",
+													"'' ->muse robe.blab=INPUT",
 													"wait:22 ->rest"]
 								},
 								// --- Dreamwalk: the chip game (2026-06-25) ----------------------
@@ -1399,7 +1422,9 @@ listen: {
 									exits: ["'#trigger#' ->soothe robe.blab=MATCH_0",
 													"'#dreamDeep1#' ->dreamwalk2 robe.step1=INPUT",
 													"'#dreamLight1#' ->dreamwalk2 robe.step1=INPUT",
+													"'#boredask#' ->rest '#dreamLeave#'",
 													"'#negate#' ->rest '#dreamLeave#'",
+													"'' ->@ '#dreamNudge#'",
 													"wait:45 ->rest '#dreamLeave#'"]
 								},
 								dreamwalk2: {
@@ -1409,7 +1434,9 @@ listen: {
 									exits: ["'#trigger#' ->soothe robe.blab=MATCH_0",
 													"'#dreamFollow#' ->dreamwalk3 robe.step2=INPUT",
 													"'#dreamStill#' ->dreamwalk3 robe.step2=INPUT",
+													"'#boredask#' ->rest '#dreamLeave#'",
 													"'#negate#' ->rest '#dreamLeave#'",
+													"'' ->@ '#dreamNudge#'",
 													"wait:45 ->rest '#dreamLeave#'"]
 								},
 								dreamwalk3: {
@@ -1419,7 +1446,9 @@ listen: {
 									exits: ["'#trigger#' ->soothe robe.blab=MATCH_0",
 													"'#dreamDark3#' ->dreamcleardeep robe.step3=INPUT",
 													"'#dreamLight3#' ->dreamclearwarm robe.step3=INPUT",
+													"'#boredask#' ->rest '#dreamLeave#'",
 													"'#negate#' ->rest '#dreamLeave#'",
+													"'' ->@ '#dreamNudge#'",
 													"wait:45 ->rest '#dreamLeave#'"]
 								},
 								// The two endings. Both recall the journey and close gently to rest;

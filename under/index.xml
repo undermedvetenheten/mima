@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<index version="1" name="under">
+  <category name="SuperGnome">
+    <reapack name="sequencer_supergnome.jsfx" type="effect" desc="MIDI Sequencer SuperGnome">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi{\b MIDI Sequencer SuperGnome}\line\line Generative euclidean drum + synth sequencer for REAPER (JSFX).\line\line Up to 8 drum lanes (sample playback or MIDI out), plus bass, melody and chord synth sections with a master key, scales (including Pelog, Slendro and quarter-tone Rast), harmonic progressions, swing, nudge, per-lane filters and LFOs. Everything phase-locked to project beat 0.\line\line Installs a small DR-55 starter sample pack (kick, snare, rim) into Data/supergnome - lanes 1-3 load them by default. Drop your own WAVs into Data/supergnome to extend the palette.\line\line Insert it on a track as "JS: MIDI Sequencer SuperGnome" and press play.}]]></description>
+        <link rel="website">https://mima.chat/under</link>
+      </metadata>
+      <version name="1.0.0" author="joade comack" time="2026-07-06T00:00:00Z">
+        <changelog><![CDATA[First packaged release.
+- MIDI Sequencer SuperGnome JSFX (drum lanes + bass/melody/chords, master key, stems on 24 channels)
+- DR-55 starter samples (bd, sn, rim) installed to Data/supergnome, loaded on lanes 1-3 by default]]></changelog>
+        <source file="sequencer_supergnome.jsfx">https://mima.chat/under/supergnome/sequencer_supergnome.jsfx</source>
+        <source type="data" file="supergnome/dr55_bd.wav">https://mima.chat/under/supergnome/dr55_bd.wav</source>
+        <source type="data" file="supergnome/dr55_sn.wav">https://mima.chat/under/supergnome/dr55_sn.wav</source>
+        <source type="data" file="supergnome/dr55_rim.wav">https://mima.chat/under/supergnome/dr55_rim.wav</source>
+      </version>
+    </reapack>
+  </category>
+  <metadata>
+    <description><![CDATA[{\rtf1\ansi{\b under}\line\line The quiet room beneath mima.chat. REAPER tools by joade comack.\line\line Currently housing: MIDI Sequencer SuperGnome.}]]></description>
+    <link rel="website">https://mima.chat/under</link>
+  </metadata>
+</index>

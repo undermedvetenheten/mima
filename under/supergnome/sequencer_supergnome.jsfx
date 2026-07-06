@@ -1,0 +1,1956 @@
+desc:MIDI Sequencer SuperGnome
+//tags: MIDI generator sequencing sampler synthesis
+//author: joade comack
+/* Quick Guide
+
+  DRUM LANES (top): starts with 3, + LANE / - LANE buttons grow up to 8.
+  Fields: NOTE CH ST SPAN PULS ROT VEL GATE PIT LPF FEV LRT LDP LSH LPT
+          SWG NDG VHM
+  - FEV: filter envelope per hit (~120ms). LRT/LDP/LSH: lane LFO on LPF.
+    LPT: LFO also bends sample pitch (semitones).
+  - SWG: swing 0-75% (delays every second step). NDG: nudge the lane
+    +/-50% of a step (negative rushes, positive drags). VHM: random
+    velocity humanize.
+  - RIGHT-CLICK a lit drum step: it becomes an every-2nd-cycle step
+    (pink); right-click again to remove.
+  - Triplet drums: use ST/SPAN ratios (24 steps / 4 beats = 16th triplets).
+  - SAMPLES button (top right) shows/hides the sample picker sliders.
+
+  KEY row (next to +/- LANE): the master key.
+  - KEY: master root note. SCL: master scale (tap = next).
+  - PROG/SPD: the master harmonic rotation (tap PROG to cycle; "off").
+  - B / M / C buttons LOCK each synth section to the master key: locked
+    sections use the master scale, snap their BASE to the master pitch
+    class (drag BASE to choose octave), and follow the master rotation.
+    The small box next to each lock is that section's harmony speed
+    multiplier: 1/2, x1, x2 - synced changes at different rates.
+  - Unlocked sections use their own BASE/SCAL (row 1) and PRG/SPD (row 2).
+  - 12-TET progressions apply DIATONICALLY (shift by scale degrees, always
+    in key). Just-intonation progressions (P12/P13) stay exact cents.
+
+  THREE SYNTH SECTIONS: BASS, MELODY, CHORDS.
+  Row 1: BASE SCAL ST SPAN PULS ROT VEL GATE ATT DEC + M / RND / PR-PM
+  Row 2: CUT RES ENV WAV RATE DEP SHP EMD GLD SWG NDG FEL PRG SPD
+         + SYN/MID (+ 7TH on chords)
+  - WAV: 0 sine (beefed: sub-octave + 2nd harm) - 50 tri - 100 saw.
+  - EMD: AD pluck / HLD sustain for GATE / LAT latch. GLD: portamento ms.
+  - SWG/NDG: swing and nudge, like the drums. FEL: tap for STRaight /
+    TRiPlet (steps x2/3) / DOTted (x1.5) timing.
+  - PRG/SPD: this section's own rotation, used when UNLOCKED from the key.
+  - Rolls: click places a note (re-click clears), drag draws.
+    RIGHT-CLICK a note: normal -> orange (plays every 2nd cycle) -> off.
+    Right-click empty space erases. Rows are scale degrees, bottom = BASE.
+  - CHORDS: roll sets the chord ROOT; builds diatonic triads/7ths with
+    nearest-voice-leading inversions. Pitch wheel shows the octave as a
+    circle with sounding bass/melody/chord notes.
+
+  MIDI: bass ch 16, melody ch 15 (pitch bend +/-2st), chords ch 14
+  (quantized). STEMS: 24 channels - 1/2 mix, 3-18 lanes, 19/20 bass,
+  21/22 melody, 23/24 chords (use the supergnome ReaScripts).
+
+  Everything is phase-locked to project beat 0.
+*/
+
+slider1:/supergnome:dr55_bd.wav:Lane 1 Sample
+slider2:/supergnome:dr55_sn.wav:Lane 2 Sample
+slider3:/supergnome:dr55_rim.wav:Lane 3 Sample
+slider4:/supergnome:none:Lane 4 Sample
+slider5:/supergnome:none:Lane 5 Sample
+slider6:/supergnome:none:Lane 6 Sample
+slider7:/supergnome:none:Lane 7 Sample
+slider8:/supergnome:none:Lane 8 Sample
+
+in_pin:none
+out_pin:mix L
+out_pin:mix R
+out_pin:lane 1 L
+out_pin:lane 1 R
+out_pin:lane 2 L
+out_pin:lane 2 R
+out_pin:lane 3 L
+out_pin:lane 3 R
+out_pin:lane 4 L
+out_pin:lane 4 R
+out_pin:lane 5 L
+out_pin:lane 5 R
+out_pin:lane 6 L
+out_pin:lane 6 R
+out_pin:lane 7 L
+out_pin:lane 7 R
+out_pin:lane 8 L
+out_pin:lane 8 R
+out_pin:bass L
+out_pin:bass R
+out_pin:melody L
+out_pin:melody R
+out_pin:chords L
+out_pin:chords R
+options:maxmem=16777216
+
+@init
+ext_noinit = 1;
+
+// force sample reload on first pass - slider value 0 is a real file
+l_s1 = -1; l_s2 = -1; l_s3 = -1; l_s4 = -1;
+l_s5 = -1; l_s6 = -1; l_s7 = -1; l_s8 = -1;
+
+// NOTE: EEL2 variable names are case-insensitive - constants must not
+// collide with working variables (LANES_CAP vs num_lanes, etc).
+LANES_CAP = 8;
+MAX_STEPS = 32;
+EUC_N = 21;
+NROWS = 12;
+NSCALES = 14;
+NPROGS = 14;
+NSYN = 3;
+
+// ---- serialized memory block 0..727 - keep layout stable ----
+// step values: 0 = off, 1 = normal, 2 = plays every 2nd cycle only
+pat      = 0;    // LANES_CAP * MAX_STEPS drum step values
+note_a   = 256;
+chan_a   = 264;
+steps_a  = 272;
+span_a   = 280;
+pul_a    = 288;
+rot_a    = 296;
+vel_a    = 304;
+gate_a   = 312;
+mute_a   = 320;
+euc_next = 328;
+lmode_a  = 336;  // 0 = PR, 1 = PM
+pit_a    = 344;
+lpf_a    = 352;
+// synth params: uniform layout. BASS at 424, MELODY at 512, CHORDS at 576.
+// 0 base, 1 scale, 2 st, 3 span, 4 pul, 5 rot, 6 vel, 7 gate, 8 att(ms),
+// 9 dec(ms), 10 syn(1=internal), 11 mute, 12 cut, 13 res, 14 envamt,
+// 15 mode(PR/PM), 16 lfo rate(beats), 17 lfo dep, 18 lfo shape, 19 wav,
+// 20 env mode (0 AD / 1 hold / 2 latch), 21 glide ms,
+// 22 own harm progression (0 = off), 23 own harm speed, 24 sevenths (chords)
+// virtual params (stored in per-synth arrays): 25 swing, 26 nudge, 27 feel
+bass_on  = 360;
+bass_deg = 392;
+BASS_P   = 424;  // ..447
+mel2_on  = 448;
+mel2_deg = 480;
+MEL_P    = 512;  // ..535
+lrate_a  = 536;
+ldep_a   = 544;
+lshape_a = 552;
+harm_prog = 560; // legacy global harmony (pre-v8), kept for migration
+harm_spd  = 561;
+harm_b    = 562;
+harm_m    = 563;
+fenv_a   = 568;  // per-lane filter envelope amount
+CHD_P    = 576;  // ..607
+chd_on   = 608;
+chd_deg  = 640;
+lpt_a    = 672;  // per-lane LFO -> pitch (semitones)
+swg_a    = 680;  // per-lane swing %
+ndg_a    = 688;  // per-lane nudge %
+vhm_a    = 696;  // per-lane velocity humanize %
+ssw_a    = 704;  // per-synth swing % (3)
+snd_a    = 708;  // per-synth nudge % (3)
+sfl_a    = 712;  // per-synth feel: 0 straight, 1 triplet, 2 dotted (3)
+gkey_note  = 716; // master key root (single slots, access [0])
+gkey_scale = 717;
+gkey_prog  = 718; // master rotation (0 = off)
+gkey_spd   = 719; // master rotation beats/step
+lock_a   = 720;  // per-synth: 1 = locked to master key (3)
+hml_a    = 724;  // per-synth harmony speed mult: 0 = 1/2, 1 = x1, 2 = x2 (3)
+
+// ---- non-serialized scratch ----
+v_del   = 1000;
+v_pos   = 1008;
+v_on    = 1016;
+v_gain  = 1024;
+smp_nch = 1032;
+smp_sr  = 1040;
+smp_len = 1048;
+flt_lo  = 1056;
+flt_bp  = 1064;
+flt_lo2 = 1072;
+flt_bp2 = 1080;
+flt_f   = 1088;  // 2 = bypass sentinel
+v_rt    = 1096;
+fenv    = 1104;
+offq    = 1120;  // (beat, note, chan) triplets
+OFFQ_MAX = 64;
+euc_tab = 1320;
+scl_tab = 1400;
+rot_tmp = 1700;
+shc     = 1800;
+shv     = 1812;
+// synth voices, indexed 0 bass / 1 melody / 2 chords (chords share env)
+sv_del  = 2100;
+sv_nfreq = 2103;
+sv_ngain = 2106;
+sv_freq = 2109;
+sv_gain = 2112;
+sv_stage = 2115;
+sv_env  = 2118;
+sv_ph   = 2121;
+sv_phs  = 2124;
+sv_lo   = 2127;
+sv_bp   = 2130;
+sv_atk  = 2133;
+sv_dcm  = 2136;
+sv_ct   = 2139;
+sv_ea   = 2142;
+sv_dmp  = 2145;
+sv_fon  = 2148;
+sv_wv   = 2151;
+sv_gcoef = 2154;
+sv_hold = 2157;
+sv_tfreq = 2160;
+ch4_freq  = 2170;
+ch4_tfreq = 2174;
+ch4_nfreq = 2178;
+ch4_ph    = 2182;
+ch_nv     = 2186;
+vl_cents  = 2190;
+vl_have   = 2194;
+gsnd_b  = 2200;
+gsnd_m  = 2201;
+gsnd_c  = 2202;
+gsnd_cn = 2206;
+prog_tab = 2400;
+
+smp_base = 65536;
+SMP_MAX = 2000000;
+
+_ei = 0;
+function ep(k, n, r) ( euc_tab[_ei] = k; euc_tab[_ei + 1] = n; euc_tab[_ei + 2] = r; _ei += 3; );
+ep(2,5,0); ep(3,4,0); ep(3,5,2); ep(3,7,0); ep(3,8,0); ep(4,7,0); ep(4,9,0);
+ep(4,11,0); ep(5,6,0); ep(5,7,0); ep(5,8,0); ep(5,9,0); ep(5,11,0); ep(5,12,0);
+ep(5,16,0); ep(7,8,0); ep(7,12,0); ep(7,16,14); ep(9,16,0); ep(11,24,14); ep(13,24,5);
+
+function euc_name(i) (
+  i == 0 ? "Khafif-e-ramal (Persia)" :
+  i == 1 ? "Cumbia / Calypso" :
+  i == 2 ? "Khafif-e-ramal / Rumanian folk" :
+  i == 3 ? "Ruchenitza (Bulgaria)" :
+  i == 4 ? "tresillo (Cuba)" :
+  i == 5 ? "Ruchenitza 2 (Bulgaria)" :
+  i == 6 ? "Aksak (Turkey)" :
+  i == 7 ? "Zappa: Outside Now" :
+  i == 8 ? "York-Samai (Arab)" :
+  i == 9 ? "Nawakhat (Arab)" :
+  i == 10 ? "cinquillo (Cuba)" :
+  i == 11 ? "Agsag-Samai (Arab)" :
+  i == 12 ? "Moussorgsky: Pictures at an Exhibition" :
+  i == 13 ? "Venda clapping (South Africa)" :
+  i == 14 ? "Bossa-Nova (Brazil)" :
+  i == 15 ? "Bendir frame drum" :
+  i == 16 ? "West African bell" :
+  i == 17 ? "Samba (Brazil)" :
+  i == 18 ? "Central African Republic" :
+  i == 19 ? "Aka Pygmies (Central Africa)" :
+            "Aka Pygmies, upper Sangha";
+);
+
+_si = 0;
+function sc7(cnt, c1, c2, c3, c4, c5, c6, c7) (
+  scl_tab[_si] = cnt;
+  scl_tab[_si + 1] = c1; scl_tab[_si + 2] = c2; scl_tab[_si + 3] = c3;
+  scl_tab[_si + 4] = c4; scl_tab[_si + 5] = c5; scl_tab[_si + 6] = c6;
+  scl_tab[_si + 7] = c7;
+  _si += 16;
+);
+sc7(7, 0,200,400,500,700,900,1100);   // 0 Major
+sc7(7, 0,200,300,500,700,800,1000);   // 1 Natural Minor
+sc7(7, 0,200,300,500,700,900,1000);   // 2 Dorian
+sc7(7, 0,100,300,500,700,800,1000);   // 3 Phrygian
+sc7(7, 0,200,400,600,700,900,1100);   // 4 Lydian
+sc7(7, 0,200,400,500,700,900,1000);   // 5 Mixolydian
+sc7(5, 0,200,400,700,900,0,0);        // 6 Pentatonic Major
+sc7(5, 0,300,500,700,1000,0,0);       // 7 Pentatonic Minor
+sc7(6, 0,300,500,600,700,1000,0);     // 8 Blues
+sc7(7, 0,200,300,500,700,800,1100);   // 9 Harmonic Minor
+sc7(6, 0,200,400,600,800,1000,0);     // 10 Whole Tone
+sc7(7, 0,120,270,540,670,800,1080);   // 11 Pelog (approx)
+sc7(5, 0,240,480,720,960,0,0);        // 12 Slendro (approx)
+sc7(7, 0,200,350,500,700,900,1050);   // 13 Rast (quarter-tone)
+
+function scale_name(i) (
+  i == 0 ? "Major" :
+  i == 1 ? "Natural Minor" :
+  i == 2 ? "Dorian" :
+  i == 3 ? "Phrygian" :
+  i == 4 ? "Lydian" :
+  i == 5 ? "Mixolydian" :
+  i == 6 ? "Pentatonic Major" :
+  i == 7 ? "Pentatonic Minor" :
+  i == 8 ? "Blues" :
+  i == 9 ? "Harmonic Minor" :
+  i == 10 ? "Whole Tone" :
+  i == 11 ? "Pelog (approx)" :
+  i == 12 ? "Slendro (approx)" :
+            "Rast (quarter-tone)";
+);
+
+function shape_name(i) (
+  i == 0 ? "sine" : i == 1 ? "triangle" : i == 2 ? "saw down" : "random (S&H)";
+);
+
+function syn_name(i) (
+  i == 0 ? "bass" : i == 1 ? "melody" : "chords";
+);
+
+function feel_name(i) (
+  i == 0 ? "straight" : i == 1 ? "triplet" : "dotted";
+);
+
+// progressions: root offsets in cents (all < 1200). P12/P13 are just
+// intonation and always apply as exact cents; the rest apply diatonically.
+_pi = 0;
+function pg(cnt, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12) (
+  prog_tab[_pi] = cnt;
+  prog_tab[_pi + 1] = a1;  prog_tab[_pi + 2] = a2;  prog_tab[_pi + 3] = a3;
+  prog_tab[_pi + 4] = a4;  prog_tab[_pi + 5] = a5;  prog_tab[_pi + 6] = a6;
+  prog_tab[_pi + 7] = a7;  prog_tab[_pi + 8] = a8;  prog_tab[_pi + 9] = a9;
+  prog_tab[_pi + 10] = a10; prog_tab[_pi + 11] = a11; prog_tab[_pi + 12] = a12;
+  _pi += 16;
+);
+pg(1,  0,0,0,0,0,0,0,0,0,0,0,0);                                  // 0 off
+pg(2,  0,500,0,0,0,0,0,0,0,0,0,0);                                // 1 I-IV
+pg(4,  0,500,700,500,0,0,0,0,0,0,0,0);                            // 2 I-IV-V-IV
+pg(4,  0,900,500,700,0,0,0,0,0,0,0,0);                            // 3 doo-wop I-vi-IV-V
+pg(4,  0,700,900,500,0,0,0,0,0,0,0,0);                            // 4 axis I-V-vi-IV
+pg(3,  200,700,0,0,0,0,0,0,0,0,0,0);                              // 5 ii-V-I
+pg(12, 0,0,0,0,500,500,0,0,700,500,0,700);                        // 6 12-bar blues
+pg(4,  0,1000,800,700,0,0,0,0,0,0,0,0);                           // 7 Andalusian
+pg(12, 0,500,1000,300,800,100,600,1100,400,900,200,700);          // 8 circle of fifths
+pg(4,  0,300,600,900,0,0,0,0,0,0,0,0);                            // 9 minor 3rds (dim cycle)
+pg(3,  0,800,400,0,0,0,0,0,0,0,0,0);                              // 10 Giant Steps (maj 3rds)
+pg(6,  700,0,300,800,1100,400,0,0,0,0,0,0);                       // 11 Coltrane V-I chain
+pg(5,  0,702,386,969,551,0,0,0,0,0,0,0);                          // 12 harmonic series 3-5-7-11 (just)
+pg(8,  0,204,386,551,702,841,969,1088,0,0,0,0);                   // 13 overtone ladder (just)
+
+function prog_name(i) (
+  i == 0 ? "off" :
+  i == 1 ? "I - IV" :
+  i == 2 ? "I - IV - V - IV" :
+  i == 3 ? "doo-wop I-vi-IV-V" :
+  i == 4 ? "axis I-V-vi-IV" :
+  i == 5 ? "ii - V - I" :
+  i == 6 ? "12-bar blues" :
+  i == 7 ? "Andalusian descent" :
+  i == 8 ? "circle of fifths" :
+  i == 9 ? "minor 3rds (dim cycle)" :
+  i == 10 ? "Giant Steps (maj 3rd cycle)" :
+  i == 11 ? "Coltrane V-I chain" :
+  i == 12 ? "harmonic series 3-5-7-11 (just)" :
+            "overtone ladder (just)";
+);
+
+function load_sample(l, h) local(nch, sr_f, avail) (
+  smp_len[l] = 0;
+  h > 0 ? (
+    file_riff(h, nch, sr_f);
+    nch > 0 && sr_f > 0 ? (
+      avail = file_avail(h);
+      avail > SMP_MAX ? avail = SMP_MAX - (SMP_MAX % nch);
+      file_mem(h, smp_base + l * SMP_MAX, avail);
+      smp_nch[l] = nch;
+      smp_sr[l] = sr_f;
+      smp_len[l] = floor(avail / nch);
+    );
+    file_close(h);
+  );
+);
+
+// catch NaN/inf - NaN fails both comparisons -> 0
+function sane(x) ( x > -100000 && x < 100000 ? x : 0 );
+
+function get_param(l, f) (
+  f == 0 ? note_a[l] :
+  f == 1 ? chan_a[l] :
+  f == 2 ? steps_a[l] :
+  f == 3 ? span_a[l] :
+  f == 4 ? pul_a[l] :
+  f == 5 ? rot_a[l] :
+  f == 6 ? vel_a[l] :
+  f == 7 ? gate_a[l] :
+  f == 8 ? pit_a[l] :
+  f == 9 ? lpf_a[l] :
+  f == 10 ? fenv_a[l] :
+  f == 11 ? lrate_a[l] :
+  f == 12 ? ldep_a[l] :
+  f == 13 ? lshape_a[l] :
+  f == 14 ? lpt_a[l] :
+  f == 15 ? swg_a[l] :
+  f == 16 ? ndg_a[l] :
+            vhm_a[l];
+);
+
+function set_param(l, f, v) (
+  f == 0 ? note_a[l]  = max(0, min(127, v)) :
+  f == 1 ? chan_a[l]  = max(0, min(15, v)) :
+  f == 2 ? steps_a[l] = max(1, min(MAX_STEPS, v)) :
+  f == 3 ? span_a[l]  = max(0.25, min(32, v)) :
+  f == 4 ? pul_a[l]   = max(0, min(MAX_STEPS, v)) :
+  f == 5 ? rot_a[l]   = max(0, min(MAX_STEPS, v)) :
+  f == 6 ? vel_a[l]   = max(1, min(127, v)) :
+  f == 7 ? gate_a[l]  = max(5, min(200, v)) :
+  f == 8 ? pit_a[l]   = max(-24, min(24, v)) :
+  f == 9 ? lpf_a[l]   = max(0, min(100, v)) :
+  f == 10 ? fenv_a[l] = max(0, min(100, v)) :
+  f == 11 ? lrate_a[l] = max(0.25, min(32, v)) :
+  f == 12 ? ldep_a[l] = max(0, min(100, v)) :
+  f == 13 ? lshape_a[l] = max(0, min(3, v)) :
+  f == 14 ? lpt_a[l]  = max(0, min(24, v)) :
+  f == 15 ? swg_a[l]  = max(0, min(75, v)) :
+  f == 16 ? ndg_a[l]  = max(-50, min(50, v)) :
+            vhm_a[l]  = max(0, min(100, v));
+);
+
+function spbase(si) ( si == 0 ? BASS_P : si == 1 ? MEL_P : CHD_P );
+function ronbase(si) ( si == 0 ? bass_on : si == 1 ? mel2_on : chd_on );
+function rdgbase(si) ( si == 0 ? bass_deg : si == 1 ? mel2_deg : chd_deg );
+
+function sget(si, k) (
+  k == 25 ? ssw_a[si] :
+  k == 26 ? snd_a[si] :
+  k == 27 ? sfl_a[si] :
+            spbase(si)[k];
+);
+
+function sset(si, k, v) local(sp) (
+  sp = spbase(si);
+  k == 0 ? sp[0] = max(12, min(108, v)) :
+  k == 1 ? sp[1] = ((v % NSCALES) + NSCALES) % NSCALES :
+  k == 2 ? sp[2] = max(1, min(MAX_STEPS, v)) :
+  k == 3 ? sp[3] = max(0.25, min(32, v)) :
+  k == 4 ? sp[4] = max(0, min(MAX_STEPS, v)) :
+  k == 5 ? sp[5] = max(0, min(MAX_STEPS, v)) :
+  k == 6 ? sp[6] = max(1, min(127, v)) :
+  k == 7 ? sp[7] = max(5, min(200, v)) :
+  k == 8 ? sp[8] = max(0, min(500, v)) :
+  k == 9 ? sp[9] = max(5, min(4000, v)) :
+  k == 10 ? sp[10] = v ? 1 : 0 :
+  k == 11 ? sp[11] = v ? 1 : 0 :
+  k == 12 ? sp[12] = max(0, min(100, v)) :
+  k == 13 ? sp[13] = max(0, min(100, v)) :
+  k == 14 ? sp[14] = max(0, min(100, v)) :
+  k == 15 ? sp[15] = v ? 1 : 0 :
+  k == 16 ? sp[16] = max(0.25, min(32, v)) :
+  k == 17 ? sp[17] = max(0, min(100, v)) :
+  k == 18 ? sp[18] = max(0, min(3, v)) :
+  k == 19 ? sp[19] = max(0, min(100, v)) :
+  k == 20 ? sp[20] = max(0, min(2, v)) :
+  k == 21 ? sp[21] = max(0, min(2000, v)) :
+  k == 22 ? sp[22] = max(0, min(NPROGS - 1, v)) :
+  k == 23 ? sp[23] = max(0.25, min(32, v)) :
+  k == 24 ? sp[24] = v ? 1 : 0 :
+  k == 25 ? ssw_a[si] = max(0, min(75, v)) :
+  k == 26 ? snd_a[si] = max(-50, min(50, v)) :
+  k == 27 ? sfl_a[si] = max(0, min(2, v)) : 0;
+);
+
+// row 2 field -> synth param index
+function r2map(f) (
+  f == 0 ? 12 : f == 1 ? 13 : f == 2 ? 14 : f == 3 ? 19 : f == 4 ? 16 : f == 5 ? 17 :
+  f == 6 ? 18 : f == 7 ? 20 : f == 8 ? 21 : f == 9 ? 25 : f == 10 ? 26 :
+  f == 11 ? 27 : f == 12 ? 22 : 23;
+);
+
+function fel_mult(fv) ( fv == 1 ? 2/3 : fv == 2 ? 1.5 : 1 );
+
+// ---- master key resolution ----
+function eff_scale(si) ( lock_a[si] ? gkey_scale[0] : sget(si, 1) );
+function eff_base(si) local(gb) (
+  lock_a[si] ? (
+    gb = gkey_note[0];
+    // snap the section's BASE to the master pitch class, keep its octave
+    gb + 12 * floor((sget(si, 0) - gb) / 12 + 0.5);
+  ) : sget(si, 0);
+);
+function eff_prog(si) ( lock_a[si] ? gkey_prog[0] : sget(si, 22) );
+function eff_spd(si) (
+  lock_a[si] ? gkey_spd[0] * (hml_a[si] == 0 ? 2 : hml_a[si] == 2 ? 0.5 : 1)
+             : sget(si, 23);
+);
+
+function apply_euclid(l) local(i, n, k, ii) (
+  n = steps_a[l];
+  k = min(pul_a[l], n);
+  i = 0;
+  while (i < n) (
+    ii = ((i - rot_a[l]) % n + n) % n;
+    pat[l * MAX_STEPS + i] = k > 0 ? ((ii * k) % n < k) : 0;
+    i += 1;
+  );
+);
+
+function rotate_pat(l, dd) local(i, st) (
+  st = steps_a[l];
+  i = 0;
+  while (i < st) ( rot_tmp[i] = pat[l * MAX_STEPS + ((i - dd) % st + st) % st]; i += 1; );
+  i = 0;
+  while (i < st) ( pat[l * MAX_STEPS + i] = rot_tmp[i]; i += 1; );
+);
+
+function rotate_syn(si, dd) local(i, st, src, ron, rdg) (
+  ron = ronbase(si);
+  rdg = rdgbase(si);
+  st = sget(si, 2);
+  i = 0;
+  while (i < st) (
+    src = ((i - dd) % st + st) % st;
+    rot_tmp[i] = ron[src];
+    rot_tmp[i + 32] = rdg[src];
+    i += 1;
+  );
+  i = 0;
+  while (i < st) ( ron[i] = rot_tmp[i]; rdg[i] = rot_tmp[i + 32]; i += 1; );
+);
+
+function apply_syn_euclid(si) local(i, n, k, ii, ron) (
+  ron = ronbase(si);
+  n = sget(si, 2);
+  k = min(sget(si, 4), n);
+  i = 0;
+  while (i < n) (
+    ii = ((i - sget(si, 5)) % n + n) % n;
+    ron[i] = k > 0 ? ((ii * k) % n < k) : 0;
+    i += 1;
+  );
+);
+
+// BASS: euclid + random walk. MELODY: per-bar euclid variations + sweeping
+// arc. CHORDS: euclid + root movement favouring 4ths/5ths.
+function syn_generate(si) local(i, prev, ron, rdg, n, k, kk, bars, sbar, b, ii, arc, dgv, rr, cnt) (
+  ron = ronbase(si);
+  rdg = rdgbase(si);
+  n = sget(si, 2);
+  si == 0 ? (
+    apply_syn_euclid(0);
+    prev = floor(rand(6));
+    i = 0;
+    while (i < n) (
+      ron[i] ? (
+        prev = prev + floor(rand(7)) - 3;
+        prev < 0 ? prev += 5;
+        prev > NROWS - 1 ? prev -= 5;
+        prev = max(0, min(NROWS - 1, prev));
+        rdg[i] = prev;
+      );
+      i += 1;
+    );
+  ) :
+  si == 1 ? (
+    k = sget(si, 4);
+    bars = max(1, floor(sget(si, 3) / 4 + 0.5));
+    sbar = floor(n / bars);
+    (sbar > 0 && sbar * bars == n) ? (
+      b = 0;
+      while (b < bars) (
+        kk = min(k, sbar);
+        i = 0;
+        while (i < sbar) (
+          ii = ((i - sget(si, 5) - b) % sbar + sbar) % sbar;
+          ron[b * sbar + i] = kk > 0 ? ((ii * kk) % sbar < kk) : 0;
+          i += 1;
+        );
+        b += 1;
+      );
+    ) : apply_syn_euclid(1);
+    arc = rand(1);
+    i = 0;
+    while (i < n) (
+      ron[i] ? (
+        dgv = floor(5.5 + 4.5 * sin(2 * $pi * (i / n + arc)) + rand(3) - 1);
+        rdg[i] = max(0, min(NROWS - 1, dgv));
+      );
+      i += 1;
+    );
+  ) : (
+    apply_syn_euclid(2);
+    cnt = max(1, scl_tab[eff_scale(2) * 16]);
+    prev = 0;
+    i = 0;
+    while (i < n) (
+      ron[i] ? (
+        rr = rand(1);
+        prev += rr < 0.28 ? 3 : rr < 0.56 ? -3 : rr < 0.72 ? 4 : rr < 0.82 ? -4 :
+                rr < 0.92 ? 1 : 0;
+        prev = ((prev % cnt) + cnt) % cnt;
+        rdg[i] = prev;
+      );
+      i += 1;
+    );
+  );
+);
+
+function deg_cents(dg, scix) local(cnt, oc, stp) (
+  cnt = max(1, scl_tab[scix * 16]);
+  oc = floor(dg / cnt);
+  stp = dg - oc * cnt;
+  oc * 1200 + scl_tab[scix * 16 + 1 + stp];
+);
+
+// map a chromatic offset in cents to the nearest scale-degree shift
+function cents_to_degshift(cc, scix) local(cnt, k, best, bi, d) (
+  cc <= 0 ? 0 : (
+    cnt = max(1, scl_tab[scix * 16]);
+    best = 100000; bi = 0; k = 0;
+    while (k < cnt) (
+      d = abs(scl_tab[scix * 16 + 1 + k] - cc);
+      d < best ? ( best = d; bi = k; );
+      k += 1;
+    );
+    abs(1200 - cc) < best ? bi = cnt;   // closer to the octave
+    bi;
+  );
+);
+
+// raw progression offset (cents) at time tb
+function harm_raw(tb, epr, espd) local(hln, hix) (
+  hln = max(1, prog_tab[epr * 16]);
+  hix = floor(tb / max(0.25, espd));
+  hix = ((hix % hln) + hln) % hln;
+  prog_tab[epr * 16 + 1 + hix];
+);
+
+// beat-synced LFO, phase-locked to project beat 0. si = S&H state slot.
+function lfo_val(rt, shp, si) local(phv, cy, fr) (
+  phv = g_beat / max(0.25, rt);
+  cy = floor(phv);
+  fr = phv - cy;
+  shp == 3 ? (
+    cy != shc[si] ? ( shc[si] = cy; shv[si] = rand(2) - 1; );
+    shv[si];
+  ) :
+  shp == 0 ? sin(2 * $pi * fr) :
+  shp == 1 ? 1 - 4 * abs(fr - 0.5) :
+             1 - 2 * fr;
+);
+
+function note_name(n, out) local(nm) (
+  nm = n % 12;
+  sprintf(out, "%s%d",
+    nm == 0 ? "C" : nm == 1 ? "C#" : nm == 2 ? "D" : nm == 3 ? "D#" :
+    nm == 4 ? "E" : nm == 5 ? "F" : nm == 6 ? "F#" : nm == 7 ? "G" :
+    nm == 8 ? "G#" : nm == 9 ? "A" : nm == 10 ? "A#" : "B",
+    floor(n / 12) - 1);
+);
+
+initialized == 0 ? (
+  num_lanes = 3;
+  l = 0;
+  while (l < LANES_CAP) (
+    chan_a[l]  = 0;
+    steps_a[l] = 16;
+    span_a[l]  = 4;
+    pul_a[l]   = 4;
+    rot_a[l]   = 0;
+    vel_a[l]   = 100;
+    gate_a[l]  = 50;
+    mute_a[l]  = 0;
+    euc_next[l] = 0;
+    lmode_a[l] = 0;
+    pit_a[l]   = 0;
+    lpf_a[l]   = 100;
+    fenv_a[l]  = 0;
+    lrate_a[l] = 4;
+    ldep_a[l]  = 0;
+    lshape_a[l] = 0;
+    lpt_a[l]   = 0;
+    swg_a[l]   = 0;
+    ndg_a[l]   = 0;
+    vhm_a[l]   = 0;
+    l += 1;
+  );
+  note_a[0] = 36; note_a[1] = 38; note_a[2] = 42; note_a[3] = 46;
+  note_a[4] = 39; note_a[5] = 45; note_a[6] = 49; note_a[7] = 51;
+
+  // BASS: big saw bass on C1, filter mostly closed, env opens it
+  BASS_P[0] = 24;  BASS_P[1] = 0;  BASS_P[2] = 16; BASS_P[3] = 4;
+  BASS_P[4] = 5;   BASS_P[5] = 0;  BASS_P[6] = 100; BASS_P[7] = 80;
+  BASS_P[8] = 3;   BASS_P[9] = 250; BASS_P[10] = 1; BASS_P[11] = 0;
+  BASS_P[12] = 33; BASS_P[13] = 28; BASS_P[14] = 33; BASS_P[15] = 0;
+  BASS_P[16] = 4;  BASS_P[17] = 0;  BASS_P[18] = 0;  BASS_P[19] = 100;
+  BASS_P[20] = 0;  BASS_P[21] = 0;  BASS_P[22] = 0;  BASS_P[23] = 4;
+
+  // MELODY: triangle, 2-bar phrases, soft attack, gentle LFO sweep
+  MEL_P[0] = 60;  MEL_P[1] = 0;  MEL_P[2] = 16; MEL_P[3] = 8;
+  MEL_P[4] = 7;   MEL_P[5] = 0;  MEL_P[6] = 100; MEL_P[7] = 90;
+  MEL_P[8] = 60;  MEL_P[9] = 600; MEL_P[10] = 1; MEL_P[11] = 0;
+  MEL_P[12] = 60; MEL_P[13] = 20; MEL_P[14] = 20; MEL_P[15] = 0;
+  MEL_P[16] = 8;  MEL_P[17] = 15; MEL_P[18] = 0;  MEL_P[19] = 50;
+  MEL_P[20] = 0;  MEL_P[21] = 0;  MEL_P[22] = 0;  MEL_P[23] = 4;
+
+  // CHORDS: soft sine-tri pad, held for gate, glide, 7ths on
+  CHD_P[0] = 48;  CHD_P[1] = 0;  CHD_P[2] = 8;  CHD_P[3] = 8;
+  CHD_P[4] = 4;   CHD_P[5] = 0;  CHD_P[6] = 90;  CHD_P[7] = 95;
+  CHD_P[8] = 120; CHD_P[9] = 900; CHD_P[10] = 1; CHD_P[11] = 0;
+  CHD_P[12] = 55; CHD_P[13] = 15; CHD_P[14] = 15; CHD_P[15] = 0;
+  CHD_P[16] = 8;  CHD_P[17] = 10; CHD_P[18] = 0;  CHD_P[19] = 35;
+  CHD_P[20] = 1;  CHD_P[21] = 80; CHD_P[22] = 0;  CHD_P[23] = 4;
+  CHD_P[24] = 1;
+
+  ssw_a[0] = 0; ssw_a[1] = 0; ssw_a[2] = 0;
+  snd_a[0] = 0; snd_a[1] = 0; snd_a[2] = 0;
+  sfl_a[0] = 0; sfl_a[1] = 0; sfl_a[2] = 0;
+
+  gkey_note[0] = 48;   // C3
+  gkey_scale[0] = 0;
+  gkey_prog[0] = 0;
+  gkey_spd[0] = 4;
+  lock_a[0] = 1; lock_a[1] = 1; lock_a[2] = 1;
+  hml_a[0] = 1; hml_a[1] = 1; hml_a[2] = 1;
+
+  initialized = 1;
+);
+
+@slider
+slider1 != l_s1 ? ( l_s1 = slider1; load_sample(0, file_open(slider1)); );
+slider2 != l_s2 ? ( l_s2 = slider2; load_sample(1, file_open(slider2)); );
+slider3 != l_s3 ? ( l_s3 = slider3; load_sample(2, file_open(slider3)); );
+slider4 != l_s4 ? ( l_s4 = slider4; load_sample(3, file_open(slider4)); );
+slider5 != l_s5 ? ( l_s5 = slider5; load_sample(4, file_open(slider5)); );
+slider6 != l_s6 ? ( l_s6 = slider6; load_sample(5, file_open(slider6)); );
+slider7 != l_s7 ? ( l_s7 = slider7; load_sample(6, file_open(slider7)); );
+slider8 != l_s8 ? ( l_s8 = slider8; load_sample(7, file_open(slider8)); );
+
+@serialize
+ser_rd = file_avail(0) >= 0;
+ser_ver = 10;
+file_var(0, ser_ver);
+nl_ser = num_lanes;
+ser_ver >= 10 ? (
+  file_mem(0, 0, 728);
+  file_var(0, nl_ser);
+) : ser_ver == 9 ? (
+  file_mem(0, 0, 704);
+  file_var(0, nl_ser);
+) : ser_ver == 8 ? (
+  file_mem(0, 0, 680);
+  file_var(0, nl_ser);
+) : ser_ver == 7 ? (
+  file_mem(0, 0, 576);
+  file_var(0, nl_ser);
+) : ser_ver == 6 ? (
+  file_mem(0, 0, 568);
+  file_var(0, nl_ser);
+) : ser_ver == 5 ? (
+  file_mem(0, 0, 448);
+  file_var(0, nl_ser);
+) : ser_ver == 4 ? (
+  file_mem(0, 0, 440);
+  file_var(0, nl_ser);
+) : ser_ver == 3 ? (
+  file_mem(0, 0, 344);
+  file_var(0, nl_ser);
+) : ser_ver == 2 ? (
+  file_mem(0, 0, 336);
+  file_var(0, nl_ser);
+) : (
+  file_mem(0, 0, 328);
+);
+nl_ser >= 1 && nl_ser <= LANES_CAP ? num_lanes = nl_ser;
+// older saves lack newer params - patch in defaults / migrate
+ser_rd && ser_ver == 4 ? (
+  BASS_P[12] = 33; BASS_P[13] = 28; BASS_P[14] = 33; BASS_P[15] = 0;
+  BASS_P[16] = 4; BASS_P[17] = 0; BASS_P[18] = 0;
+);
+ser_rd && ser_ver >= 4 && ser_ver <= 5 ? (
+  BASS_P[19] = 100;
+);
+ser_rd && ser_ver <= 7 ? (
+  BASS_P[22] = harm_b[0] ? harm_prog[0] : 0;
+  MEL_P[22] = harm_m[0] ? harm_prog[0] : 0;
+  BASS_P[23] = harm_spd[0] >= 0.25 ? harm_spd[0] : 4;
+  MEL_P[23] = BASS_P[23];
+);
+ser_rd && ser_ver <= 9 ? (
+  // pre-key-overhaul projects keep their per-section behavior: unlock all
+  lock_a[0] = 0; lock_a[1] = 0; lock_a[2] = 0;
+  hml_a[0] = 1; hml_a[1] = 1; hml_a[2] = 1;
+  gkey_note[0] = 48; gkey_scale[0] = 0; gkey_prog[0] = 0; gkey_spd[0] = 4;
+);
+
+@block
+while (midirecv(mofs, m1, m2, m3)) ( midisend(mofs, m1, m2, m3); );
+
+// belt-and-braces sample loading: @slider is not reliably called on
+// instantiation, so also catch slider changes here (guarded, so it's free)
+slider1 != l_s1 ? ( l_s1 = slider1; load_sample(0, file_open(slider1)); );
+slider2 != l_s2 ? ( l_s2 = slider2; load_sample(1, file_open(slider2)); );
+slider3 != l_s3 ? ( l_s3 = slider3; load_sample(2, file_open(slider3)); );
+slider4 != l_s4 ? ( l_s4 = slider4; load_sample(3, file_open(slider4)); );
+slider5 != l_s5 ? ( l_s5 = slider5; load_sample(4, file_open(slider5)); );
+slider6 != l_s6 ? ( l_s6 = slider6; load_sample(5, file_open(slider6)); );
+slider7 != l_s7 ? ( l_s7 = slider7; load_sample(6, file_open(slider7)); );
+slider8 != l_s8 ? ( l_s8 = slider8; load_sample(7, file_open(slider8)); );
+
+playing = play_state & 1;
+bps = tempo / 60;
+spb = srate / bps;
+blk_start = beat_position;
+blk_end = blk_start + samplesblock / spb;
+g_beat = blk_start;
+
+// sanitize state so any blow-up recovers instead of latching NaN silence
+l = 0;
+while (l < LANES_CAP) (
+  flt_lo[l] = sane(flt_lo[l]);
+  flt_bp[l] = sane(flt_bp[l]);
+  flt_lo2[l] = sane(flt_lo2[l]);
+  flt_bp2[l] = sane(flt_bp2[l]);
+  l += 1;
+);
+si = 0;
+while (si < NSYN) (
+  sv_lo[si] = sane(sv_lo[si]);
+  sv_bp[si] = sane(sv_bp[si]);
+  sv_env[si] = sane(sv_env[si]);
+  sv_freq[si] = sane(sv_freq[si]);
+  sv_tfreq[si] = sane(sv_tfreq[si]);
+  sv_ph[si] = sane(sv_ph[si]); sv_ph[si] -= floor(sv_ph[si]);
+  sv_phs[si] = sane(sv_phs[si]); sv_phs[si] -= floor(sv_phs[si]);
+  si += 1;
+);
+i = 0;
+while (i < 4) (
+  ch4_freq[i] = sane(ch4_freq[i]);
+  ch4_tfreq[i] = sane(ch4_tfreq[i]);
+  ch4_ph[i] = sane(ch4_ph[i]); ch4_ph[i] -= floor(ch4_ph[i]);
+  // voice-leading memory: poisoned values drag every future chord sub-sonic
+  vl_cents[i] = sane(vl_cents[i]);
+  i += 1;
+);
+
+// per-lane coefficients
+fdec_mul = exp(-samplesblock / (0.12 * srate));
+l = 0;
+while (l < LANES_CAP) (
+  lv = lfo_val(lrate_a[l], lshape_a[l], l);
+  v_rt[l] = pow(2, (pit_a[l] + lv * lpt_a[l]) / 12);
+  fenv[l] = sane(fenv[l]) * fdec_mul;
+  lpf_a[l] >= 100 ? flt_f[l] = 2 : (
+    eff = max(0, min(99, lpf_a[l] + lv * ldep_a[l] + fenv[l] * fenv_a[l]));
+    fcut = 20 * pow(400, eff / 100);
+    fcut > srate / 8 ? fcut = srate / 8;
+    flt_f[l] = 2 * sin($pi * fcut / srate);
+  );
+  l += 1;
+);
+
+// per-synth coefficients
+si = 0;
+while (si < NSYN) (
+  sp = spbase(si);
+  sv_atk[si] = 1 / (max(sp[8], 0.5) * 0.001 * srate);
+  sv_dcm[si] = exp(-1 / (max(sp[9], 5) * 0.001 * srate));
+  sv_fon[si] = sp[12] < 100;
+  sv_ct[si] = sp[12] + lfo_val(sp[16], sp[18], 8 + si) * sp[17];
+  sv_ea[si] = sp[14];
+  sv_dmp[si] = 1.3 - sp[13] / 100 * 1.15;
+  sv_wv[si] = sp[19];
+  sv_gcoef[si] = sp[21] <= 0 ? 1 : 1 - exp(-1 / (sp[21] * 0.001 * srate));
+  si += 1;
+);
+
+flush = (p_playing && !playing) ||
+        (playing && p_playing && abs(blk_start - expected_beat) > 0.001);
+flush ? (
+  i = 0;
+  while (i < offq_n) (
+    midisend(0, 0x80 + offq[i * 3 + 2], offq[i * 3 + 1], 0);
+    i += 1;
+  );
+  offq_n = 0;
+);
+
+i = 0;
+while (i < offq_n) (
+  offq[i * 3] < blk_end ? (
+    ofs = max(0, floor((offq[i * 3] - blk_start) * spb));
+    midisend(min(ofs, samplesblock - 1), 0x80 + offq[i * 3 + 2], offq[i * 3 + 1], 0);
+    offq_n -= 1;
+    offq[i * 3] = offq[offq_n * 3];
+    offq[i * 3 + 1] = offq[offq_n * 3 + 1];
+    offq[i * 3 + 2] = offq[offq_n * 3 + 2];
+  ) : i += 1;
+);
+
+playing ? (
+  // ---- drum lanes ----
+  l = 0;
+  while (l < num_lanes) (
+    !mute_a[l] ? (
+      stepdur = lmode_a[l] ? span_a[l] / 16 : span_a[l] / steps_a[l];
+      // scan one step of slack either side so swing/nudge shifts stay caught
+      n = ceil((blk_start - stepdur) / stepdur - 0.000000001);
+      t = n * stepdur;
+      while (t < blk_end + stepdur) (
+        stepidx = ((n % steps_a[l]) + steps_a[l]) % steps_a[l];
+        pv = pat[l * MAX_STEPS + stepidx];
+        // value 2 = plays only every second cycle
+        (pv && (pv != 2 || floor(n / steps_a[l]) % 2 != 0)) ? (
+          tsh = t + (ndg_a[l] / 100 + ((stepidx & 1) ? swg_a[l] / 100 : 0)) * stepdur;
+          (tsh >= blk_start && tsh < blk_end) ? (
+            ofs = min(max(0, floor((tsh - blk_start) * spb)), samplesblock - 1);
+            hvel = vel_a[l];
+            vhm_a[l] > 0 ? hvel = max(1, floor(hvel * (1 - rand(1) * vhm_a[l] / 100 * 0.7)));
+            smp_len[l] > 0 ? (
+              v_del[l] = ofs;
+              v_pos[l] = 0;
+              v_on[l] = 1;
+              v_gain[l] = hvel / 127;
+              fenv[l] = 1;
+            ) : (
+              nt = note_a[l];
+              ch = chan_a[l];
+              j = 0;
+              while (j < offq_n) (
+                (offq[j * 3 + 1] == nt && offq[j * 3 + 2] == ch) ? (
+                  midisend(ofs, 0x80 + ch, nt, 0);
+                  offq_n -= 1;
+                  offq[j * 3] = offq[offq_n * 3];
+                  offq[j * 3 + 1] = offq[offq_n * 3 + 1];
+                  offq[j * 3 + 2] = offq[offq_n * 3 + 2];
+                ) : j += 1;
+              );
+              midisend(ofs, 0x90 + ch, nt, hvel);
+              offq_n < OFFQ_MAX ? (
+                offq[offq_n * 3] = tsh + max(0.02, stepdur * gate_a[l] / 100 - 0.001);
+                offq[offq_n * 3 + 1] = nt;
+                offq[offq_n * 3 + 2] = ch;
+                offq_n += 1;
+              );
+            );
+          );
+        );
+        n += 1;
+        t = n * stepdur;
+      );
+    );
+    l += 1;
+  );
+
+  // ---- synth sections: 0 bass (MIDI ch16), 1 melody (ch15), 2 chords (ch14)
+  si = 0;
+  while (si < NSYN) (
+    sp = spbase(si);
+    ron = ronbase(si);
+    rdg = rdgbase(si);
+    mch = si == 0 ? 15 : si == 1 ? 14 : 13;
+    !sp[11] ? (
+      escale = eff_scale(si);
+      ebase = eff_base(si);
+      epr = eff_prog(si);
+      espd = eff_spd(si);
+      stepdur = (sp[15] ? sp[3] / 16 : sp[3] / sp[2]) * fel_mult(sfl_a[si]);
+      n = ceil((blk_start - stepdur) / stepdur - 0.000000001);
+      t = n * stepdur;
+      while (t < blk_end + stepdur) (
+        stepidx = ((n % sp[2]) + sp[2]) % sp[2];
+        sv2 = ron[stepidx];
+        (sv2 && (sv2 != 2 || floor(n / sp[2]) % 2 != 0)) ? (
+          tsh = t + (snd_a[si] / 100 + ((stepidx & 1) ? ssw_a[si] / 100 : 0)) * stepdur;
+          (tsh >= blk_start && tsh < blk_end) ? (
+            ofs = min(max(0, floor((tsh - blk_start) * spb)), samplesblock - 1);
+            // harmony: diatonic degree shift for 12-TET progs, exact cents for JI
+            dsh = 0; hcents = 0;
+            epr > 0 ? (
+              hc = harm_raw(t, epr, espd);
+              epr >= 12 ? hcents = hc : dsh = cents_to_degshift(hc, escale);
+            );
+            si < 2 ? (
+              // ---- mono voice (bass / melody) ----
+              cents = deg_cents(rdg[stepidx] + dsh, escale) + hcents;
+              si == 0 ? gsnd_b[0] = ((ebase * 100 + cents) % 1200 + 1200) % 1200
+                      : gsnd_m[0] = ((ebase * 100 + cents) % 1200 + 1200) % 1200;
+              sp[10] ? (
+                sv_nfreq[si] = max(8, min(12000, 440 * pow(2, (ebase - 69) / 12 + cents / 1200)));
+                sv_ngain[si] = sp[6] / 127 * 0.3;
+                sv_del[si] = ofs + 1;
+                sv_hold[si] = sp[20] == 1 ? floor(stepdur * sp[7] / 100 * spb) :
+                              sp[20] == 2 ? -1 : 0;
+              ) : (
+                j = 0;
+                while (j < offq_n) (
+                  offq[j * 3 + 2] == mch ? (
+                    midisend(ofs, 0x80 + mch, offq[j * 3 + 1], 0);
+                    offq_n -= 1;
+                    offq[j * 3] = offq[offq_n * 3];
+                    offq[j * 3 + 1] = offq[offq_n * 3 + 1];
+                    offq[j * 3 + 2] = offq[offq_n * 3 + 2];
+                  ) : j += 1;
+                );
+                semi = floor(cents / 100 + 0.5);
+                nt = max(0, min(127, ebase + semi));
+                bend = floor(8192 + (cents - semi * 100) * 40.96);
+                bend = max(0, min(16383, bend));
+                midisend(ofs, 0xE0 + mch, bend & 127, floor(bend / 128));
+                midisend(ofs, 0x90 + mch, nt, sp[6]);
+                offq_n < OFFQ_MAX ? (
+                  offq[offq_n * 3] = tsh + max(0.02, stepdur * sp[7] / 100 - 0.001);
+                  offq[offq_n * 3 + 1] = nt;
+                  offq[offq_n * 3 + 2] = mch;
+                  offq_n += 1;
+                );
+              );
+            ) : (
+              // ---- chord (paraphonic): diatonic stack + voice leading ----
+              nv = sp[24] ? 4 : 3;
+              v = 0;
+              while (v < nv) (
+                rcv = deg_cents(rdg[stepidx] + dsh + v * 2, escale) + hcents;
+                tc = rcv;
+                vl_have[0] ? (
+                  // nearest-octave pull = inversion; anchor within an octave
+                  // of the raw voicing so voices can't wander off register
+                  tc -= 1200 * floor((tc - vl_cents[v]) / 1200 + 0.5);
+                  tc - rcv > 1200 ? tc -= 1200 * floor((tc - rcv) / 1200) :
+                  rcv - tc > 1200 ? tc += 1200 * floor((rcv - tc) / 1200);
+                );
+                vl_cents[v] = tc;
+                gsnd_c[v] = ((ebase * 100 + tc) % 1200 + 1200) % 1200;
+                sp[10] ? (
+                  ch4_nfreq[v] = max(8, min(12000, 440 * pow(2, (ebase - 69) / 12 + tc / 1200)));
+                ) : (
+                  semi = floor(tc / 100 + 0.5);
+                  nt = max(0, min(127, ebase + semi));
+                  v == 0 ? (
+                    j = 0;
+                    while (j < offq_n) (
+                      offq[j * 3 + 2] == mch ? (
+                        midisend(ofs, 0x80 + mch, offq[j * 3 + 1], 0);
+                        offq_n -= 1;
+                        offq[j * 3] = offq[offq_n * 3];
+                        offq[j * 3 + 1] = offq[offq_n * 3 + 1];
+                        offq[j * 3 + 2] = offq[offq_n * 3 + 2];
+                      ) : j += 1;
+                    );
+                  );
+                  midisend(ofs, 0x90 + mch, nt, sp[6]);
+                  offq_n < OFFQ_MAX ? (
+                    offq[offq_n * 3] = tsh + max(0.02, stepdur * sp[7] / 100 - 0.001);
+                    offq[offq_n * 3 + 1] = nt;
+                    offq[offq_n * 3 + 2] = mch;
+                    offq_n += 1;
+                  );
+                );
+                v += 1;
+              );
+              vl_have[0] = 1;
+              gsnd_cn[0] = nv;
+              sp[10] ? (
+                ch_nv[0] = nv;
+                sv_ngain[2] = sp[6] / 127 * 0.3;
+                sv_del[2] = ofs + 1;
+                sv_hold[2] = sp[20] == 1 ? floor(stepdur * sp[7] / 100 * spb) :
+                             sp[20] == 2 ? -1 : 0;
+              );
+            );
+          );
+        );
+        n += 1;
+        t = n * stepdur;
+      );
+    );
+    si += 1;
+  );
+);
+
+expected_beat = blk_end;
+p_playing = playing;
+
+@sample
+// drum sample voices -> mix (1/2) + stem pair (3/4 .. 17/18)
+c = 0;
+while (c < num_lanes) (
+  v_del[c] > 0 ? (
+    v_del[c] -= 1;
+  ) : v_on[c] ? (
+    vp = v_pos[c];
+    vp < smp_len[c] ? (
+      vrate = smp_sr[c] / srate * v_rt[c];
+      ip = floor(vp);
+      frac = vp - ip;
+      vbase = smp_base + c * SMP_MAX;
+      vnch = smp_nch[c];
+      sa = vbase[ip * vnch];
+      sb = ip + 1 < smp_len[c] ? vbase[(ip + 1) * vnch] : 0;
+      smix = (sa + (sb - sa) * frac) * v_gain[c];
+      vnch >= 2 ? (
+        sa2 = vbase[ip * vnch + 1];
+        sb2 = ip + 1 < smp_len[c] ? vbase[(ip + 1) * vnch + 1] : 0;
+        smix2 = (sa2 + (sb2 - sa2) * frac) * v_gain[c];
+      ) : smix2 = smix;
+      flt_f[c] < 1.99 ? (
+        fl2 = flt_f[c] * 0.5;
+        flt_lo[c] += fl2 * flt_bp[c];
+        hp = smix - flt_lo[c] - 0.8 * flt_bp[c];
+        flt_bp[c] += fl2 * hp;
+        flt_lo[c] += fl2 * flt_bp[c];
+        hp = smix - flt_lo[c] - 0.8 * flt_bp[c];
+        flt_bp[c] += fl2 * hp;
+        smix = flt_lo[c];
+        flt_lo2[c] += fl2 * flt_bp2[c];
+        hp = smix2 - flt_lo2[c] - 0.8 * flt_bp2[c];
+        flt_bp2[c] += fl2 * hp;
+        flt_lo2[c] += fl2 * flt_bp2[c];
+        hp = smix2 - flt_lo2[c] - 0.8 * flt_bp2[c];
+        flt_bp2[c] += fl2 * hp;
+        smix2 = flt_lo2[c];
+      );
+      spl0 += smix;
+      spl1 += smix2;
+      spl(2 + c * 2) += smix;
+      spl(3 + c * 2) += smix2;
+      v_pos[c] = vp + vrate;
+    ) : v_on[c] = 0;
+  );
+  c += 1;
+);
+
+// synth voices: 0 bass (19/20), 1 melody (21/22), 2 chords (23/24)
+si2 = 0;
+while (si2 < NSYN) (
+  sv_del[si2] > 0 ? (
+    sv_del[si2] -= 1;
+    sv_del[si2] == 0 ? (
+      si2 < 2 ? (
+        sv_tfreq[si2] = sv_nfreq[si2];
+        (sv_gcoef[si2] >= 1 || sv_env[si2] < 0.001) ? sv_freq[si2] = sv_nfreq[si2];
+      ) : (
+        vv = 0;
+        while (vv < ch_nv[0]) (
+          ch4_tfreq[vv] = ch4_nfreq[vv];
+          (sv_gcoef[2] >= 1 || sv_env[2] < 0.001) ? ch4_freq[vv] = ch4_nfreq[vv];
+          vv += 1;
+        );
+      );
+      sv_gain[si2] = sv_ngain[si2];
+      sv_stage[si2] = 1;
+    );
+  );
+  sv_hold[si2] > 0 ? sv_hold[si2] -= 1;
+  sv_stage[si2] ? (
+    sv_stage[si2] == 1 ? (
+      sv_env[si2] += sv_atk[si2];
+      sv_env[si2] >= 1 ? (
+        sv_env[si2] = 1;
+        sv_stage[si2] = sv_hold[si2] != 0 ? 3 : 2;
+      );
+    ) :
+    sv_stage[si2] == 3 ? (
+      sv_hold[si2] == 0 ? sv_stage[si2] = 2;
+    ) : (
+      sv_env[si2] *= sv_dcm[si2];
+      sv_env[si2] < 0.0001 ? ( sv_stage[si2] = 0; sv_env[si2] = 0; );
+    );
+
+    wv = sv_wv[si2];
+    si2 < 2 ? (
+      sv_freq[si2] += (sv_tfreq[si2] - sv_freq[si2]) * sv_gcoef[si2];
+      sv_ph[si2] += sv_freq[si2] / srate;
+      sv_ph[si2] >= 1 ? sv_ph[si2] -= 1;
+      sv_phs[si2] += sv_freq[si2] * 0.5 / srate;
+      sv_phs[si2] >= 1 ? sv_phs[si2] -= 1;
+      osin = (sin(2 * $pi * sv_ph[si2]) * 0.8
+              + sin(2 * $pi * sv_phs[si2]) * 0.5
+              + sin(4 * $pi * sv_ph[si2]) * 0.18) / 1.1;
+      otri = 1 - 4 * abs(sv_ph[si2] - 0.5);
+      osaw = 2 * sv_ph[si2] - 1;
+      wv < 50 ? (
+        osc = osin + (otri - osin) * (wv / 50);
+      ) : (
+        osc = otri + (osaw - otri) * ((wv - 50) / 50);
+      );
+      so = osc * sv_env[si2] * sv_gain[si2];
+    ) : (
+      csum = 0;
+      vv = 0;
+      while (vv < ch_nv[0]) (
+        ch4_freq[vv] += (ch4_tfreq[vv] - ch4_freq[vv]) * sv_gcoef[2];
+        ch4_ph[vv] += ch4_freq[vv] / srate;
+        ch4_ph[vv] >= 1 ? ch4_ph[vv] -= 1;
+        cph = ch4_ph[vv];
+        osin = sin(2 * $pi * cph) + 0.15 * sin(4 * $pi * cph);
+        otri = 1 - 4 * abs(cph - 0.5);
+        osaw = 2 * cph - 1;
+        wv < 50 ? (
+          csum += osin + (otri - osin) * (wv / 50);
+        ) : (
+          csum += otri + (osaw - otri) * ((wv - 50) / 50);
+        );
+        vv += 1;
+      );
+      so = csum * 0.35 * sv_env[2] * sv_gain[2];
+    );
+
+    sv_fon[si2] ? (
+      sct = sv_ct[si2] + sv_ea[si2] * sv_env[si2];
+      sct < 0 ? sct = 0;
+      sct > 100 ? sct = 100;
+      sfc = 20 * pow(400, sct / 100);
+      sfc > srate / 8 ? sfc = srate / 8;
+      sf = sin($pi * sfc / srate);
+      sv_lo[si2] += sf * sv_bp[si2];
+      s_hp = so - sv_lo[si2] - sv_dmp[si2] * sv_bp[si2];
+      sv_bp[si2] += sf * s_hp;
+      sv_lo[si2] += sf * sv_bp[si2];
+      s_hp = so - sv_lo[si2] - sv_dmp[si2] * sv_bp[si2];
+      sv_bp[si2] += sf * s_hp;
+      so = sv_lo[si2];
+    );
+    spl0 += so;
+    spl1 += so;
+    spl(18 + si2 * 2) += so;
+    spl(19 + si2 * 2) += so;
+  );
+  si2 += 1;
+);
+
+@gfx 1264 780
+top = 34;
+rowh = 40;
+x_fields = 8;
+fieldw = 36;
+x_mute = x_fields + 18 * fieldw + 4;  // 660
+x_euc = x_mute + 22;                  // 682
+x_mode = x_euc + 36;                  // 718
+x_grid = x_mode + 30;                 // 748
+cellw = 16;
+cellh = 28;
+rollrh = 8;
+y_btn = top + num_lanes * rowh + 2;
+ys0 = y_btn + 28;
+ys1 = ys0 + 188;
+ys2 = ys1 + 188;
+y_stat = ys2 + 180;
+
+// KEY row layout
+kx_key = 156; kx_scl = 204; kx_prg = 252; kx_spd = 298;
+kx_b = 348; kx_m = 398; kx_c = 448;      // lock buttons; +20 = mult boxes
+
+// hide the sample slider rows until the SAMPLES button is pressed
+!did_ss ? ( did_ss = 1; smp_show = 0; slider_show(255, 0); );
+
+// ---- mouse ----
+lmb = mouse_cap & 1;
+rmb = mouse_cap & 2;
+click = lmb && !p_lmb;
+rclick = rmb && !p_rmb;
+
+!lmb && p_lmb && drag_mode ? (
+  !drag_moved ? (
+    drag_mode == 8 ? (
+      rotate_pat(drag_lane, 1);
+      rot_a[drag_lane] = (rot_a[drag_lane] + 1) % max(1, steps_a[drag_lane]);
+    ) :
+    drag_mode == 9 ? (
+      rotate_syn(drag_synth, 1);
+      sset(drag_synth, 5, (sget(drag_synth, 5) + 1) % max(1, sget(drag_synth, 2)));
+    ) :
+    (drag_mode == 1 && drag_f == 13) ? (
+      lshape_a[drag_lane] = (lshape_a[drag_lane] + 1) % 4;
+      sprintf(#status, "lane %d LFO shape: %s", drag_lane + 1, shape_name(lshape_a[drag_lane]));
+      have_status = 1;
+    ) :
+    (drag_mode == 5 && drag_f == 1) ? (
+      sset(drag_synth, 1, sget(drag_synth, 1) + 1);
+      sprintf(#status, "%s scale: %s%s", syn_name(drag_synth), scale_name(sget(drag_synth, 1)),
+        lock_a[drag_synth] ? "  (locked to master key - unlock to use)" : "");
+      have_status = 1;
+    ) :
+    (drag_mode == 10 && drag_f == 6) ? (
+      sset(drag_synth, 18, (sget(drag_synth, 18) + 1) % 4);
+      sprintf(#status, "%s LFO shape: %s", syn_name(drag_synth), shape_name(sget(drag_synth, 18)));
+      have_status = 1;
+    ) :
+    (drag_mode == 10 && drag_f == 7) ? (
+      sset(drag_synth, 20, (sget(drag_synth, 20) + 1) % 3);
+      sprintf(#status, "%s envelope: %s", syn_name(drag_synth),
+        sget(drag_synth, 20) == 0 ? "AD pluck" :
+        sget(drag_synth, 20) == 1 ? "HOLD - sustains for GATE, then decays" :
+                                    "LATCH - drones until the next note");
+      have_status = 1;
+    ) :
+    (drag_mode == 10 && drag_f == 11) ? (
+      sset(drag_synth, 27, (sget(drag_synth, 27) + 1) % 3);
+      sprintf(#status, "%s feel: %s", syn_name(drag_synth), feel_name(sget(drag_synth, 27)));
+      have_status = 1;
+    ) :
+    (drag_mode == 10 && drag_f == 12) ? (
+      sset(drag_synth, 22, (sget(drag_synth, 22) + 1) % NPROGS);
+      sprintf(#status, "%s own harmony: %s%s", syn_name(drag_synth), prog_name(sget(drag_synth, 22)),
+        lock_a[drag_synth] ? "  (locked to master - unlock to use)" : "");
+      have_status = 1;
+    ) :
+    drag_mode == 15 ? (
+      gkey_scale[0] = (gkey_scale[0] + 1) % NSCALES;
+      sprintf(#status, "master scale: %s", scale_name(gkey_scale[0]));
+      have_status = 1;
+    ) :
+    drag_mode == 16 ? (
+      gkey_prog[0] = (gkey_prog[0] + 1) % NPROGS;
+      sprintf(#status, "master harmony: %s", prog_name(gkey_prog[0]));
+      have_status = 1;
+    );
+  );
+  drag_mode = 0;
+);
+
+click ? (
+  drag_mode = 0;
+  drag_moved = 0;
+  rot_applied = 0;
+  (mouse_y < 28 && mouse_x >= gfx_w - 104) ? (
+    smp_show = !smp_show;
+    slider_show(255, smp_show);
+    sprintf(#status, "sample pickers: %s", smp_show ? "shown below" : "hidden");
+    have_status = 1;
+  ) :
+  (mouse_y >= y_btn && mouse_y < y_btn + 18) ? (
+    mouse_x >= 8 && mouse_x < 60 ? num_lanes = min(LANES_CAP, num_lanes + 1) :
+    mouse_x >= 64 && mouse_x < 116 ? num_lanes = max(1, num_lanes - 1) :
+    (mouse_x >= kx_key && mouse_x < kx_key + 44) ? ( drag_mode = 14; drag_y = mouse_y; drag_v = gkey_note[0]; ) :
+    (mouse_x >= kx_scl && mouse_x < kx_scl + 44) ? ( drag_mode = 15; drag_y = mouse_y; drag_v = gkey_scale[0]; ) :
+    (mouse_x >= kx_prg && mouse_x < kx_prg + 42) ? ( drag_mode = 16; drag_y = mouse_y; drag_v = gkey_prog[0]; ) :
+    (mouse_x >= kx_spd && mouse_x < kx_spd + 36) ? ( drag_mode = 17; drag_y = mouse_y; drag_v = gkey_spd[0]; ) :
+    (mouse_x >= kx_b && mouse_x < kx_b + 18) ? (
+      lock_a[0] = !lock_a[0];
+      sprintf(#status, "bass: %s", lock_a[0] ? "LOCKED to master key" : "independent (own BASE/SCAL/PRG/SPD)"); have_status = 1;
+    ) :
+    (mouse_x >= kx_b + 20 && mouse_x < kx_b + 44) ? (
+      hml_a[0] = (hml_a[0] + 1) % 3;
+      sprintf(#status, "bass harmony speed: %s", hml_a[0] == 0 ? "half-time" : hml_a[0] == 1 ? "x1" : "double-time"); have_status = 1;
+    ) :
+    (mouse_x >= kx_m && mouse_x < kx_m + 18) ? (
+      lock_a[1] = !lock_a[1];
+      sprintf(#status, "melody: %s", lock_a[1] ? "LOCKED to master key" : "independent (own BASE/SCAL/PRG/SPD)"); have_status = 1;
+    ) :
+    (mouse_x >= kx_m + 20 && mouse_x < kx_m + 44) ? (
+      hml_a[1] = (hml_a[1] + 1) % 3;
+      sprintf(#status, "melody harmony speed: %s", hml_a[1] == 0 ? "half-time" : hml_a[1] == 1 ? "x1" : "double-time"); have_status = 1;
+    ) :
+    (mouse_x >= kx_c && mouse_x < kx_c + 18) ? (
+      lock_a[2] = !lock_a[2];
+      sprintf(#status, "chords: %s", lock_a[2] ? "LOCKED to master key" : "independent (own BASE/SCAL/PRG/SPD)"); have_status = 1;
+    ) :
+    (mouse_x >= kx_c + 20 && mouse_x < kx_c + 44) ? (
+      hml_a[2] = (hml_a[2] + 1) % 3;
+      sprintf(#status, "chords harmony speed: %s", hml_a[2] == 0 ? "half-time" : hml_a[2] == 1 ? "x1" : "double-time"); have_status = 1;
+    );
+  ) : (
+    hit = 0;
+    gsi = 0;
+    while (gsi < NSYN && !hit) (
+      ys = gsi == 0 ? ys0 : gsi == 1 ? ys1 : ys2;
+      (mouse_y >= ys && mouse_y < ys + rowh) ? (
+        hit = 1;
+        mouse_x >= x_fields && mouse_x < x_fields + 10 * fieldw ? (
+          drag_f = floor((mouse_x - x_fields) / fieldw);
+          drag_y = mouse_y;
+          drag_synth = gsi;
+          drag_v = sget(gsi, drag_f);
+          drag_mode = drag_f == 5 ? 9 : 5;
+        ) :
+        mouse_x >= x_mute && mouse_x < x_mute + 18 ? (
+          sset(gsi, 11, !sget(gsi, 11));
+        ) :
+        mouse_x >= x_euc && mouse_x < x_euc + 32 ? (
+          syn_generate(gsi);
+          sprintf(#status, "%s: E(%d,%d) %s in %s",
+            syn_name(gsi), sget(gsi, 4), sget(gsi, 2),
+            gsi == 0 ? "random walk" : gsi == 1 ? "per-bar variations, sweeping arc" : "roots by 4ths/5ths",
+            scale_name(eff_scale(gsi)));
+          have_status = 1;
+        ) :
+        mouse_x >= x_mode && mouse_x < x_mode + 26 ? (
+          sset(gsi, 15, !sget(gsi, 15));
+          sprintf(#status, "%s: %s", syn_name(gsi),
+            sget(gsi, 15) ? "PM polymeter - fixed SPAN/16 steps, drifts" : "PR polyrhythm - ST fills SPAN, synced");
+          have_status = 1;
+        );
+      ) :
+      (mouse_y >= ys + rowh && mouse_y < ys + 2 * rowh) ? (
+        hit = 1;
+        mouse_x >= x_fields && mouse_x < x_fields + 14 * fieldw ? (
+          drag_f = floor((mouse_x - x_fields) / fieldw);
+          drag_y = mouse_y;
+          drag_synth = gsi;
+          drag_v = sget(gsi, r2map(drag_f));
+          drag_mode = 10;
+        ) :
+        mouse_x >= x_euc && mouse_x < x_euc + 32 ? (
+          sset(gsi, 10, !sget(gsi, 10));
+          sprintf(#status, "%s out: %s", syn_name(gsi),
+            sget(gsi, 10) ? "internal synth (exact microtones)" :
+            (gsi == 2 ? "MIDI ch 14, quantized to semitones" : "MIDI + pitch bend (+/-2st)"));
+          have_status = 1;
+        ) :
+        (gsi == 2 && mouse_x >= x_mode && mouse_x < x_mode + 26) ? (
+          sset(2, 24, !sget(2, 24));
+          sprintf(#status, "chords: %s", sget(2, 24) ? "sevenths" : "triads");
+          have_status = 1;
+        );
+      ) :
+      (mouse_y >= ys + 2 * rowh && mouse_y < ys + 2 * rowh + NROWS * rollrh && mouse_x >= x_grid) ? (
+        hit = 1;
+        mcol = floor((mouse_x - x_grid) / cellw);
+        mrow = NROWS - 1 - floor((mouse_y - (ys + 2 * rowh)) / rollrh);
+        gron = ronbase(gsi);
+        grdg = rdgbase(gsi);
+        (mcol >= 0 && mcol < sget(gsi, 2)) ? (
+          (gron[mcol] && grdg[mcol] == mrow) ? (
+            gron[mcol] = 0;
+            drag_mode = 7;
+          ) : (
+            gron[mcol] = 1;
+            grdg[mcol] = mrow;
+            drag_mode = 6;
+          );
+          drag_synth = gsi;
+        );
+      );
+      gsi += 1;
+    );
+    !hit ? (
+      ml = floor((mouse_y - top) / rowh);
+      (ml >= 0 && ml < num_lanes && mouse_y >= top) ? (
+        mouse_x >= x_fields && mouse_x < x_fields + 18 * fieldw ? (
+          drag_f = floor((mouse_x - x_fields) / fieldw);
+          drag_lane = ml;
+          drag_y = mouse_y;
+          drag_v = get_param(ml, drag_f);
+          drag_mode = drag_f == 5 ? 8 : 1;
+        ) :
+        mouse_x >= x_mute && mouse_x < x_mute + 18 ? (
+          mute_a[ml] = !mute_a[ml];
+        ) :
+        mouse_x >= x_euc && mouse_x < x_euc + 32 ? (
+          epi = euc_next[ml] % EUC_N;
+          pul_a[ml] = euc_tab[epi * 3];
+          steps_a[ml] = euc_tab[epi * 3 + 1];
+          rot_a[ml] = euc_tab[epi * 3 + 2];
+          apply_euclid(ml);
+          euc_next[ml] = epi + 1;
+          sprintf(#status, "lane %d:  E(%d,%d) rot %d  -  %s",
+            ml + 1, pul_a[ml], steps_a[ml], rot_a[ml], euc_name(epi));
+          have_status = 1;
+        ) :
+        mouse_x >= x_mode && mouse_x < x_mode + 26 ? (
+          lmode_a[ml] = !lmode_a[ml];
+          sprintf(#status, "lane %d: %s", ml + 1,
+            lmode_a[ml] ? "PM polymeter - fixed SPAN/16 steps, drifts" : "PR polyrhythm - ST fills SPAN, synced");
+          have_status = 1;
+        ) :
+        mouse_x >= x_grid ? (
+          mi = floor((mouse_x - x_grid) / cellw);
+          (mi >= 0 && mi < steps_a[ml]) ? (
+            paint = !pat[ml * MAX_STEPS + mi];
+            pat[ml * MAX_STEPS + mi] = paint;
+            drag_mode = 2;
+            drag_lane = ml;
+          );
+        );
+      );
+    );
+  );
+);
+
+rclick ? (
+  rhit = 0;
+  gsi = 0;
+  while (gsi < NSYN) (
+    ys = gsi == 0 ? ys0 : gsi == 1 ? ys1 : ys2;
+    (mouse_y >= ys + 2 * rowh && mouse_y < ys + 2 * rowh + NROWS * rollrh && mouse_x >= x_grid) ? (
+      rhit = 1;
+      mcol = floor((mouse_x - x_grid) / cellw);
+      mrow = NROWS - 1 - floor((mouse_y - (ys + 2 * rowh)) / rollrh);
+      gron = ronbase(gsi);
+      grdg = rdgbase(gsi);
+      (mcol >= 0 && mcol < sget(gsi, 2)) ? (
+        (gron[mcol] && grdg[mcol] == mrow) ? (
+          // cycle: normal -> orange every-2nd-cycle -> off
+          gron[mcol] = gron[mcol] == 1 ? 2 : 0;
+        ) : (
+          gron[mcol] = 0;
+          drag_mode = 7;
+          drag_synth = gsi;
+        );
+      );
+    );
+    gsi += 1;
+  );
+  !rhit ? (
+    ml = floor((mouse_y - top) / rowh);
+    (ml >= 0 && ml < num_lanes && mouse_y >= top && mouse_x >= x_grid) ? (
+      mi = floor((mouse_x - x_grid) / cellw);
+      (mi >= 0 && mi < steps_a[ml] && pat[ml * MAX_STEPS + mi]) ? (
+        pat[ml * MAX_STEPS + mi] = pat[ml * MAX_STEPS + mi] == 1 ? 2 : 0;
+      );
+    );
+  );
+);
+
+lmb || rmb ? (
+  abs(mouse_y - drag_y) >= 4 ? drag_moved = 1;
+  drag_mode == 1 ? (
+    d = floor((drag_y - mouse_y) / 4);
+    set_param(drag_lane, drag_f, drag_v + ((drag_f == 3 || drag_f == 11) ? d * 0.25 : d));
+    drag_f == 4 ? apply_euclid(drag_lane);
+  ) :
+  drag_mode == 5 ? (
+    d = floor((drag_y - mouse_y) / 4);
+    sset(drag_synth, drag_f, drag_v + (drag_f == 3 ? d * 0.25 : drag_f == 8 ? d * 2 : drag_f == 9 ? d * 10 : d));
+    drag_f == 4 ? apply_syn_euclid(drag_synth);
+  ) :
+  drag_mode == 10 ? (
+    d = floor((drag_y - mouse_y) / 4);
+    sset(drag_synth, r2map(drag_f), drag_v + ((drag_f == 4 || drag_f == 13) ? d * 0.25 : drag_f == 8 ? d * 10 : d));
+  ) :
+  drag_mode == 8 ? (
+    d = floor((drag_y - mouse_y) / 4);
+    d != rot_applied ? (
+      rotate_pat(drag_lane, d - rot_applied);
+      rot_a[drag_lane] = ((rot_a[drag_lane] + d - rot_applied) % max(1, steps_a[drag_lane])
+                          + steps_a[drag_lane]) % max(1, steps_a[drag_lane]);
+      rot_applied = d;
+    );
+  ) :
+  drag_mode == 9 ? (
+    d = floor((drag_y - mouse_y) / 4);
+    d != rot_applied ? (
+      rotate_syn(drag_synth, d - rot_applied);
+      sset(drag_synth, 5, ((sget(drag_synth, 5) + d - rot_applied) % max(1, sget(drag_synth, 2))
+                           + sget(drag_synth, 2)) % max(1, sget(drag_synth, 2)));
+      rot_applied = d;
+    );
+  ) :
+  drag_mode == 14 ? (
+    d = floor((drag_y - mouse_y) / 4);
+    gkey_note[0] = max(12, min(108, drag_v + d));
+  ) :
+  drag_mode == 15 ? (
+    d = floor((drag_y - mouse_y) / 4);
+    gkey_scale[0] = max(0, min(NSCALES - 1, drag_v + d));
+  ) :
+  drag_mode == 16 ? (
+    d = floor((drag_y - mouse_y) / 4);
+    gkey_prog[0] = max(0, min(NPROGS - 1, drag_v + d));
+  ) :
+  drag_mode == 17 ? (
+    d = floor((drag_y - mouse_y) / 4);
+    gkey_spd[0] = max(0.25, min(32, drag_v + d * 0.25));
+  ) :
+  drag_mode == 2 ? (
+    mi = floor((mouse_x - x_grid) / cellw);
+    (mi >= 0 && mi < steps_a[drag_lane]) ? pat[drag_lane * MAX_STEPS + mi] = paint;
+  ) :
+  drag_mode == 6 ? (
+    ys = drag_synth == 0 ? ys0 : drag_synth == 1 ? ys1 : ys2;
+    mcol = floor((mouse_x - x_grid) / cellw);
+    mrow = NROWS - 1 - floor((mouse_y - (ys + 2 * rowh)) / rollrh);
+    gron = ronbase(drag_synth);
+    grdg = rdgbase(drag_synth);
+    (mcol >= 0 && mcol < sget(drag_synth, 2) && mrow >= 0 && mrow < NROWS) ? (
+      gron[mcol] = 1;
+      grdg[mcol] = mrow;
+    );
+  ) :
+  drag_mode == 7 ? (
+    mcol = floor((mouse_x - x_grid) / cellw);
+    gron = ronbase(drag_synth);
+    (mcol >= 0 && mcol < sget(drag_synth, 2)) ? gron[mcol] = 0;
+  );
+);
+!lmb && !rmb ? drag_mode = 0;
+p_lmb = lmb;
+p_rmb = rmb;
+
+// ---- draw ----
+// @gfx runs on its own thread: keep all working variables distinct from
+// @block/@sample (l, i, c, si, sp, stepdur, ...).
+gfx_set(0.13, 0.13, 0.14);
+gfx_rect(0, 0, gfx_w, gfx_h);
+
+gfx_setfont(1, "Arial", 15);
+gfx_set(0.85, 0.85, 0.9);
+gfx_x = 8; gfx_y = 8;
+gfx_drawstr("SUPERGNOME");
+gfx_setfont(1, "Arial", 11);
+gfx_set(0.5, 0.5, 0.55);
+gfx_x = 120; gfx_y = 12;
+gfx_drawstr("samples: Data/supergnome  |  stems: 1/2 mix, 3-18 lanes, 19/20 bass, 21/22 melody, 23/24 chords");
+
+smp_show ? gfx_set(0.3, 0.42, 0.32) : gfx_set(0.24, 0.26, 0.3);
+gfx_rect(gfx_w - 104, 6, 96, 20);
+gfx_set(0.85, 0.9, 0.85);
+gfx_x = gfx_w - 104; gfx_y = 9;
+gfx_drawstr(smp_show ? "SAMPLES [-]" : "SAMPLES [+]", 1, gfx_w - 8, 24);
+
+gl = 0;
+while (gl < num_lanes) (
+  ry = top + gl * rowh;
+  gsd = lmode_a[gl] ? span_a[gl] / 16 : span_a[gl] / steps_a[gl];
+  playstep = (play_state & 1) ? (floor(g_beat / gsd) % steps_a[gl] + steps_a[gl]) % steps_a[gl] : -1;
+
+  smp_len[gl] > 0 ? (
+    gfx_set(0.35, 0.8, 0.4);
+    gfx_rect(2, ry + 4, 4, 32);
+  );
+
+  gf = 0;
+  while (gf < 18) (
+    fx = x_fields + gf * fieldw;
+    gfx_set(0.19, 0.19, 0.21);
+    gfx_rect(fx, ry + 4, fieldw - 4, 32);
+    gfx_setfont(1, "Arial", 10);
+    gfx_set(0.45, 0.45, 0.5);
+    gfx_x = fx; gfx_y = ry + 5;
+    gfx_drawstr(
+      gf == 0 ? "NOTE" : gf == 1 ? "CH" : gf == 2 ? "ST" : gf == 3 ? "SPAN" :
+      gf == 4 ? "PULS" : gf == 5 ? "ROT" : gf == 6 ? "VEL" : gf == 7 ? "GATE" :
+      gf == 8 ? "PIT" : gf == 9 ? "LPF" : gf == 10 ? "FEV" :
+      gf == 11 ? "LRT" : gf == 12 ? "LDP" : gf == 13 ? "LSH" : gf == 14 ? "LPT" :
+      gf == 15 ? "SWG" : gf == 16 ? "NDG" : "VHM",
+      1, fx + fieldw - 4, ry + 16);
+    gfx_setfont(1, "Arial", 13);
+    gfx_set(0.85, 0.85, 0.85);
+    gf == 0 ? note_name(note_a[gl], #v) :
+    gf == 1 ? sprintf(#v, "%d", chan_a[gl] + 1) :
+    gf == 3 ? sprintf(#v, "%g", span_a[gl]) :
+    gf == 7 ? sprintf(#v, "%d%%", gate_a[gl]) :
+    gf == 9 ? (lpf_a[gl] >= 100 ? strcpy(#v, "---") : sprintf(#v, "%d", lpf_a[gl])) :
+    gf == 11 ? sprintf(#v, "%g", lrate_a[gl]) :
+    gf == 13 ? strcpy(#v, lshape_a[gl] == 0 ? "SIN" : lshape_a[gl] == 1 ? "TRI" : lshape_a[gl] == 2 ? "SAW" : "S&H") :
+             sprintf(#v, "%d", get_param(gl, gf));
+    gfx_x = fx; gfx_y = ry + 18;
+    gfx_drawstr(#v, 1, fx + fieldw - 4, ry + 34);
+    gf += 1;
+  );
+
+  mute_a[gl] ? gfx_set(0.75, 0.25, 0.25) : gfx_set(0.25, 0.25, 0.28);
+  gfx_rect(x_mute, ry + 4, 18, 32);
+  gfx_setfont(1, "Arial", 12);
+  gfx_set(0.9, 0.9, 0.9);
+  gfx_x = x_mute; gfx_y = ry + 12;
+  gfx_drawstr("M", 1, x_mute + 18, ry + 30);
+
+  gfx_set(0.22, 0.3, 0.24);
+  gfx_rect(x_euc, ry + 4, 32, 32);
+  gfx_set(0.7, 0.9, 0.7);
+  gfx_x = x_euc; gfx_y = ry + 12;
+  gfx_drawstr("EUC", 1, x_euc + 32, ry + 30);
+
+  lmode_a[gl] ? gfx_set(0.42, 0.28, 0.5) : gfx_set(0.22, 0.28, 0.38);
+  gfx_rect(x_mode, ry + 4, 26, 32);
+  gfx_set(0.85, 0.85, 0.9);
+  gfx_x = x_mode; gfx_y = ry + 12;
+  gfx_drawstr(lmode_a[gl] ? "PM" : "PR", 1, x_mode + 26, ry + 30);
+
+  spbi = 1 / gsd;
+  beat_tick = (abs(spbi - floor(spbi + 0.5)) < 0.000001 && spbi >= 1) ? floor(spbi + 0.5) : 0;
+  gi = 0;
+  while (gi < steps_a[gl]) (
+    cx = x_grid + gi * cellw;
+    on = pat[gl * MAX_STEPS + gi];
+    gi == playstep ? (
+      on == 2 ? gfx_set(1, 0.55, 0.6) :
+      on ? gfx_set(1, 0.85, 0.4) : gfx_set(0.38, 0.38, 0.42);
+    ) : (
+      on == 2 ? (mute_a[gl] ? gfx_set(0.5, 0.28, 0.32) : gfx_set(0.85, 0.32, 0.45)) :
+      on ? (mute_a[gl] ? gfx_set(0.45, 0.4, 0.3) : gfx_set(0.85, 0.6, 0.2))
+         : gfx_set(0.22, 0.22, 0.25);
+    );
+    gfx_rect(cx + 1, ry + 4, cellw - 2, cellh);
+    (beat_tick && gi % beat_tick == 0) ? (
+      gfx_set(0.6, 0.6, 0.65);
+      gfx_rect(cx, ry + 2, 1, cellh + 4);
+    );
+    gi += 1;
+  );
+
+  gl += 1;
+);
+
+// lane buttons + KEY row (master key / scale / harmony + section locks)
+gfx_set(0.24, 0.26, 0.3);
+gfx_rect(8, y_btn, 52, 18);
+gfx_rect(64, y_btn, 52, 18);
+gfx_setfont(1, "Arial", 11);
+gfx_set(0.8, 0.8, 0.85);
+gfx_x = 8; gfx_y = y_btn + 2;
+gfx_drawstr("+ LANE", 1, 60, y_btn + 16);
+gfx_x = 64; gfx_y = y_btn + 2;
+gfx_drawstr("- LANE", 1, 116, y_btn + 16);
+
+gfx_set(0.7, 0.7, 0.5);
+gfx_x = 124; gfx_y = y_btn + 4;
+gfx_drawstr("KEY");
+gfx_set(0.3, 0.28, 0.2);
+gfx_rect(kx_key, y_btn, 44, 18);
+gfx_rect(kx_scl, y_btn, 44, 18);
+gkey_prog[0] > 0 ? gfx_set(0.32, 0.28, 0.36) : gfx_set(0.22, 0.22, 0.25);
+gfx_rect(kx_prg, y_btn, 42, 18);
+gfx_set(0.24, 0.22, 0.28);
+gfx_rect(kx_spd, y_btn, 36, 18);
+gfx_set(0.95, 0.9, 0.7);
+note_name(gkey_note[0], #v);
+gfx_x = kx_key; gfx_y = y_btn + 3;
+gfx_drawstr(#v, 1, kx_key + 44, y_btn + 17);
+sprintf(#v, "S%d", gkey_scale[0] + 1);
+gfx_x = kx_scl; gfx_y = y_btn + 3;
+gfx_drawstr(#v, 1, kx_scl + 44, y_btn + 17);
+gkey_prog[0] > 0 ? sprintf(#v, "P%d", gkey_prog[0]) : strcpy(#v, "off");
+gfx_x = kx_prg; gfx_y = y_btn + 3;
+gfx_drawstr(#v, 1, kx_prg + 42, y_btn + 17);
+sprintf(#v, "%g", gkey_spd[0]);
+gfx_x = kx_spd; gfx_y = y_btn + 3;
+gfx_drawstr(#v, 1, kx_spd + 36, y_btn + 17);
+
+ghx = 0;
+while (ghx < NSYN) (
+  gpx = ghx == 0 ? kx_b : ghx == 1 ? kx_m : kx_c;
+  lock_a[ghx] ? gfx_set(0.3, 0.5, 0.32) : gfx_set(0.25, 0.25, 0.28);
+  gfx_rect(gpx, y_btn, 18, 18);
+  gfx_set(0.9, 0.9, 0.9);
+  gfx_x = gpx; gfx_y = y_btn + 3;
+  gfx_drawstr(ghx == 0 ? "B" : ghx == 1 ? "M" : "C", 1, gpx + 18, y_btn + 17);
+  gfx_set(0.22, 0.24, 0.26);
+  gfx_rect(gpx + 20, y_btn, 24, 18);
+  gfx_set(0.7, 0.7, 0.75);
+  gfx_x = gpx + 20; gfx_y = y_btn + 3;
+  gfx_drawstr(hml_a[ghx] == 0 ? "1/2" : hml_a[ghx] == 1 ? "x1" : "x2", 1, gpx + 44, y_btn + 17);
+  ghx += 1;
+);
+gfx_set(0.55, 0.55, 0.45);
+gfx_x = 500; gfx_y = y_btn + 4;
+sprintf(#v, "%s / %s  |  B M C lock sections to the key; box = harmony speed",
+  scale_name(gkey_scale[0]), prog_name(gkey_prog[0]));
+gfx_drawstr(#v);
+
+// ---- synth sections ----
+gsi = 0;
+while (gsi < NSYN) (
+  ys = gsi == 0 ? ys0 : gsi == 1 ? ys1 : ys2;
+  gsp = spbase(gsi);
+  gron = ronbase(gsi);
+  grdg = rdgbase(gsi);
+  glk = lock_a[gsi];
+
+  gfx_set(0.3, 0.3, 0.34);
+  gfx_rect(8, ys - 14, gfx_w - 16, 1);
+  gfx_setfont(1, "Arial", 11);
+  gfx_set(0.65, 0.65, 0.7);
+  gfx_x = 8; gfx_y = ys - 11;
+  gfx_drawstr(gsi == 0 ? "BASS" : gsi == 1 ? "MELODY" : "CHORDS");
+  glk ? (
+    gfx_set(0.5, 0.65, 0.5);
+    gfx_drawstr("  [key-locked]");
+  );
+
+  // row 1
+  gf = 0;
+  while (gf < 10) (
+    fx = x_fields + gf * fieldw;
+    gfx_set(0.19, 0.21, 0.23);
+    gfx_rect(fx, ys + 4, fieldw - 4, 32);
+    gfx_setfont(1, "Arial", 10);
+    gfx_set(0.45, 0.5, 0.5);
+    gfx_x = fx; gfx_y = ys + 5;
+    gfx_drawstr(
+      gf == 0 ? "BASE" : gf == 1 ? "SCAL" : gf == 2 ? "ST" : gf == 3 ? "SPAN" :
+      gf == 4 ? "PULS" : gf == 5 ? "ROT" : gf == 6 ? "VEL" : gf == 7 ? "GATE" :
+      gf == 8 ? "ATT" : "DEC",
+      1, fx + fieldw - 4, ys + 16);
+    gfx_setfont(1, "Arial", 13);
+    (glk && gf <= 1) ? gfx_set(0.55, 0.65, 0.55) : gfx_set(0.85, 0.85, 0.85);
+    gf == 0 ? note_name(glk ? eff_base(gsi) : gsp[0], #v) :
+    gf == 1 ? sprintf(#v, "%d", (glk ? eff_scale(gsi) : gsp[1]) + 1) :
+    gf == 3 ? sprintf(#v, "%g", gsp[3]) :
+    gf == 7 ? sprintf(#v, "%d%%", gsp[7]) :
+             sprintf(#v, "%d", gsp[gf]);
+    gfx_x = fx; gfx_y = ys + 18;
+    gfx_drawstr(#v, 1, fx + fieldw - 4, ys + 34);
+    gf += 1;
+  );
+
+  gsp[11] ? gfx_set(0.75, 0.25, 0.25) : gfx_set(0.25, 0.25, 0.28);
+  gfx_rect(x_mute, ys + 4, 18, 32);
+  gfx_setfont(1, "Arial", 12);
+  gfx_set(0.9, 0.9, 0.9);
+  gfx_x = x_mute; gfx_y = ys + 12;
+  gfx_drawstr("M", 1, x_mute + 18, ys + 30);
+
+  gfx_set(0.3, 0.24, 0.34);
+  gfx_rect(x_euc, ys + 4, 32, 32);
+  gfx_set(0.9, 0.75, 0.95);
+  gfx_x = x_euc; gfx_y = ys + 12;
+  gfx_drawstr("RND", 1, x_euc + 32, ys + 30);
+
+  gsp[15] ? gfx_set(0.42, 0.28, 0.5) : gfx_set(0.22, 0.28, 0.38);
+  gfx_rect(x_mode, ys + 4, 26, 32);
+  gfx_set(0.85, 0.85, 0.9);
+  gfx_x = x_mode; gfx_y = ys + 12;
+  gfx_drawstr(gsp[15] ? "PM" : "PR", 1, x_mode + 26, ys + 30);
+
+  // row 2 (14 fields)
+  gf = 0;
+  while (gf < 14) (
+    fx = x_fields + gf * fieldw;
+    gfx_set(0.21, 0.19, 0.23);
+    gfx_rect(fx, ys + rowh + 4, fieldw - 4, 32);
+    gfx_setfont(1, "Arial", 10);
+    gfx_set(0.5, 0.45, 0.5);
+    gfx_x = fx; gfx_y = ys + rowh + 5;
+    gfx_drawstr(
+      gf == 0 ? "CUT" : gf == 1 ? "RES" : gf == 2 ? "ENV" : gf == 3 ? "WAV" :
+      gf == 4 ? "RATE" : gf == 5 ? "DEP" : gf == 6 ? "SHP" : gf == 7 ? "EMD" :
+      gf == 8 ? "GLD" : gf == 9 ? "SWG" : gf == 10 ? "NDG" : gf == 11 ? "FEL" :
+      gf == 12 ? "PRG" : "SPD",
+      1, fx + fieldw - 4, ys + rowh + 16);
+    gfx_setfont(1, "Arial", 13);
+    (glk && gf >= 12) ? gfx_set(0.5, 0.5, 0.55) : gfx_set(0.85, 0.85, 0.85);
+    gf == 0 ? (
+      gsp[12] >= 100 ? strcpy(#v, "---") : sprintf(#v, "%d", gsp[12]);
+    ) :
+    gf == 3 ? (
+      gsp[19] <= 0 ? strcpy(#v, "SIN") :
+      gsp[19] >= 100 ? strcpy(#v, "SAW") :
+      gsp[19] == 50 ? strcpy(#v, "TRI") :
+      sprintf(#v, "%d", gsp[19]);
+    ) :
+    gf == 4 ? sprintf(#v, "%g", gsp[16]) :
+    gf == 6 ? strcpy(#v, gsp[18] == 0 ? "SIN" : gsp[18] == 1 ? "TRI" : gsp[18] == 2 ? "SAW" : "S&H") :
+    gf == 7 ? strcpy(#v, gsp[20] == 0 ? "AD" : gsp[20] == 1 ? "HLD" : "LAT") :
+    gf == 11 ? strcpy(#v, sfl_a[gsi] == 0 ? "STR" : sfl_a[gsi] == 1 ? "TRP" : "DOT") :
+    gf == 12 ? (gsp[22] > 0 ? sprintf(#v, "P%d", gsp[22]) : strcpy(#v, "off")) :
+    gf == 13 ? sprintf(#v, "%g", gsp[23]) :
+             sprintf(#v, "%d", sget(gsi, r2map(gf)));
+    gfx_x = fx; gfx_y = ys + rowh + 18;
+    gfx_drawstr(#v, 1, fx + fieldw - 4, ys + rowh + 34);
+    gf += 1;
+  );
+
+  gsp[10] ? gfx_set(0.2, 0.35, 0.3) : gfx_set(0.35, 0.3, 0.2);
+  gfx_rect(x_euc, ys + rowh + 4, 32, 32);
+  gfx_set(0.85, 0.9, 0.85);
+  gfx_x = x_euc; gfx_y = ys + rowh + 12;
+  gfx_drawstr(gsp[10] ? "SYN" : "MID", 1, x_euc + 32, ys + rowh + 30);
+
+  gsi == 2 ? (
+    gsp[24] ? gfx_set(0.4, 0.32, 0.24) : gfx_set(0.24, 0.24, 0.27);
+    gfx_rect(x_mode, ys + rowh + 4, 26, 32);
+    gfx_set(0.9, 0.85, 0.75);
+    gfx_x = x_mode; gfx_y = ys + rowh + 12;
+    gfx_drawstr(gsp[24] ? "7TH" : "3RD", 1, x_mode + 26, ys + rowh + 30);
+  );
+
+  // info panel: chords get the pitch wheel, others get text
+  gsi == 2 ? (
+    wcx = 64; wcy = ys + 2 * rowh + 48; wr = 42;
+    gfx_set(0.3, 0.3, 0.34);
+    gfx_circle(wcx, wcy, wr, 0);
+    gcnt = max(1, scl_tab[eff_scale(2) * 16]);
+    gd = 0;
+    while (gd < gcnt) (
+      wang = scl_tab[eff_scale(2) * 16 + 1 + gd] / 1200 * 2 * $pi - $pi / 2;
+      gfx_set(0.45, 0.45, 0.5);
+      gfx_circle(wcx + cos(wang) * wr, wcy + sin(wang) * wr, 2, 1);
+      gd += 1;
+    );
+    gsnd_b[0] >= 0 ? (
+      wang = gsnd_b[0] / 1200 * 2 * $pi - $pi / 2;
+      gfx_set(0.85, 0.6, 0.2);
+      gfx_circle(wcx + cos(wang) * (wr - 8), wcy + sin(wang) * (wr - 8), 4, 1);
+    );
+    gsnd_m[0] >= 0 ? (
+      wang = gsnd_m[0] / 1200 * 2 * $pi - $pi / 2;
+      gfx_set(0.25, 0.75, 0.7);
+      gfx_circle(wcx + cos(wang) * (wr - 16), wcy + sin(wang) * (wr - 16), 4, 1);
+    );
+    gd = 0;
+    while (gd < gsnd_cn[0]) (
+      wang = gsnd_c[gd] / 1200 * 2 * $pi - $pi / 2;
+      gfx_set(0.6, 0.45, 0.85);
+      gfx_circle(wcx + cos(wang) * (wr - 24), wcy + sin(wang) * (wr - 24), 3, 1);
+      gd += 1;
+    );
+    gfx_setfont(1, "Arial", 10);
+    gfx_set(0.45, 0.45, 0.5);
+    gfx_x = 118; gfx_y = ys + 2 * rowh + 8;
+    gfx_drawstr("pitch wheel");
+    gfx_x = 118; gfx_y = ys + 2 * rowh + 22;
+    gfx_set(0.85, 0.6, 0.2); gfx_drawstr("bass ");
+    gfx_set(0.25, 0.75, 0.7); gfx_drawstr("melody ");
+    gfx_set(0.6, 0.45, 0.85); gfx_drawstr("chords");
+    gfx_setfont(1, "Arial", 11);
+    gfx_set(0.45, 0.45, 0.5);
+    gfx_x = 118; gfx_y = ys + 2 * rowh + 40;
+    gfx_drawstr("roll = chord ROOT degree");
+    gfx_x = 118; gfx_y = ys + 2 * rowh + 54;
+    gfx_drawstr("right-click note: orange =");
+    gfx_x = 118; gfx_y = ys + 2 * rowh + 68;
+    gfx_drawstr("plays every 2nd cycle");
+  ) : (
+    gfx_setfont(1, "Arial", 11);
+    gfx_set(0.55, 0.6, 0.6);
+    gfx_x = 8; gfx_y = ys + 2 * rowh + 4;
+    sprintf(#v, "scale: %s%s", scale_name(eff_scale(gsi)), glk ? " (key)" : "");
+    gfx_drawstr(#v);
+    gfx_set(0.45, 0.45, 0.5);
+    gfx_x = 8; gfx_y = ys + 2 * rowh + 20;
+    gfx_drawstr(gsp[10] ? "out: internal synth" : (gsi ? "out: MIDI ch 15 + bend" : "out: MIDI ch 16 + bend"));
+    gfx_x = 8; gfx_y = ys + 2 * rowh + 36;
+    gfx_drawstr("click place / re-click clear");
+    gfx_x = 8; gfx_y = ys + 2 * rowh + 52;
+    gfx_drawstr("right-click note: 2nd-cycle");
+    gfx_x = 8; gfx_y = ys + 2 * rowh + 68;
+    gfx_drawstr("rows = degrees, bottom = BASE");
+  );
+
+  // roll
+  gyr = ys + 2 * rowh;
+  msd = (gsp[15] ? gsp[3] / 16 : gsp[3] / gsp[2]) * fel_mult(sfl_a[gsi]);
+  mplay = (play_state & 1) ? (floor(g_beat / msd) % gsp[2] + gsp[2]) % gsp[2] : -1;
+  mcnt = max(1, scl_tab[eff_scale(gsi) * 16]);
+  mspb = 1 / msd;
+  mbt = (abs(mspb - floor(mspb + 0.5)) < 0.000001 && mspb >= 1) ? floor(mspb + 0.5) : 0;
+  gi = 0;
+  while (gi < gsp[2]) (
+    cx = x_grid + gi * cellw;
+    gr = 0;
+    while (gr < NROWS) (
+      cy = gyr + (NROWS - 1 - gr) * rollrh;
+      (gron[gi] && grdg[gi] == gr) ? (
+        gron[gi] == 2 ? (
+          gi == mplay ? gfx_set(1, 0.7, 0.3) : (gsp[11] ? gfx_set(0.5, 0.38, 0.2) : gfx_set(0.9, 0.55, 0.15));
+        ) : (
+          gi == mplay ? gfx_set(0.5, 1, 0.95) : (gsp[11] ? gfx_set(0.25, 0.45, 0.42) : gfx_set(0.25, 0.75, 0.7));
+        );
+      ) : (
+        gi == mplay ? gfx_set(0.3, 0.32, 0.34) :
+        (gr % mcnt == 0) ? gfx_set(0.2, 0.22, 0.24) : gfx_set(0.17, 0.18, 0.2);
+      );
+      gfx_rect(cx + 1, cy + 1, cellw - 2, rollrh - 2);
+      gr += 1;
+    );
+    (mbt && gi % mbt == 0) ? (
+      gfx_set(0.6, 0.6, 0.65);
+      gfx_rect(cx, gyr, 1, NROWS * rollrh);
+    );
+    gi += 1;
+  );
+
+  gsi += 1;
+);
+
+// status / hint line (bottom)
+gfx_setfont(1, "Arial", 11);
+gfx_x = 8; gfx_y = y_stat;
+have_status ? (
+  gfx_set(0.7, 0.85, 0.7);
+  gfx_drawstr(#status);
+) : (
+  gfx_set(0.45, 0.45, 0.5);
+  gfx_drawstr("KEY row: master key/scale/harmony, B M C locks | right-click notes: every-2nd-cycle | FEL: straight/triplet/dotted");
+);

@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>SuperGnome — in the browser</title>
+	<meta name="description" content="MIDI Sequencer SuperGnome, ported to Web Audio. Euclidean drums, bass, melody and chords in your browser.">
+	<meta name="robots" content="noindex, nofollow">
+	<link rel="icon" type="image/x-icon" href="/favicon.ico">
+	<link rel="icon" type="image/png" sizes="512x512" href="/mima-icon.png">
+	<link rel="apple-touch-icon" href="/mima-icon.png">
+	<meta name="theme-color" content="#000000">
+	<link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,400;0,700;1,900&display=swap" rel="stylesheet">
+	<style>
+		* { box-sizing: border-box; }
+		html, body {
+			margin: 0;
+			padding: 0;
+			background-color: #111111;
+			color: hsla(190, 20%, 88%, 1);
+			font-family: Nunito, sans-serif;
+			line-height: 1.5;
+		}
+		main {
+			max-width: 1300px;
+			margin: 0 auto;
+			padding: 24px 12px 64px;
+		}
+		h1 {
+			font-style: italic;
+			font-weight: 900;
+			font-size: 30px;
+			margin: 0 0 2px;
+			color: hsla(190, 90%, 85%, 1);
+			text-shadow: 0 0 16px hsla(190, 90%, 60%, 0.5);
+		}
+		.sub { color: hsla(190, 15%, 60%, 1); margin: 0 0 18px; }
+		a { color: hsla(190, 90%, 75%, 1); }
+		.gnomebox {
+			overflow-x: auto;
+			border: 1px solid hsla(190, 30%, 30%, 0.6);
+			border-radius: 10px;
+			box-shadow: 0 0 15px hsla(190, 90%, 80%, 0.1);
+			background: #212124;
+		}
+		canvas#gnome {
+			display: block;
+			width: 1264px;
+			max-width: none;
+			touch-action: none;
+			cursor: default;
+		}
+		@media (min-width: 1300px) {
+			canvas#gnome { width: 100%; }
+		}
+		.hints {
+			color: hsla(190, 12%, 55%, 1);
+			font-size: 0.9em;
+			margin-top: 14px;
+		}
+		.hints code {
+			font-family: ui-monospace, Menlo, Consolas, monospace;
+			background: hsla(190, 30%, 18%, 0.55);
+			border-radius: 5px;
+			padding: 1px 5px;
+		}
+		footer { margin-top: 40px; color: hsla(190, 12%, 45%, 1); font-size: 0.9em; }
+	</style>
+</head>
+<body>
+	<main>
+		<h1>SuperGnome</h1>
+		<p class="sub">the sequencer from <a href="../">under</a>, ported to your browser — same brain, no REAPER required.
+			The <a href="../">real plugin</a> is one ReaPack import away.</p>
+
+		<div class="gnomebox">
+			<canvas id="gnome" width="1264" height="762"></canvas>
+		</div>
+
+		<p class="hints">
+			<strong>Drag fields vertically</strong> to change values, tap the cycling ones
+			(<code>SMP</code> <code>LSH</code> <code>SHP</code> <code>EMD</code> <code>FEL</code> <code>PRG</code> <code>SCL</code> <code>ROT</code>).
+			Click grids to place / clear, drag to draw. <strong>Right-click</strong> a note for
+			the pink/orange <em>every-2nd-cycle</em> variant (on touch, toggle <code>ALT</code> first).
+			<code>EUC</code> deals world rhythms onto a lane, <code>RND</code> writes bass / melody / chord phrases,
+			the <code>KEY</code> row rules them all when <code>B M C</code> are locked.
+			Knobs top-right set part volumes. Your state autosaves in this browser.
+		</p>
+
+		<footer>
+			<p>everything is phase-locked to beat 0. — <a href="../">back down to under</a> · <a href="https://mima.chat/">up to mima</a></p>
+		</footer>
+	</main>
+	<script src="gnome.js"></script>
+</body>
+</html>

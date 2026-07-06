@@ -8,6 +8,14 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
 - `index.html` — the secret landing page with install instructions (noindex'd).
 - `supergnome/` — the actual files ReaPack downloads: the JSFX and the
   DR-55 starter samples.
+- `gnome/` — the Web Audio port of SuperGnome (mima.chat/under/gnome).
+  `gnome-worklet.js` is a line-for-line port of the JSFX @block/@sample
+  sections (MIDI and stems removed, per-part volume added); `gnome.js` ports
+  @gfx to canvas and owns the state, which mirrors the JSFX serialized memory
+  layout exactly. If you change the plugin's sequencing/DSP, port the same
+  change to the worklet; the tables (scales, progressions, euclid presets)
+  are duplicated in both `gnome.js` and `gnome-worklet.js` and must stay in
+  sync with the JSFX.
 
 ## Releasing an update
 

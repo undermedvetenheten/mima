@@ -286,6 +286,24 @@ function seedGroove() {
   for (let si = 0; si < NSYN; si++) synGenerate(si);
 }
 
+// deal the next euclidean world-rhythm preset onto a lane; returns its name
+function dealEuclid(l) {
+  const epi = m[EUC_NEXT + l] % EUC_N;
+  m[PUL_A + l] = EUC[epi][0];
+  m[STEPS_A + l] = EUC[epi][1];
+  m[ROT_A + l] = EUC[epi][2];
+  applyEuclid(l);
+  m[EUC_NEXT + l] = epi + 1;
+  return `E(${EUC[epi][0]},${EUC[epi][1]}) rot ${EUC[epi][2]}  -  ${EUC[epi][3]}`;
+}
+
+function resetAll() {
+  initState();
+  seedGroove();
+  touchState();
+  for (let l = 0; l < LANES_CAP; l++) pushSample(l);
+}
+
 // ---- persistence ----
 const STORE_KEY = 'supergnome_web_v1';
 function saveState() {
@@ -461,9 +479,7 @@ function onDown(x, y, right) {
     if (inRect(x, y, PLAY_R)) { togglePlay(); return; }
     if (inRect(x, y, BPM_R)) { dragMode = 21; dragY = y; dragV = bpm; return; }
     if (inRect(x, y, INIT_R)) {
-      initState(); seedGroove();
-      touchState();
-      for (let l = 0; l < LANES_CAP; l++) pushSample(l);
+      resetAll();
       setStatus('fresh gnome: starter groove restored');
       return;
     }
@@ -575,13 +591,7 @@ function onDown(x, y, right) {
     } else if (x >= xMute && x < xMute + 18) {
       m[MUTE_A + ml] = m[MUTE_A + ml] ? 0 : 1; touchState();
     } else if (x >= xEuc && x < xEuc + 32) {
-      const epi = m[EUC_NEXT + ml] % EUC_N;
-      m[PUL_A + ml] = EUC[epi][0];
-      m[STEPS_A + ml] = EUC[epi][1];
-      m[ROT_A + ml] = EUC[epi][2];
-      applyEuclid(ml);
-      m[EUC_NEXT + ml] = epi + 1;
-      setStatus(`lane ${ml + 1}:  E(${EUC[epi][0]},${EUC[epi][1]}) rot ${EUC[epi][2]}  -  ${EUC[epi][3]}`);
+      setStatus(`lane ${ml + 1}:  ${dealEuclid(ml)}`);
       touchState();
     } else if (x >= xMode && x < xMode + 26) {
       m[LMODE_A + ml] = m[LMODE_A + ml] ? 0 : 1;
@@ -1078,19 +1088,62 @@ function draw() {
   requestAnimationFrame(draw);
 }
 
-// ---- boot ----
+// ---- boot: pick a layout ----
+// pocket = the tabbed touch UI (gnome-mobile.js); desk = this canvas.
+// Coarse pointers on narrow screens default to pocket; a footer link
+// overrides via localStorage.
+let layoutPref = null;
+try { layoutPref = localStorage.getItem('gnome_layout'); } catch (e) { }
+const usePocket = layoutPref
+  ? layoutPref === 'pocket'
+  : (matchMedia('(pointer: coarse)').matches && Math.min(innerWidth, innerHeight) < 920);
+
 if (!loadState()) { initState(); seedGroove(); }
 for (let si = 0; si < NSYN; si++) m[spOff(si) + 10] = 1; // internal synth, always
-requestAnimationFrame(draw);
+if (usePocket) document.body.classList.add('pocket');
+else requestAnimationFrame(draw);
 
-// exposed for the offline render test and for poking around in the console
+// exposed for the pocket UI (gnome-mobile.js), the tests, and the console
 window.gnome = {
   m, get numLanes() { return numLanes; },
+  setNumLanes(v) { numLanes = Math.max(1, Math.min(LANES_CAP, v)); touchState(); },
   stateMsg: () => ({ type: 'state', mem: m, numLanes }),
   samplesMsg: () => smpA.map((s, lane) => decoded[s]
     ? { type: 'sample', lane, data: decoded[s].data, nch: decoded[s].nch, sr: decoded[s].sr, len: decoded[s].len }
     : { type: 'sample', lane, data: null }),
   initAudio, togglePlay,
   get playing() { return playing; }, get audioReady() { return audioReady; },
+  get audioStarting() { return audioStarting; },
   get decoded() { return decoded; },
+  get dispBeat() { return dispBeat; },
+  get wheel() { return { b: gsndB, m: gsndM, c: gsndC, cn: gsndCn }; },
+
+  // state + engine plumbing shared by both layouts
+  usePocket,
+  setLayout(mode) {
+    try { localStorage.setItem('gnome_layout', mode); } catch (e) { }
+    location.reload();
+  },
+  consts: {
+    LANES_CAP, MAX_STEPS, NROWS, NSCALES, NPROGS, NSYN,
+    PAT, STEPS_A, SPAN_A, PUL_A, ROT_A, VEL_A, GATE_A, MUTE_A, LMODE_A,
+    PIT_A, LPF_A, FENV_A, LRATE_A, LDEP_A, LSHAPE_A, LPT_A, SWG_A, NDG_A,
+    VHM_A, SSW_A, SND_A, SFL_A, GKEY_NOTE, GKEY_SCALE, GKEY_PROG, GKEY_SPD,
+    LOCK_A, HML_A,
+  },
+  tables: { SCALE_NAMES, PROG_NAMES, SHAPE_NAMES, SYN_NAMES, FEEL_NAMES, SCL },
+  SAMPLE_DEFS,
+  noteName, getParam, setParam, sget, sset, ronOff, rdgOff, effScale, effBase,
+  applyEuclid, applySynEuclid, rotatePat, rotateSyn, synGenerate, dealEuclid,
+  resetAll, touchState, pushTransport, pushGains, pushSample,
+  get smpA() { return smpA; },
+  setSmp(lane, i) {
+    smpA[lane] = ((i % SAMPLE_DEFS.length) + SAMPLE_DEFS.length) % SAMPLE_DEFS.length;
+    pushSample(lane);
+    saveLater();
+  },
+  get vols() { return vols; },
+  setVol(id, v) { vols[id] = Math.max(0, Math.min(100, v)); pushGains(); saveLater(); },
+  get bpm() { return bpm; },
+  setBpm(v) { bpm = Math.max(30, Math.min(260, v)); pushTransport(); saveLater(); },
 };

@@ -23,6 +23,7 @@ const PAT = 0, NOTE_A = 256, CHAN_A = 264, STEPS_A = 272, SPAN_A = 280,
 // ---- web-only region (>= 728; extends the JSFX block, kept in the worklet) ----
 const MEM = 768;
 const ENG_A = 728;            // per-synth engine: 0 osc, 1 string, 2 glass
+const GEN_STYLE = 731;        // RND generation style (index into STYLE_NAMES)
 const FX_ON = 736, DLY_ON = 737, DLY_TIME = 738, DLY_FB = 739, DLY_TONE = 740,
   DLY_WOW = 741, FX_FEED = 742, AVO_ON = 743, AVO_AMT = 744, AVO_RATE = 745,
   AVO_CRUSH = 746, AVO_MIX = 747, DLY_PITCH = 748, DLY_REV = 749;
@@ -61,6 +62,12 @@ const PROG_NAMES = ['off', 'I - IV', 'I - IV - V - IV', 'doo-wop I-vi-IV-V',
   'Coltrane V-I chain', 'harmonic series 3-5-7-11 (just)', 'overtone ladder (just)'];
 const SHAPE_NAMES = ['sine', 'triangle', 'saw down', 'random (S&H)'];
 const SYN_NAMES = ['bass', 'melody', 'chords'];
+// RND generation styles. Each picks an idiomatic scale (-1 keeps the current
+// one) and steers the melodic contour; bass/chords stay root-anchored and go
+// static under a moving progression so key shifts don't fall apart.
+const STYLE_NAMES = ['free', 'Appalachian', 'West African', 'Gamelan',
+  'Blues', 'Andalusian', 'Middle Eastern'];
+const STYLE_SCALE = [-1, 5, 6, 11, 8, 3, 9]; // free, Mixolydian, PentMaj, Pelog, Blues, Phrygian, HarmMin
 const FEEL_NAMES = ['straight', 'triplet', 'dotted'];
 const EUC = [
   [2, 5, 0, 'Khafif-e-ramal (Persia)'], [3, 4, 0, 'Cumbia / Calypso'],
@@ -216,57 +223,131 @@ function applySynEuclid(si) {
   }
 }
 
-// BASS: euclid + random walk. MELODY: per-bar euclid variations + sweeping
-// arc. CHORDS: euclid + root movement favouring 4ths/5ths.
-function synGenerate(si) {
-  const ron = ronOff(si), rdg = rdgOff(si), n = sget(si, 2);
-  if (si === 0) {
-    applySynEuclid(0);
-    let prev = Math.floor(Math.random() * 6);
-    for (let i = 0; i < n; i++) {
-      if (m[ron + i]) {
-        prev = prev + Math.floor(Math.random() * 7) - 3;
-        if (prev < 0) prev += 5;
-        if (prev > NROWS - 1) prev -= 5;
-        prev = Math.max(0, Math.min(NROWS - 1, prev));
-        m[rdg + i] = prev;
-      }
-    }
-  } else if (si === 1) {
-    const k = sget(si, 4);
-    const bars = Math.max(1, Math.floor(sget(si, 3) / 4 + 0.5));
-    const sbar = Math.floor(n / bars);
-    if (sbar > 0 && sbar * bars === n) {
-      for (let b = 0; b < bars; b++) {
-        const kk = Math.min(k, sbar);
-        for (let i = 0; i < sbar; i++) {
-          const ii = ((i - sget(si, 5) - b) % sbar + sbar) % sbar;
-          m[ron + b * sbar + i] = kk > 0 ? ((ii * kk) % sbar < kk ? 1 : 0) : 0;
-        }
-      }
-    } else applySynEuclid(1);
-    const arc = Math.random();
-    for (let i = 0; i < n; i++) {
-      if (m[ron + i]) {
-        const dgv = Math.floor(5.5 + 4.5 * Math.sin(2 * Math.PI * (i / n + arc))
-          + Math.random() * 3 - 1);
-        m[rdg + i] = Math.max(0, Math.min(NROWS - 1, dgv));
-      }
-    }
-  } else {
-    applySynEuclid(2);
-    const cnt = Math.max(1, SCL[effScale(2)][0]);
-    let prev = 0;
-    for (let i = 0; i < n; i++) {
-      if (m[ron + i]) {
-        const rr = Math.random();
-        prev += rr < 0.28 ? 3 : rr < 0.56 ? -3 : rr < 0.72 ? 4 : rr < 0.82 ? -4 :
-                rr < 0.92 ? 1 : 0;
-        prev = ((prev % cnt) + cnt) % cnt;
-        m[rdg + i] = prev;
-      }
-    }
+// scale degree nearest a target interval (cents) — for finding the fifth/third
+function degNear(scix, cents) {
+  const s = SCL[scix], cnt = s[0];
+  let best = 1e9, bi = 0;
+  for (let k = 0; k < cnt; k++) {
+    const d = Math.abs(s[1 + k] - cents);
+    if (d < best) { best = d; bi = k; }
   }
+  return bi;
+}
+
+// BASS: root-anchored (mostly root + fifth, occasional octave / neighbour) so
+// it stays solid when the harmony rotates. Appalachian alternates root/fifth
+// (boom-chuck); West African repeats a short cell.
+function genBass(style) {
+  const ron = ronOff(0), rdg = rdgOff(0), n = sget(0, 2), scix = effScale(0);
+  const cnt = SCL[scix][0], fifth = degNear(scix, 700);
+  applySynEuclid(0);
+  m[ron] = 1;                                   // root on the downbeat
+  if (style === 1) {                            // Appalachian boom-chuck
+    let tog = 0;
+    for (let i = 0; i < n; i++) if (m[ron + i]) { m[rdg + i] = tog ? fifth : 0; tog ^= 1; }
+    return;
+  }
+  if (style === 2) {                            // West African: short root-ish cell
+    const cell = [0, fifth, 0, cnt];
+    for (let i = 0; i < n; i++) if (m[ron + i]) m[rdg + i] = cell[i % cell.length];
+    return;
+  }
+  for (let i = 0; i < n; i++) {
+    if (!m[ron + i]) continue;
+    if (i === 0) { m[rdg + i] = 0; continue; }
+    const r = Math.random();
+    m[rdg + i] = r < 0.55 ? 0 : r < 0.82 ? fifth : r < 0.92 ? cnt
+      : Math.max(0, fifth + (Math.random() < 0.5 ? 1 : -1));
+  }
+}
+
+// MELODY: a style-flavoured contour over the euclidean rhythm.
+function genMelody(style) {
+  const ron = ronOff(1), rdg = rdgOff(1), n = sget(1, 2), scix = effScale(1);
+  const cnt = SCL[scix][0], top = NROWS - 1;    // roll rows = degrees 0..11
+  // rhythm: fuller for busy styles, euclidean otherwise
+  if (style === 1 || style === 4) {
+    const k = Math.max(sget(1, 4), Math.round(n * 0.7));
+    for (let i = 0; i < n; i++) m[ron + i] = 1;  // busy, mostly-continuous line
+    void k;
+  } else applySynEuclid(1);
+
+  const ons = [];
+  for (let i = 0; i < n; i++) if (m[ron + i]) ons.push(i);
+  if (!ons.length) return;
+
+  if (style === 2 || style === 3) {
+    // West African / Gamelan: a short cell (pentatonic-ish) tiled with drift
+    const clen = 2 + Math.floor(Math.random() * 3);
+    const cell = [];
+    let d = Math.floor(Math.random() * cnt);
+    for (let c = 0; c < clen; c++) {
+      cell.push(Math.max(0, Math.min(top, d)));
+      d += (style === 3 ? 2 : 1) * (Math.random() < 0.5 ? 1 : -1) * (1 + Math.floor(Math.random() * 2));
+    }
+    ons.forEach((i, j) => {
+      let deg = cell[j % clen];
+      if (Math.random() < 0.18) deg = Math.max(0, Math.min(top, deg + (Math.random() < 0.5 ? cnt : -cnt)));
+      m[rdg + i] = deg;
+    });
+    return;
+  }
+  if (style === 5) {
+    // Andalusian: descending phrygian motif, resolving down to the tonic
+    let deg = Math.min(top, cnt + 3);
+    ons.forEach((i, j) => {
+      m[rdg + i] = Math.max(0, Math.min(top, deg));
+      deg -= (j % 4 === 3) ? -(3 + Math.floor(Math.random() * 3)) : 1; // step down, occasional leap up
+      if (deg < 0) deg = Math.min(top, cnt + 2);
+    });
+    return;
+  }
+  // Appalachian / Blues / Free / Middle Eastern: stepwise walk with small
+  // arpeggio leaps and a pull back to the tonic at phrase ends
+  let deg = [0, cnt][Math.floor(Math.random() * 2)];
+  const steps = style === 4 ? [-2, -1, 1, 2, 3, -3] : [-2, -1, -1, 1, 1, 2];
+  ons.forEach((i, j) => {
+    if (j === ons.length - 1) deg = Math.round(deg / cnt) * cnt;   // cadence to a tonic
+    else deg += steps[Math.floor(Math.random() * steps.length)];
+    deg = Math.max(0, Math.min(top, deg));
+    m[rdg + i] = deg;
+  });
+}
+
+// CHORDS: when a progression is rotating the key, hold essentially one root
+// chord (the progression does the moving) — "one chord is best". Otherwise a
+// gentle diatonic move favouring I / IV / V / vi.
+function genChords(style) {
+  const ron = ronOff(2), rdg = rdgOff(2), n = sget(2, 2), cnt = SCL[effScale(2)][0];
+  const progActive = (m[LOCK_A + 2] ? m[GKEY_PROG] : sget(2, 22)) > 0;
+  if (progActive) {
+    for (let i = 0; i < n; i++) { m[ron + i] = 0; m[rdg + i] = 0; }
+    m[ron] = 1; m[rdg] = 0;                       // one held root chord
+    if (n >= 8) { const h = Math.floor(n / 2); m[ron + h] = 1; m[rdg + h] = 0; }
+    return;
+  }
+  applySynEuclid(2);
+  const good = [0, Math.min(3, cnt - 1), Math.min(4, cnt - 1), Math.min(5, cnt - 1)];
+  let prev = 0;
+  for (let i = 0; i < n; i++) {
+    if (!m[ron + i]) continue;
+    prev = (i === 0 || Math.random() < 0.4) ? 0 : good[Math.floor(Math.random() * good.length)];
+    m[rdg + i] = ((prev % cnt) + cnt) % cnt;
+  }
+}
+
+function synGenerate(si) {
+  const style = m[GEN_STYLE] || 0;
+  if (si === 0) genBass(style);
+  else if (si === 1) genMelody(style);
+  else genChords(style);
+}
+
+// pick a generation style: also swaps the master scale to something idiomatic
+function setStyle(v) {
+  m[GEN_STYLE] = ((v % STYLE_NAMES.length) + STYLE_NAMES.length) % STYLE_NAMES.length;
+  const sc = STYLE_SCALE[m[GEN_STYLE]];
+  if (sc >= 0) m[GKEY_SCALE] = sc;
 }
 
 // ---- default state (port of @init, then a starter groove) ----
@@ -289,6 +370,7 @@ function initState() {
   [48, 0, 8, 8, 4, 0, 90, 95, 120, 900, 1, 0, 55, 15, 15, 0, 8, 10, 0, 35, 1, 80, 0, 4, 1]
     .forEach((v, i) => m[C + i] = v);
   m[GKEY_NOTE] = 48; m[GKEY_SCALE] = 0; m[GKEY_PROG] = 0; m[GKEY_SPD] = 4;
+  m[GEN_STYLE] = 0;
   for (let i = 0; i < 3; i++) { m[LOCK_A + i] = 1; m[HML_A + i] = 1; m[ENG_A + i] = 0; }
   smpA = LANE_SAMPLE.slice();
   // FX rack defaults: a gentle floaty delay ready to go, glitch idle
@@ -525,6 +607,7 @@ function totalH() { return yStat() + 22; }
 // KEY row layout
 const kxKey = 156, kxScl = 204, kxPrg = 252, kxSpd = 298;
 const kxB = 348, kxM = 398, kxC = 448; // lock buttons; +20 = mult boxes
+const STYLE_X = 1040, STYLE_W = 216;   // GEN-style button (right of the KEY row)
 
 // header controls
 const PLAY_R = [130, 4, 44, 22], BPM_R = [180, 4, 52, 22],
@@ -688,6 +771,11 @@ function onDown(x, y, right) {
     else if (x >= kxScl && x < kxScl + 44) { dragMode = 15; dragY = y; dragV = m[GKEY_SCALE]; }
     else if (x >= kxPrg && x < kxPrg + 42) { dragMode = 16; dragY = y; dragV = m[GKEY_PROG]; }
     else if (x >= kxSpd && x < kxSpd + 36) { dragMode = 17; dragY = y; dragV = m[GKEY_SPD]; }
+    else if (x >= STYLE_X && x < STYLE_X + STYLE_W) {
+      setStyle((m[GEN_STYLE] || 0) + 1);
+      setStatus(`GEN style: ${STYLE_NAMES[m[GEN_STYLE]]}${STYLE_SCALE[m[GEN_STYLE]] >= 0 ? ' — scale set to ' + SCALE_NAMES[m[GKEY_SCALE]] + '; hit RND on a part' : ''}`);
+      touchState();
+    }
     else {
       for (let i = 0; i < NSYN; i++) {
         const gpx = [kxB, kxM, kxC][i];
@@ -1122,8 +1210,15 @@ function draw() {
     textC(['1/2', 'x1', 'x2'][m[HML_A + i]], gpx + 20, gpx + 44, yb + 3, F11);
   }
   set(0.55, 0.55, 0.45);
-  text(`${SCALE_NAMES[m[GKEY_SCALE]]} / ${PROG_NAMES[m[GKEY_PROG]]}  |  B M C lock sections to the key; box = harmony speed`,
+  text(`${SCALE_NAMES[m[GKEY_SCALE]]} / ${PROG_NAMES[m[GKEY_PROG]]}  |  B M C lock sections; box = harmony speed`,
     500, yb + 4, F11);
+
+  // GEN style button (RND on each synth generates in this style)
+  const stName = STYLE_NAMES[m[GEN_STYLE] || 0];
+  m[GEN_STYLE] > 0 ? set(0.32, 0.3, 0.42) : set(0.24, 0.24, 0.28);
+  rect(STYLE_X, yb, STYLE_W, 18);
+  set(0.85, 0.85, 0.95);
+  textC('GEN: ' + stName, STYLE_X, STYLE_X + STYLE_W, yb + 3, F11);
 
   // ---- synth sections ----
   for (let gsi = 0; gsi < NSYN; gsi++) {
@@ -1375,12 +1470,12 @@ window.gnome = {
     LOCK_A, HML_A, ENG_A, FX_ON, DLY_ON, DLY_TIME, DLY_FB, DLY_TONE, DLY_WOW,
     FX_FEED, AVO_ON, AVO_AMT, AVO_RATE, AVO_CRUSH, AVO_MIX, SEND_A,
     DLY_PITCH, DLY_REV, GLC_A, CLD_ON, CLD_MIX, CLD_SIZE, CLD_DENS,
-    CLD_PITCH, CLD_SPREAD, CLD_REVERB, CLD_REVG,
+    CLD_PITCH, CLD_SPREAD, CLD_REVERB, CLD_REVG, GEN_STYLE,
   },
-  tables: { SCALE_NAMES, PROG_NAMES, SHAPE_NAMES, SYN_NAMES, FEEL_NAMES, SCL },
+  tables: { SCALE_NAMES, PROG_NAMES, SHAPE_NAMES, SYN_NAMES, FEEL_NAMES, SCL, STYLE_NAMES },
   SAMPLE_DEFS,
   noteName, getParam, setParam, sget, sset, ronOff, rdgOff, effScale, effBase,
-  applyEuclid, applySynEuclid, rotatePat, rotateSyn, synGenerate, dealEuclid,
+  applyEuclid, applySynEuclid, rotatePat, rotateSyn, synGenerate, dealEuclid, setStyle,
   resetAll, touchState, pushTransport, pushGains, pushSample,
   get smpA() { return smpA; },
   get vols() { return vols; },

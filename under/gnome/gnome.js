@@ -25,8 +25,11 @@ const MEM = 768;
 const ENG_A = 728;            // per-synth engine: 0 osc, 1 string, 2 glass
 const FX_ON = 736, DLY_ON = 737, DLY_TIME = 738, DLY_FB = 739, DLY_TONE = 740,
   DLY_WOW = 741, FX_FEED = 742, AVO_ON = 743, AVO_AMT = 744, AVO_RATE = 745,
-  AVO_CRUSH = 746, AVO_MIX = 747;
+  AVO_CRUSH = 746, AVO_MIX = 747, DLY_PITCH = 748, DLY_REV = 749;
 const SEND_A = 752;          // per-part send: drums, bass, melody, chords
+const GLC_A = 756;           // per-synth glass harmonic-cycle rate
+const CLD_ON = 760, CLD_MIX = 761, CLD_SIZE = 762, CLD_DENS = 763,
+  CLD_PITCH = 764, CLD_SPREAD = 765, CLD_REVERB = 766, CLD_REVG = 767;
 
 const m = new Float64Array(MEM);
 let numLanes = 3;
@@ -293,7 +296,11 @@ function initState() {
   m[DLY_ON] = 1; m[DLY_TIME] = 0.75; m[DLY_FB] = 38; m[DLY_TONE] = 55;
   m[DLY_WOW] = 30; m[FX_FEED] = 0;
   m[AVO_ON] = 0; m[AVO_AMT] = 40; m[AVO_RATE] = 0.5; m[AVO_CRUSH] = 0; m[AVO_MIX] = 100;
+  m[DLY_PITCH] = 0; m[DLY_REV] = 0;
   for (let i = 0; i < 4; i++) m[SEND_A + i] = 0;
+  for (let i = 0; i < 3; i++) m[GLC_A + i] = 0;
+  m[CLD_ON] = 0; m[CLD_MIX] = 50; m[CLD_SIZE] = 45; m[CLD_DENS] = 55;
+  m[CLD_PITCH] = 0; m[CLD_SPREAD] = 40; m[CLD_REVERB] = 55; m[CLD_REVG] = 0;
 }
 
 function seedGroove() {
@@ -1231,6 +1238,8 @@ window.gnome = {
     VHM_A, SSW_A, SND_A, SFL_A, GKEY_NOTE, GKEY_SCALE, GKEY_PROG, GKEY_SPD,
     LOCK_A, HML_A, ENG_A, FX_ON, DLY_ON, DLY_TIME, DLY_FB, DLY_TONE, DLY_WOW,
     FX_FEED, AVO_ON, AVO_AMT, AVO_RATE, AVO_CRUSH, AVO_MIX, SEND_A,
+    DLY_PITCH, DLY_REV, GLC_A, CLD_ON, CLD_MIX, CLD_SIZE, CLD_DENS,
+    CLD_PITCH, CLD_SPREAD, CLD_REVERB, CLD_REVG,
   },
   tables: { SCALE_NAMES, PROG_NAMES, SHAPE_NAMES, SYN_NAMES, FEEL_NAMES, SCL },
   SAMPLE_DEFS,

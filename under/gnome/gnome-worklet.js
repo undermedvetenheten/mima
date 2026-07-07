@@ -25,12 +25,17 @@ const PAT = 0, STEPS_A = 272, SPAN_A = 280, PUL_A = 288,
 const MEM = 768;
 // per-synth engine: 0 classic osc, 1 plucked string, 2 blown glass (3 slots)
 const ENG_A = 728;
-// FX rack (delay -> avocado glitch) fed by the full mix + per-part sends
+// FX rack (delay -> avocado glitch -> clouds) fed by the full mix + sends
 const FX_ON = 736, DLY_ON = 737, DLY_TIME = 738, DLY_FB = 739, DLY_TONE = 740,
   DLY_WOW = 741, FX_FEED = 742, AVO_ON = 743, AVO_AMT = 744, AVO_RATE = 745,
-  AVO_CRUSH = 746, AVO_MIX = 747;
+  AVO_CRUSH = 746, AVO_MIX = 747, DLY_PITCH = 748, DLY_REV = 749;
 // per-part send into the FX rack: drums, bass, melody, chords (4 slots)
 const SEND_A = 752;
+// per-synth glass harmonic-cycle rate (3 slots)
+const GLC_A = 756;
+// Clouds granular reverb
+const CLD_ON = 760, CLD_MIX = 761, CLD_SIZE = 762, CLD_DENS = 763,
+  CLD_PITCH = 764, CLD_SPREAD = 765, CLD_REVERB = 766, CLD_REVG = 767;
 
 // ---- scale / progression tables (mirror of the JSFX; keep in sync) ----
 const SCL = [
@@ -150,6 +155,8 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     // per-synth engine coefficients, refreshed each block
     this.svEng = F(NSYN); this.ksDecay = F(NSYN);
     this.ksBright = F(NSYN); this.glMix = F(NSYN);
+    // glass per-partial emphasis (5 partials x 3 synths), 1 = flat/off
+    this.glEmph = new Float64Array(NSYN * 5).fill(1);
 
     // ---- FX rack state ----
     this.FX_DLY_MAX = 96000; // ~2s at 48k
@@ -163,6 +170,21 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     this.avoFrzR = new Float64Array(this.AVO_MAX);
     this.avoW = 0; this.avoSlice = -1; this.avoStut = 0; this.avoLen = 1;
     this.avoRd = 0; this.avoHoldL = 0; this.avoHoldR = 0; this.avoHoldCnt = 0;
+    // delay pitch shifter (two-grain resampler over the delay taps)
+    this.dlyGrain = 0;
+    // Clouds granular reverb: circular buffer + a pool of grains
+    this.CLD_MAX = 96000;               // ~2s at 48k
+    this.cldL = new Float64Array(this.CLD_MAX);
+    this.cldR = new Float64Array(this.CLD_MAX);
+    this.cldW = 0; this.cldSpawn = 0;
+    this.CLD_GRAINS = 24;
+    this.gPos = new Float64Array(this.CLD_GRAINS);   // fractional read pos
+    this.gAge = new Float64Array(this.CLD_GRAINS);
+    this.gLen = new Float64Array(this.CLD_GRAINS);
+    this.gRate = new Float64Array(this.CLD_GRAINS);
+    this.gPan = new Float64Array(this.CLD_GRAINS);
+    this.gOn = new Float64Array(this.CLD_GRAINS);
+    this.cldFbL = 0; this.cldFbR = 0;
 
     // ---- recording: stream the master output to the main thread as PCM ----
     this.rec = false; this.REC_CHUNK = 4096;
@@ -279,6 +301,13 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     this.ksActive[slot] = 1;
   }
 
+  // fractional, wrapped read from a circular buffer
+  frd(buf, pos, size) {
+    pos = ((pos % size) + size) % size;
+    const i = pos | 0, fr = pos - i, j = i + 1 < size ? i + 1 : 0;
+    return buf[i] + (buf[j] - buf[i]) * fr;
+  }
+
   // one sample of a Karplus-Strong string. bright: loop-filter blend
   // (0.5 = dark/heavy averaging, ~0.05 = bright). decay: loop sustain (<1).
   ksStep(slot, decay, bright) {
@@ -307,11 +336,12 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
       sh = 0.5 + 0.5 * Math.sin(this.glShim[si]);
       br = this.glBreath[si];
     }
-    let s = Math.sin(TAU * ph)
-      + 0.5 * Math.sin(TAU * ph * 2)
-      + mix * 0.32 * (0.4 + 0.6 * sh) * Math.sin(TAU * ph * 3.01)
-      + mix * 0.22 * Math.sin(TAU * ph * 4.18)
-      + mix * 0.13 * (0.6 + 0.4 * sh) * Math.sin(TAU * ph * 5.43);
+    const E = this.glEmph, b = si * 5;
+    let s = E[b] * Math.sin(TAU * ph)
+      + E[b + 1] * 0.5 * Math.sin(TAU * ph * 2)
+      + E[b + 2] * mix * 0.32 * (0.4 + 0.6 * sh) * Math.sin(TAU * ph * 3.01)
+      + E[b + 3] * mix * 0.22 * Math.sin(TAU * ph * 4.18)
+      + E[b + 4] * mix * 0.13 * (0.6 + 0.4 * sh) * Math.sin(TAU * ph * 5.43);
     if (br > 0.0001) {
       s += (Math.random() * 2 - 1) * br * 0.5;
       if (chord) this.glBreathC[vv] = br * 0.9990; else this.glBreath[si] = br * 0.9990;
@@ -382,28 +412,40 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
       const sp = (si === 0 ? BASS_P : si === 1 ? MEL_P : CHD_P);
       const eng = m[ENG_A + si];
       if (eng === 1) {
-        // string: fast pluck attack, ring length tied to RES; brightness (CUT)
-        // shapes the loop filter instead of a post filter
+        // string: fast pluck attack; ring length tied to RES. Now goes through
+        // the CUT low-pass like the other engines (RES only sets sustain).
         this.svAtk[si] = 1 / (0.002 * srate);
-        const ringSec = 0.25 + m[sp + 13] / 100 * 2.5;
+        const ringSec = 0.25 + m[sp + 13] / 100 * 4.0;
         this.svDcm[si] = Math.exp(-1 / (ringSec * srate));
-        this.svFon[si] = 0;
       } else {
         this.svAtk[si] = 1 / (Math.max(m[sp + 8], 0.5) * 0.001 * srate);
         this.svDcm[si] = Math.exp(-1 / (Math.max(m[sp + 9], 5) * 0.001 * srate));
-        this.svFon[si] = m[sp + 12] < 100 ? 1 : 0;
       }
+      // every engine is now shaped by the CUT low-pass (string + glass too)
+      this.svFon[si] = m[sp + 12] < 100 ? 1 : 0;
       this.svCt[si] = m[sp + 12] + this.lfoVal(m[sp + 16], m[sp + 18], 8 + si) * m[sp + 17];
       this.svEa[si] = m[sp + 14];
       this.svDmp[si] = 1.3 - m[sp + 13] / 100 * 1.15;
       this.svWv[si] = m[sp + 19];
       this.svGcoef[si] = m[sp + 21] <= 0 ? 1 : 1 - Math.exp(-1 / (m[sp + 21] * 0.001 * srate));
       this.svEng[si] = eng;
-      // string: RES -> loop decay (sustain), CUT -> loop-filter brightness
-      this.ksDecay[si] = 0.965 + m[sp + 13] / 100 * 0.0349;
-      this.ksBright[si] = 0.5 - m[sp + 12] / 100 * 0.45;
+      // string: RES -> loop sustain (100 = lossless = infinite, for drones with
+      // the LATCH envelope). CUT does the tone-shaping via the post low-pass,
+      // so the loop filter stays a mild fixed damping.
+      this.ksDecay[si] = m[sp + 13] >= 100 ? 1.0 : 0.965 + m[sp + 13] / 100 * 0.0349;
+      this.ksBright[si] = 0.16;
       // glass: WAV -> upper-partial richness
       this.glMix[si] = 0.25 + m[sp + 19] / 100 * 0.75;
+      // glass harmonic cycle: sweep the emphasised partial for evolving drones
+      if (eng === 2) {
+        const amt = m[GLC_A + si] / 100;
+        const period = amt <= 0 ? 1e12 : 34 - amt * 30;   // 34..4 beats / cycle
+        const cyc = (this.gBeat / period) % 1;
+        for (let p = 0; p < 5; p++) {
+          const bump = 0.5 + 0.5 * Math.cos(2 * Math.PI * (cyc - p / 5));
+          this.glEmph[si * 5 + p] = amt <= 0 ? 1 : 1 - amt + amt * bump * 2;
+        }
+      }
     }
 
     if (this.playing) {
@@ -534,7 +576,22 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     const avoCrush = m[AVO_CRUSH];
     const avoMix = m[AVO_MIX] / 100;
     const AMAX = this.AVO_MAX;
-    const fxActive = fxOn && (dlyOn || avoOn);
+    // delay pitch shifter: reverse flips playback direction, pitch resamples
+    const dlyRate = Math.pow(2, m[DLY_PITCH] / 12);
+    const dlyREff = m[DLY_REV] ? -dlyRate : dlyRate;
+    const dlyPitching = m[DLY_PITCH] !== 0 || m[DLY_REV];
+    const PWIN = Math.min(6000, Math.max(512, Math.floor(dlyTimeSamp * 0.5)));
+    // clouds granular reverb coefficients
+    const cldOn = m[CLD_ON] ? 1 : 0;
+    const cldMix = m[CLD_MIX] / 100;
+    const cldGrainLen = Math.max(128, Math.floor((0.02 + m[CLD_SIZE] / 100 * 0.24) * srate));
+    const cldDens = m[CLD_DENS] / 100;
+    const cldRate = m[CLD_REVG] ? -Math.pow(2, m[CLD_PITCH] / 12) : Math.pow(2, m[CLD_PITCH] / 12);
+    const cldSpread = m[CLD_SPREAD] / 100;
+    const cldReverb = Math.min(0.94, m[CLD_REVERB] / 100 * 0.94);
+    const CMAX = this.CLD_MAX;
+    this.cldFbL = sane(this.cldFbL); this.cldFbR = sane(this.cldFbR);
+    const fxActive = fxOn && (dlyOn || avoOn || cldOn);
 
     for (let f = 0; f < nframes; f++) {
       let spl0 = 0, spl1 = 0, fxIn = 0;
@@ -698,16 +755,27 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
         fxIn += (spl0 + spl1) * 0.5 * feed;
         let sigL = fxIn, sigR = fxIn;
         if (dlyOn) {
-          this.dlyWow += wowInc;
-          if (this.dlyWow > TAU) this.dlyWow -= TAU;
-          const wm = Math.sin(this.dlyWow) * wowDepth;
-          // fractional, wrapped taps (L/R drift in opposite directions = width)
-          let pL = this.dlyW - dlyTimeSamp - wm;
-          let pR = this.dlyW - dlyTimeSamp + wm;
-          while (pL < 0) pL += DMAX; while (pR < 0) pR += DMAX;
-          const iL = pL | 0, fL = pL - iL, iR = pR | 0, fR = pR - iR;
-          const rL = this.dlyL[iL] + (this.dlyL[(iL + 1) % DMAX] - this.dlyL[iL]) * fL;
-          const rR = this.dlyR[iR] + (this.dlyR[(iR + 1) % DMAX] - this.dlyR[iR]) * fR;
+          let rL, rR;
+          if (dlyPitching) {
+            // two-grain resampler over the delay tap: pitch shifts (and can
+            // reverse) the feedback, so repeats climb / fall / play backward
+            this.dlyGrain += (1 - dlyREff);
+            if (this.dlyGrain >= PWIN) this.dlyGrain -= PWIN;
+            if (this.dlyGrain < 0) this.dlyGrain += PWIN;
+            const ph1 = this.dlyGrain, ph2 = (ph1 + PWIN * 0.5) % PWIN;
+            const e1 = Math.sin(Math.PI * ph1 / PWIN), e2 = Math.sin(Math.PI * ph2 / PWIN);
+            const w1 = e1 * e1, w2 = e2 * e2;
+            const c1 = this.dlyW - dlyTimeSamp - ph1, c2 = this.dlyW - dlyTimeSamp - ph2;
+            rL = this.frd(this.dlyL, c1, DMAX) * w1 + this.frd(this.dlyL, c2, DMAX) * w2;
+            rR = this.frd(this.dlyR, c1, DMAX) * w1 + this.frd(this.dlyR, c2, DMAX) * w2;
+          } else {
+            this.dlyWow += wowInc;
+            if (this.dlyWow > TAU) this.dlyWow -= TAU;
+            const wm = Math.sin(this.dlyWow) * wowDepth;
+            // L/R drift in opposite directions = stereo width
+            rL = this.frd(this.dlyL, this.dlyW - dlyTimeSamp - wm, DMAX);
+            rR = this.frd(this.dlyR, this.dlyW - dlyTimeSamp + wm, DMAX);
+          }
           this.dlyLoL += toneCoef * (rL - this.dlyLoL);
           this.dlyLoR += toneCoef * (rR - this.dlyLoR);
           this.dlyL[this.dlyW] = fxIn + this.dlyLoL * dlyFb;
@@ -755,6 +823,41 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
           }
           sigL = sigL + (gl - sigL) * avoMix;
           sigR = sigR + (gr - sigR) * avoMix;
+        }
+        if (cldOn) {
+          // Clouds-style granulator: spray windowed grains from recent audio,
+          // pitch-shiftable and reversible, with a feedback tail = reverb
+          this.cldL[this.cldW] = sigL + this.cldFbL * cldReverb;
+          this.cldR[this.cldW] = sigR + this.cldFbR * cldReverb;
+          if (--this.cldSpawn <= 0) {
+            this.cldSpawn = Math.max(1, Math.floor(cldGrainLen * (1.05 - cldDens) * 0.5));
+            for (let gi = 0; gi < this.CLD_GRAINS; gi++) {
+              if (!this.gOn[gi]) {
+                this.gOn[gi] = 1; this.gAge[gi] = 0; this.gLen[gi] = cldGrainLen;
+                const off = 240 + Math.random() * (240 + cldSpread * srate * 0.5);
+                this.gPos[gi] = (this.cldW - off + CMAX) % CMAX;
+                this.gRate[gi] = cldRate; this.gPan[gi] = Math.random();
+                break;
+              }
+            }
+          }
+          this.cldW = this.cldW + 1 < CMAX ? this.cldW + 1 : 0;
+          let wetL = 0, wetR = 0;
+          for (let gi = 0; gi < this.CLD_GRAINS; gi++) {
+            if (!this.gOn[gi]) continue;
+            const len = this.gLen[gi], age = this.gAge[gi];
+            const e = Math.sin(Math.PI * age / len), env = e * e;
+            const gs = (this.frd(this.cldL, this.gPos[gi], CMAX)
+              + this.frd(this.cldR, this.gPos[gi], CMAX)) * 0.5 * env;
+            const pan = this.gPan[gi];
+            wetL += gs * (1 - pan); wetR += gs * pan;
+            this.gPos[gi] += this.gRate[gi];
+            if (++this.gAge[gi] >= len) this.gOn[gi] = 0;
+          }
+          wetL *= 0.9; wetR *= 0.9;
+          this.cldFbL = wetL; this.cldFbR = wetR;
+          sigL = sigL + (wetL - sigL) * cldMix;
+          sigR = sigR + (wetR - sigR) * cldMix;
         }
         spl0 += sigL;
         spl1 += sigR;

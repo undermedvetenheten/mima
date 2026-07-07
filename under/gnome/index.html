@@ -149,17 +149,23 @@
 			border: 1px solid hsla(190, 30%, 34%, 0.8);
 			font-family: Nunito, sans-serif; padding: 0 8px;
 		}
-		.pk-slider { margin: 12px 0; }
-		.pk-slabel { display: flex; justify-content: space-between; font-size: 14px; }
-		.pk-val { color: hsl(190, 80%, 75%); font-weight: 700; }
-		.pk-slider input[type=range] {
-			width: 100%; height: 34px; margin: 2px 0 0;
-			accent-color: hsl(190, 70%, 60%);
+		.pk-stepper { margin: 12px 0; }
+		.pk-slabel { display: flex; justify-content: space-between; align-items: baseline; font-size: 14px; }
+		.pk-val { color: hsl(190, 80%, 75%); font-weight: 700; font-size: 16px; }
+		.pk-steprow { display: flex; gap: 8px; margin-top: 5px; }
+		.pk-step-btn {
+			flex: 1; height: 48px; border-radius: 10px;
+			border: 1px solid hsla(190, 30%, 34%, 0.8);
+			background: hsla(200, 22%, 16%, 1); color: hsla(190, 40%, 85%, 1);
+			font-size: 24px; font-weight: 700; cursor: pointer;
+			touch-action: none; user-select: none;
 		}
-		.pk-gridwrap { overflow-x: auto; padding-bottom: 4px; }
-		.pk-grid { display: grid; gap: 3px; width: max-content; }
+		.pk-step-btn:active { background: hsla(190, 55%, 28%, 1); }
+		.pk-gridwrap { padding-bottom: 4px; }
+		.pk-gridwrap.tall { overflow-x: auto; }
+		.pk-grid { display: grid; gap: 4px; width: 100%; }
 		.pk-cell {
-			height: 56px; border-radius: 8px; border: none;
+			aspect-ratio: 1 / 1; min-height: 38px; border-radius: 8px; border: none;
 			background: hsla(210, 12%, 20%, 1); cursor: pointer; padding: 0;
 		}
 		.pk-cell.beat { box-shadow: inset 2px 0 0 hsla(190, 30%, 50%, 0.8); }

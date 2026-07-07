@@ -21,6 +21,17 @@ const PAT = 0, STEPS_A = 272, SPAN_A = 280, PUL_A = 288,
   SFL_A = 712, GKEY_NOTE = 716, GKEY_SCALE = 717, GKEY_PROG = 718,
   GKEY_SPD = 719, LOCK_A = 720, HML_A = 724;
 
+// ---- web-only region (>= 728; extends the JSFX block, kept in gnome.js) ----
+const MEM = 768;
+// per-synth engine: 0 classic osc, 1 plucked string, 2 blown glass (3 slots)
+const ENG_A = 728;
+// FX rack (delay -> avocado glitch) fed by the full mix + per-part sends
+const FX_ON = 736, DLY_ON = 737, DLY_TIME = 738, DLY_FB = 739, DLY_TONE = 740,
+  DLY_WOW = 741, FX_FEED = 742, AVO_ON = 743, AVO_AMT = 744, AVO_RATE = 745,
+  AVO_CRUSH = 746, AVO_MIX = 747;
+// per-part send into the FX rack: drums, bass, melody, chords (4 slots)
+const SEND_A = 752;
+
 // ---- scale / progression tables (mirror of the JSFX; keep in sync) ----
 const SCL = [
   [7, 0, 200, 400, 500, 700, 900, 1100],
@@ -88,7 +99,7 @@ const FEL_MULT = [1, 2 / 3, 1.5];
 class SuperGnomeProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.m = new Float64Array(728);
+    this.m = new Float64Array(MEM);
     this.numLanes = 3;
     this.haveState = false;
 
@@ -126,6 +137,33 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     // sounding pitch classes for the UI's pitch wheel (-1 = nothing yet)
     this.gsndB = -1; this.gsndM = -1; this.gsndC = F(4); this.gsndCn = 0;
 
+    // ---- engine state ----
+    // plucked-string (Karplus-Strong) delay lines. Voice slots: bass=0,
+    // melody=1, chord voices 0..3 -> 2..5. Each up to KS_MAX samples.
+    this.KS_SLOTS = 6; this.KS_MAX = 2048;
+    this.ksBuf = new Float64Array(this.KS_SLOTS * this.KS_MAX);
+    this.ksLen = F(this.KS_SLOTS); this.ksPos = F(this.KS_SLOTS);
+    this.ksActive = F(this.KS_SLOTS);
+    // blown-glass shimmer LFO phase + onset breath env, per synth
+    this.glShim = F(NSYN); this.glBreath = F(NSYN);
+    this.glShimC = F(4); this.glBreathC = F(4); // per chord voice
+    // per-synth engine coefficients, refreshed each block
+    this.svEng = F(NSYN); this.ksDecay = F(NSYN);
+    this.ksBright = F(NSYN); this.glMix = F(NSYN);
+
+    // ---- FX rack state ----
+    this.FX_DLY_MAX = 96000; // ~2s at 48k
+    this.dlyL = new Float64Array(this.FX_DLY_MAX);
+    this.dlyR = new Float64Array(this.FX_DLY_MAX);
+    this.dlyW = 0; this.dlyLoL = 0; this.dlyLoR = 0; this.dlyWow = 0;
+    this.AVO_MAX = 16384;
+    this.avoL = new Float64Array(this.AVO_MAX);
+    this.avoR = new Float64Array(this.AVO_MAX);
+    this.avoFrzL = new Float64Array(this.AVO_MAX);
+    this.avoFrzR = new Float64Array(this.AVO_MAX);
+    this.avoW = 0; this.avoSlice = -1; this.avoStut = 0; this.avoLen = 1;
+    this.avoRd = 0; this.avoHoldL = 0; this.avoHoldR = 0; this.avoHoldCnt = 0;
+
     this.tickN = 0;
 
     this.port.onmessage = (e) => this.onMessage(e.data);
@@ -140,6 +178,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
       if (d.playing && !this.playing) {
         this.gBeat = 0; // phase-locked to beat 0, like the plugin in REAPER
         this.vlHave = 0;
+        for (let s = 0; s < this.KS_SLOTS; s++) this.ksActive[s] = 0;
       }
       if (!d.playing && this.playing) {
         // release: un-latch held voices so tails ring out instead of droning
@@ -208,6 +247,58 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     return 1 - 2 * fr;
   }
 
+  // pluck a Karplus-Strong string: fill its delay line with a noise burst
+  exciteString(slot, freq) {
+    let len = Math.round(sampleRate / Math.max(1, freq));
+    if (len < 2) len = 2;
+    if (len > this.KS_MAX - 1) len = this.KS_MAX - 1;
+    const base = slot * this.KS_MAX;
+    for (let i = 0; i < len; i++) this.ksBuf[base + i] = Math.random() * 2 - 1;
+    this.ksLen[slot] = len;
+    this.ksPos[slot] = 0;
+    this.ksActive[slot] = 1;
+  }
+
+  // one sample of a Karplus-Strong string. bright: loop-filter blend
+  // (0.5 = dark/heavy averaging, ~0.05 = bright). decay: loop sustain (<1).
+  ksStep(slot, decay, bright) {
+    if (!this.ksActive[slot]) return 0;
+    const base = slot * this.KS_MAX, len = this.ksLen[slot], pos = this.ksPos[slot];
+    const cur = this.ksBuf[base + pos];
+    const nxt = this.ksBuf[base + (pos + 1 < len ? pos + 1 : 0)];
+    this.ksBuf[base + pos] = (cur + bright * (nxt - cur)) * decay;
+    this.ksPos[slot] = pos + 1 < len ? pos + 1 : 0;
+    return cur;
+  }
+
+  // one sample of a blown-glass voice: stretched partials + a slow shimmer on
+  // the upper ones + a decaying breath-noise onset. chord = per-voice state.
+  glassVoice(si, ph, mix, chord, vv) {
+    const TAU = 2 * Math.PI;
+    let sh, br;
+    if (chord) {
+      this.glShimC[vv] += 4.6 / sampleRate;
+      if (this.glShimC[vv] > TAU) this.glShimC[vv] -= TAU;
+      sh = 0.5 + 0.5 * Math.sin(this.glShimC[vv]);
+      br = this.glBreathC[vv];
+    } else {
+      this.glShim[si] += 4.398 / sampleRate;
+      if (this.glShim[si] > TAU) this.glShim[si] -= TAU;
+      sh = 0.5 + 0.5 * Math.sin(this.glShim[si]);
+      br = this.glBreath[si];
+    }
+    let s = Math.sin(TAU * ph)
+      + 0.5 * Math.sin(TAU * ph * 2)
+      + mix * 0.32 * (0.4 + 0.6 * sh) * Math.sin(TAU * ph * 3.01)
+      + mix * 0.22 * Math.sin(TAU * ph * 4.18)
+      + mix * 0.13 * (0.6 + 0.4 * sh) * Math.sin(TAU * ph * 5.43);
+    if (br > 0.0001) {
+      s += (Math.random() * 2 - 1) * br * 0.5;
+      if (chord) this.glBreathC[vv] = br * 0.9990; else this.glBreath[si] = br * 0.9990;
+    }
+    return s * 0.5;
+  }
+
   process(inputs, outputs) {
     // a throw here kills the node silently; report the first one to the UI
     try { return this.render(outputs); }
@@ -248,6 +339,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
       this.ch4Ph[i] = sane(this.ch4Ph[i]); this.ch4Ph[i] -= Math.floor(this.ch4Ph[i]);
       this.vlCents[i] = sane(this.vlCents[i]);
     }
+    this.dlyLoL = sane(this.dlyLoL); this.dlyLoR = sane(this.dlyLoR);
 
     // ---- per-lane coefficients ----
     const fdecMul = Math.exp(-nframes / (0.12 * srate));
@@ -268,14 +360,30 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     // ---- per-synth coefficients ----
     for (let si = 0; si < NSYN; si++) {
       const sp = (si === 0 ? BASS_P : si === 1 ? MEL_P : CHD_P);
-      this.svAtk[si] = 1 / (Math.max(m[sp + 8], 0.5) * 0.001 * srate);
-      this.svDcm[si] = Math.exp(-1 / (Math.max(m[sp + 9], 5) * 0.001 * srate));
-      this.svFon[si] = m[sp + 12] < 100 ? 1 : 0;
+      const eng = m[ENG_A + si];
+      if (eng === 1) {
+        // string: fast pluck attack, ring length tied to RES; brightness (CUT)
+        // shapes the loop filter instead of a post filter
+        this.svAtk[si] = 1 / (0.002 * srate);
+        const ringSec = 0.25 + m[sp + 13] / 100 * 2.5;
+        this.svDcm[si] = Math.exp(-1 / (ringSec * srate));
+        this.svFon[si] = 0;
+      } else {
+        this.svAtk[si] = 1 / (Math.max(m[sp + 8], 0.5) * 0.001 * srate);
+        this.svDcm[si] = Math.exp(-1 / (Math.max(m[sp + 9], 5) * 0.001 * srate));
+        this.svFon[si] = m[sp + 12] < 100 ? 1 : 0;
+      }
       this.svCt[si] = m[sp + 12] + this.lfoVal(m[sp + 16], m[sp + 18], 8 + si) * m[sp + 17];
       this.svEa[si] = m[sp + 14];
       this.svDmp[si] = 1.3 - m[sp + 13] / 100 * 1.15;
       this.svWv[si] = m[sp + 19];
       this.svGcoef[si] = m[sp + 21] <= 0 ? 1 : 1 - Math.exp(-1 / (m[sp + 21] * 0.001 * srate));
+      this.svEng[si] = eng;
+      // string: RES -> loop decay (sustain), CUT -> loop-filter brightness
+      this.ksDecay[si] = 0.965 + m[sp + 13] / 100 * 0.0349;
+      this.ksBright[si] = 0.5 - m[sp + 12] / 100 * 0.45;
+      // glass: WAV -> upper-partial richness
+      this.glMix[si] = 0.25 + m[sp + 19] / 100 * 0.75;
     }
 
     if (this.playing) {
@@ -387,8 +495,29 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     const gS = [this.gPart[1] * this.gMaster, this.gPart[2] * this.gMaster,
                 this.gPart[3] * this.gMaster];
 
+    // ---- FX rack coefficients ----
+    const TAU = 2 * Math.PI;
+    const fxOn = m[FX_ON] ? 1 : 0;
+    const dlyOn = m[DLY_ON] ? 1 : 0;
+    const avoOn = m[AVO_ON] ? 1 : 0;
+    const DMAX = this.FX_DLY_MAX;
+    const dlyTimeSamp = Math.min(DMAX - 4, Math.max(2, m[DLY_TIME] * spb));
+    const dlyFb = Math.min(0.98, m[DLY_FB] / 100 * 0.98);
+    const toneCoef = 0.04 + m[DLY_TONE] / 100 * 0.9;   // one-pole: higher = brighter
+    const wowDepth = m[DLY_WOW] / 100 * 45;             // samples of pitch drift
+    const wowInc = TAU * 0.27 / srate;
+    const feed = m[FX_FEED] / 100;
+    const sendArr = [m[SEND_A] / 100, m[SEND_A + 1] / 100,
+                     m[SEND_A + 2] / 100, m[SEND_A + 3] / 100];
+    const avoAmt = m[AVO_AMT] / 100;
+    const avoRate = Math.max(0.03125, m[AVO_RATE]);
+    const avoCrush = m[AVO_CRUSH];
+    const avoMix = m[AVO_MIX] / 100;
+    const AMAX = this.AVO_MAX;
+    const fxActive = fxOn && (dlyOn || avoOn);
+
     for (let f = 0; f < nframes; f++) {
-      let spl0 = 0, spl1 = 0;
+      let spl0 = 0, spl1 = 0, fxIn = 0;
 
       // drum sample voices
       for (let c = 0; c < this.numLanes; c++) {
@@ -430,6 +559,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
           }
           spl0 += smix * gD;
           spl1 += smix2 * gD;
+          fxIn += (smix + smix2) * 0.5 * gD * sendArr[0];
           this.vPos[c] = vp + vrate;
         } else this.vOn[c] = 0;
       }
@@ -439,15 +569,20 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
         if (this.svDel[si2] > 0) {
           this.svDel[si2] -= 1;
           if (this.svDel[si2] === 0) {
+            const eng = m[ENG_A + si2];
             if (si2 < 2) {
               this.svTfreq[si2] = this.svNfreq[si2];
               if (this.svGcoef[si2] >= 1 || this.svEnv[si2] < 0.001)
                 this.svFreq[si2] = this.svNfreq[si2];
+              if (eng === 1) this.exciteString(si2, this.svNfreq[si2]);
+              else if (eng === 2) this.glBreath[si2] = 1;
             } else {
               for (let vv = 0; vv < this.chNv; vv++) {
                 this.ch4Tfreq[vv] = this.ch4Nfreq[vv];
                 if (this.svGcoef[2] >= 1 || this.svEnv[2] < 0.001)
                   this.ch4Freq[vv] = this.ch4Nfreq[vv];
+                if (eng === 1) this.exciteString(2 + vv, this.ch4Nfreq[vv]);
+                else if (eng === 2) this.glBreathC[vv] = 1;
               }
             }
             this.svGain[si2] = this.svNgain[si2];
@@ -471,20 +606,29 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
         }
 
         const wv = this.svWv[si2];
+        const eng = this.svEng[si2];
         let so;
         if (si2 < 2) {
           this.svFreq[si2] += (this.svTfreq[si2] - this.svFreq[si2]) * this.svGcoef[si2];
           this.svPh[si2] += this.svFreq[si2] / srate;
           if (this.svPh[si2] >= 1) this.svPh[si2] -= 1;
-          this.svPhs[si2] += this.svFreq[si2] * 0.5 / srate;
-          if (this.svPhs[si2] >= 1) this.svPhs[si2] -= 1;
-          const osin = (Math.sin(2 * Math.PI * this.svPh[si2]) * 0.8
-            + Math.sin(2 * Math.PI * this.svPhs[si2]) * 0.5
-            + Math.sin(4 * Math.PI * this.svPh[si2]) * 0.18) / 1.1;
-          const otri = 1 - 4 * Math.abs(this.svPh[si2] - 0.5);
-          const osaw = 2 * this.svPh[si2] - 1;
-          const osc = wv < 50 ? osin + (otri - osin) * (wv / 50)
-                             : otri + (osaw - otri) * ((wv - 50) / 50);
+          const ph = this.svPh[si2];
+          let osc;
+          if (eng === 1) {
+            osc = this.ksStep(si2, this.ksDecay[si2], this.ksBright[si2]);
+          } else if (eng === 2) {
+            osc = this.glassVoice(si2, ph, this.glMix[si2], false, 0);
+          } else {
+            this.svPhs[si2] += this.svFreq[si2] * 0.5 / srate;
+            if (this.svPhs[si2] >= 1) this.svPhs[si2] -= 1;
+            const osin = (Math.sin(TAU * ph) * 0.8
+              + Math.sin(TAU * this.svPhs[si2]) * 0.5
+              + Math.sin(2 * TAU * ph) * 0.18) / 1.1;
+            const otri = 1 - 4 * Math.abs(ph - 0.5);
+            const osaw = 2 * ph - 1;
+            osc = wv < 50 ? osin + (otri - osin) * (wv / 50)
+                          : otri + (osaw - otri) * ((wv - 50) / 50);
+          }
           so = osc * this.svEnv[si2] * this.svGain[si2];
         } else {
           let csum = 0;
@@ -493,13 +637,19 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
             this.ch4Ph[vv] += this.ch4Freq[vv] / srate;
             if (this.ch4Ph[vv] >= 1) this.ch4Ph[vv] -= 1;
             const cph = this.ch4Ph[vv];
-            const osin = Math.sin(2 * Math.PI * cph) + 0.15 * Math.sin(4 * Math.PI * cph);
-            const otri = 1 - 4 * Math.abs(cph - 0.5);
-            const osaw = 2 * cph - 1;
-            csum += wv < 50 ? osin + (otri - osin) * (wv / 50)
-                           : otri + (osaw - otri) * ((wv - 50) / 50);
+            if (eng === 1) {
+              csum += this.ksStep(2 + vv, this.ksDecay[2], this.ksBright[2]);
+            } else if (eng === 2) {
+              csum += this.glassVoice(2, cph, this.glMix[2], true, vv);
+            } else {
+              const osin = Math.sin(TAU * cph) + 0.15 * Math.sin(2 * TAU * cph);
+              const otri = 1 - 4 * Math.abs(cph - 0.5);
+              const osaw = 2 * cph - 1;
+              csum += wv < 50 ? osin + (otri - osin) * (wv / 50)
+                             : otri + (osaw - otri) * ((wv - 50) / 50);
+            }
           }
-          so = csum * 0.35 * this.svEnv[2] * this.svGain[2];
+          so = csum * (eng === 1 ? 0.5 : 0.35) * this.svEnv[2] * this.svGain[2];
         }
 
         if (this.svFon[si2]) {
@@ -520,10 +670,79 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
         }
         spl0 += so * gS[si2];
         spl1 += so * gS[si2];
+        fxIn += so * gS[si2] * sendArr[si2 + 1];
       }
 
-      outL[f] = spl0;
-      outR[f] = spl1;
+      // ---- FX rack: floaty delay -> avocado glitch ----
+      if (fxActive) {
+        fxIn += (spl0 + spl1) * 0.5 * feed;
+        let sigL = fxIn, sigR = fxIn;
+        if (dlyOn) {
+          this.dlyWow += wowInc;
+          if (this.dlyWow > TAU) this.dlyWow -= TAU;
+          const wm = Math.sin(this.dlyWow) * wowDepth;
+          // fractional, wrapped taps (L/R drift in opposite directions = width)
+          let pL = this.dlyW - dlyTimeSamp - wm;
+          let pR = this.dlyW - dlyTimeSamp + wm;
+          while (pL < 0) pL += DMAX; while (pR < 0) pR += DMAX;
+          const iL = pL | 0, fL = pL - iL, iR = pR | 0, fR = pR - iR;
+          const rL = this.dlyL[iL] + (this.dlyL[(iL + 1) % DMAX] - this.dlyL[iL]) * fL;
+          const rR = this.dlyR[iR] + (this.dlyR[(iR + 1) % DMAX] - this.dlyR[iR]) * fR;
+          this.dlyLoL += toneCoef * (rL - this.dlyLoL);
+          this.dlyLoR += toneCoef * (rR - this.dlyLoR);
+          this.dlyL[this.dlyW] = fxIn + this.dlyLoL * dlyFb;
+          this.dlyR[this.dlyW] = fxIn + this.dlyLoR * dlyFb;
+          this.dlyW = this.dlyW + 1 < DMAX ? this.dlyW + 1 : 0;
+          sigL = rL; sigR = rR;
+        }
+        if (avoOn) {
+          // rolling capture of the chain signal
+          this.avoL[this.avoW] = sigL; this.avoR[this.avoW] = sigR;
+          const beat = blkStart + f / spb;
+          const slice = Math.floor(beat / avoRate);
+          if (slice !== this.avoSlice) {
+            this.avoSlice = slice;
+            if (Math.random() < avoAmt) {
+              this.avoStut = 1;
+              const sliceSamp = avoRate * spb;
+              let rl = Math.floor(sliceSamp * (0.5 - 0.4 * avoAmt));
+              if (rl < 64) rl = 64; if (rl > AMAX - 1) rl = AMAX - 1;
+              this.avoLen = rl;
+              // freeze the most recent rl samples so the loop can't be overwritten
+              for (let k = 0; k < rl; k++) {
+                const src = (this.avoW - rl + k + AMAX) % AMAX;
+                this.avoFrzL[k] = this.avoL[src]; this.avoFrzR[k] = this.avoR[src];
+              }
+              this.avoRd = 0;
+            } else this.avoStut = 0;
+          }
+          this.avoW = this.avoW + 1 < AMAX ? this.avoW + 1 : 0;
+          let gl = sigL, gr = sigR;
+          if (this.avoStut) {
+            gl = this.avoFrzL[this.avoRd]; gr = this.avoFrzR[this.avoRd];
+            this.avoRd = this.avoRd + 1 < this.avoLen ? this.avoRd + 1 : 0;
+          }
+          if (avoCrush > 0) {
+            const hold = 1 + Math.floor(avoCrush * 0.3);
+            if (this.avoHoldCnt <= 0) {
+              this.avoHoldL = gl; this.avoHoldR = gr; this.avoHoldCnt = hold;
+            }
+            this.avoHoldCnt--;
+            gl = this.avoHoldL; gr = this.avoHoldR;
+            const levels = Math.max(2, Math.round(64 - avoCrush * 0.6));
+            gl = Math.round(gl * levels) / levels;
+            gr = Math.round(gr * levels) / levels;
+          }
+          sigL = sigL + (gl - sigL) * avoMix;
+          sigR = sigR + (gr - sigR) * avoMix;
+        }
+        spl0 += sigL;
+        spl1 += sigR;
+      }
+
+      // gentle safety limiter (protects against delay-feedback runaway)
+      outL[f] = Math.tanh(spl0);
+      outR[f] = Math.tanh(spl1);
     }
 
     // UI heartbeat: beat position + sounding pitch classes, ~every 8 blocks

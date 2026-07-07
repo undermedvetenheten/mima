@@ -20,6 +20,20 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
   are duplicated in both `gnome.js` and `gnome-worklet.js` and must stay in
   sync with the JSFX.
 
+  Web-only additions beyond the JSFX live in the `>= 728` region of the
+  shared memory block (so they persist and cross the worklet boundary like
+  everything else):
+  - per-synth **engine** (`ENG_A`): 0 classic osc, 1 plucked string
+    (Karplus-Strong — RES = sustain, CUT = brightness), 2 blown glass
+    (stretched partials + slow shimmer + breathy onset).
+  - a global **FX rack** (`FX_*`): a floaty tape delay (time / feedback /
+    tone / wow) into an "avocado" glitch (beat-synced stutter + bit/sample-
+    rate crush), fed by per-part sends (`SEND_A`) and/or the full mix
+    (`FX_FEED`).
+  Drum lanes are permanently paired with a sample via `LANE_SAMPLE` (no
+  per-lane picker). Changing the memory layout or these offsets means bumping
+  `MEM` and `STORE_KEY` in gnome.js and the mirrored constants in the worklet.
+
 ## Releasing an update
 
 1. Edit `supergnome/sequencer_supergnome.jsfx` (or add/replace sample wavs).

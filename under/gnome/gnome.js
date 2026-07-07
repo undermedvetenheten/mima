@@ -20,7 +20,15 @@ const PAT = 0, NOTE_A = 256, CHAN_A = 264, STEPS_A = 272, SPAN_A = 280,
   VHM_A = 696, SSW_A = 704, SND_A = 708, SFL_A = 712, GKEY_NOTE = 716,
   GKEY_SCALE = 717, GKEY_PROG = 718, GKEY_SPD = 719, LOCK_A = 720, HML_A = 724;
 
-const m = new Float64Array(728);
+// ---- web-only region (>= 728; extends the JSFX block, kept in the worklet) ----
+const MEM = 768;
+const ENG_A = 728;            // per-synth engine: 0 osc, 1 string, 2 glass
+const FX_ON = 736, DLY_ON = 737, DLY_TIME = 738, DLY_FB = 739, DLY_TONE = 740,
+  DLY_WOW = 741, FX_FEED = 742, AVO_ON = 743, AVO_AMT = 744, AVO_RATE = 745,
+  AVO_CRUSH = 746, AVO_MIX = 747;
+const SEND_A = 752;          // per-part send: drums, bass, melody, chords
+
+const m = new Float64Array(MEM);
 let numLanes = 3;
 
 // ---- tables (mirror of the JSFX; keep in sync with the worklet) ----
@@ -72,7 +80,10 @@ const SAMPLE_DEFS = [
   { label: 'SN', file: '../supergnome/dr55_sn.wav' },
   { label: 'RIM', file: '../supergnome/dr55_rim.wav' },
 ];
-let smpA = [1, 2, 3, 0, 0, 0, 0, 0]; // per-lane index into SAMPLE_DEFS
+// each lane is permanently paired with a sample (cycling the DR-55 kit), so a
+// lane labelled BD always is BD. New lanes inherit their slot's pairing.
+const LANE_SAMPLE = [1, 2, 3, 1, 2, 3, 1, 2];
+let smpA = LANE_SAMPLE.slice();
 const decoded = [null, null, null, null]; // {data,nch,sr,len} per SAMPLE_DEF
 
 // ---- transport / mix ----
@@ -275,7 +286,14 @@ function initState() {
   [48, 0, 8, 8, 4, 0, 90, 95, 120, 900, 1, 0, 55, 15, 15, 0, 8, 10, 0, 35, 1, 80, 0, 4, 1]
     .forEach((v, i) => m[C + i] = v);
   m[GKEY_NOTE] = 48; m[GKEY_SCALE] = 0; m[GKEY_PROG] = 0; m[GKEY_SPD] = 4;
-  for (let i = 0; i < 3; i++) { m[LOCK_A + i] = 1; m[HML_A + i] = 1; }
+  for (let i = 0; i < 3; i++) { m[LOCK_A + i] = 1; m[HML_A + i] = 1; m[ENG_A + i] = 0; }
+  smpA = LANE_SAMPLE.slice();
+  // FX rack defaults: a gentle floaty delay ready to go, glitch idle
+  m[FX_ON] = 0;
+  m[DLY_ON] = 1; m[DLY_TIME] = 0.75; m[DLY_FB] = 38; m[DLY_TONE] = 55;
+  m[DLY_WOW] = 30; m[FX_FEED] = 0;
+  m[AVO_ON] = 0; m[AVO_AMT] = 40; m[AVO_RATE] = 0.5; m[AVO_CRUSH] = 0; m[AVO_MIX] = 100;
+  for (let i = 0; i < 4; i++) m[SEND_A + i] = 0;
 }
 
 function seedGroove() {
@@ -305,23 +323,24 @@ function resetAll() {
 }
 
 // ---- persistence ----
-const STORE_KEY = 'supergnome_web_v1';
+const STORE_KEY = 'supergnome_web_v2';
 function saveState() {
   try {
     localStorage.setItem(STORE_KEY, JSON.stringify({
-      mem: Array.from(m), numLanes, smp: smpA, vols, bpm,
+      mem: Array.from(m), numLanes, vols, bpm,
     }));
   } catch (e) { /* private mode etc - just don't persist */ }
 }
 function loadState() {
   try {
     const s = JSON.parse(localStorage.getItem(STORE_KEY));
-    if (!s || !s.mem || s.mem.length !== 728) return false;
+    // v1 saves lack the engine/FX region - let them re-init cleanly
+    if (!s || !s.mem || s.mem.length !== MEM) return false;
     m.set(s.mem);
     numLanes = Math.max(1, Math.min(LANES_CAP, s.numLanes || 3));
-    smpA = s.smp && s.smp.length === 8 ? s.smp : smpA;
     vols = Object.assign(vols, s.vols);
     bpm = s.bpm || 120;
+    smpA = LANE_SAMPLE.slice();               // samples are lane-locked
     for (let si = 0; si < NSYN; si++) m[spOff(si) + 10] = 1; // always internal
     return true;
   } catch (e) { return false; }
@@ -721,9 +740,7 @@ function onUp() {
       rotateSyn(dragSynth, 1);
       sset(dragSynth, 5, (sget(dragSynth, 5) + 1) % st);
     } else if (dragMode === 1 && dragF === 'smp') {
-      smpA[dragLane] = (smpA[dragLane] + 1) % SAMPLE_DEFS.length;
-      pushSample(dragLane);
-      setStatus(`lane ${dragLane + 1} sample: ${SAMPLE_DEFS[smpA[dragLane]].label}`);
+      // samples are lane-locked now - the field is just a label
     } else if (dragMode === 1 && dragF === 13) {
       m[LSHAPE_A + dragLane] = (m[LSHAPE_A + dragLane] + 1) % 4;
       setStatus(`lane ${dragLane + 1} LFO shape: ${SHAPE_NAMES[m[LSHAPE_A + dragLane]]}`);
@@ -1129,7 +1146,8 @@ window.gnome = {
     PAT, STEPS_A, SPAN_A, PUL_A, ROT_A, VEL_A, GATE_A, MUTE_A, LMODE_A,
     PIT_A, LPF_A, FENV_A, LRATE_A, LDEP_A, LSHAPE_A, LPT_A, SWG_A, NDG_A,
     VHM_A, SSW_A, SND_A, SFL_A, GKEY_NOTE, GKEY_SCALE, GKEY_PROG, GKEY_SPD,
-    LOCK_A, HML_A,
+    LOCK_A, HML_A, ENG_A, FX_ON, DLY_ON, DLY_TIME, DLY_FB, DLY_TONE, DLY_WOW,
+    FX_FEED, AVO_ON, AVO_AMT, AVO_RATE, AVO_CRUSH, AVO_MIX, SEND_A,
   },
   tables: { SCALE_NAMES, PROG_NAMES, SHAPE_NAMES, SYN_NAMES, FEEL_NAMES, SCL },
   SAMPLE_DEFS,
@@ -1137,11 +1155,6 @@ window.gnome = {
   applyEuclid, applySynEuclid, rotatePat, rotateSyn, synGenerate, dealEuclid,
   resetAll, touchState, pushTransport, pushGains, pushSample,
   get smpA() { return smpA; },
-  setSmp(lane, i) {
-    smpA[lane] = ((i % SAMPLE_DEFS.length) + SAMPLE_DEFS.length) % SAMPLE_DEFS.length;
-    pushSample(lane);
-    saveLater();
-  },
   get vols() { return vols; },
   setVol(id, v) { vols[id] = Math.max(0, Math.min(100, v)); pushGains(); saveLater(); },
   get bpm() { return bpm; },

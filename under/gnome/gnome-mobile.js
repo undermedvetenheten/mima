@@ -1,9 +1,10 @@
 // SuperGnome web — pocket layout (touch-first tabbed UI).
 // Runs instead of the canvas when window.gnome.usePocket is set. Pure DOM:
-// one tab per part (drums / bass / melody / chords / key·mix), big tappable
-// grids with DRAW / 2ND / ERASE paint modes replacing right-click, full-name
-// sliders and selects instead of drag-fields. All edits go through the same
-// state array and engine plumbing exposed by gnome.js.
+// one tab per part (drums / bass / melody / chords / fx / key·mix), big
+// tappable wrapping grids with DRAW / 2ND paint modes replacing right-click,
+// −/+ steppers (not sliders — nothing shifts by a stray drag) and selects
+// instead of drag-fields. All edits go through the same state array and
+// engine plumbing exposed by gnome.js.
 
 'use strict';
 (function () {
@@ -23,6 +24,12 @@
   const fmtWave = v => v <= 0 ? 'sine' : v >= 100 ? 'saw' : v === 50 ? 'triangle'
     : Math.round(v) < 50 ? `${Math.round(v)} (sine→tri)` : `${Math.round(v)} (tri→saw)`;
   const fmtNote = v => G.noteName(Math.round(v));
+  const engineHint = si => {
+    const e = m[C.ENG_A + si];
+    return e === 1 ? 'plucked string (Karplus-Strong): Resonance = sustain, Cutoff = brightness'
+      : e === 2 ? 'blown glass: stretched harmonics with a slow shimmer and breathy onset'
+      : 'classic oscillator: sine → triangle → saw morph via Wave';
+  };
 
   // ---- tiny DOM helpers ----
   function h(tag, cls, ...kids) {
@@ -33,29 +40,46 @@
   }
 
   let syncs = [];          // per-frame updaters for the current tab
-  let paintMode = 'draw';  // draw | alt | erase
+  let paintMode = 'draw';  // draw | alt
   let curLane = 0;
   let curTab = 'drums';
 
-  function slider(label, min, max, step, get, set, fmt = fmtInt, hint) {
+  // A −/+ stepper. Deliberately NOT a slider: values only change on discrete
+  // taps (or press-and-hold auto-repeat that accelerates), so nothing shifts
+  // by a stray drag. Signature matches the old slider() for drop-in use.
+  function stepper(label, min, max, step, get, set, fmt = fmtInt, hint) {
     const val = h('span', 'pk-val', fmt(get()));
-    const inp = h('input');
-    inp.type = 'range'; inp.min = min; inp.max = max; inp.step = step; inp.value = get();
-    inp.addEventListener('input', () => {
-      set(parseFloat(inp.value));
-      val.textContent = fmt(get());
-      G.touchState();
-    });
-    const row = h('div', 'pk-slider',
-      h('div', 'pk-slabel', h('span', '', label), val), inp,
+    const bump = dir => {
+      let v = get() + dir * step;
+      v = Math.round(v / step) * step;              // stay on the grid
+      v = Math.max(min, Math.min(max, v));
+      set(v); val.textContent = fmt(get()); G.touchState();
+    };
+    const mk = (dir, glyph) => {
+      const b = h('button', 'pk-step-btn', glyph);
+      let t = null, delay = 340, held = 0;
+      const stop = () => { if (t) { clearTimeout(t); t = null; } held = 0; delay = 340; };
+      const tick = () => {
+        bump(dir); held++;
+        delay = held > 6 ? 45 : held > 3 ? 90 : 180;   // accelerate on hold
+        t = setTimeout(tick, delay);
+      };
+      b.addEventListener('pointerdown', e => {
+        e.preventDefault(); b.setPointerCapture(e.pointerId);
+        bump(dir); t = setTimeout(tick, delay);
+      });
+      b.addEventListener('pointerup', stop);
+      b.addEventListener('pointercancel', stop);
+      b.addEventListener('pointerleave', stop);
+      return b;
+    };
+    syncs.push(() => { val.textContent = fmt(get()); });
+    return h('div', 'pk-stepper',
+      h('div', 'pk-slabel', h('span', '', label), val),
+      h('div', 'pk-steprow', mk(-1, '−'), mk(1, '+')),
       hint ? h('div', 'pk-hint', hint) : null);
-    syncs.push(() => {
-      const v = get();
-      if (parseFloat(inp.value) !== v) inp.value = v;
-      val.textContent = fmt(v);
-    });
-    return row;
   }
+  const slider = stepper; // call sites read as sliders; they're steppers now
 
   function seg(label, opts, get, set, hint) {
     const btns = opts.map((o, i) => {
@@ -114,14 +138,15 @@
       b.dataset.id = id;
       return b;
     };
-    const btns = [mk('draw', '✏️ draw'), mk('alt', '🌗 2nd-cycle'), mk('erase', '🧹 erase')];
+    const btns = [mk('draw', '✏️ draw'), mk('alt', '🌗 2nd-cycle')];
     function upd() { btns.forEach(b => b.classList.toggle('sel', b.dataset.id === paintMode)); }
     upd(); syncs.push(upd);
     return h('div', 'pk-modes', ...btns,
-      h('span', 'pk-hint', '2nd-cycle notes only play every other loop'));
+      h('span', 'pk-hint', 'tap a cell to toggle it on/off · 2nd-cycle = every other loop'));
   }
 
   // ---- grids ----
+  // drum grid wraps to rows of up to 8 cells so it never runs off-screen
   function drumGrid(l) {
     const grid = h('div', 'pk-grid');
     let built = -1;
@@ -129,7 +154,7 @@
       const st = m[C.STEPS_A + l];
       built = st;
       grid.innerHTML = '';
-      grid.style.gridTemplateColumns = `repeat(${st}, 42px)`;
+      grid.style.gridTemplateColumns = `repeat(${Math.min(st, 8)}, 1fr)`;
       for (let i = 0; i < st; i++) {
         const c = h('button', 'pk-cell');
         c.dataset.i = i;
@@ -140,8 +165,7 @@
       const t = e.target.closest('.pk-cell');
       if (!t) return;
       const p = C.PAT + l * C.MAX_STEPS + (+t.dataset.i);
-      if (paintMode === 'erase') m[p] = 0;
-      else if (paintMode === 'alt') m[p] = m[p] === 2 ? 0 : 2;
+      if (paintMode === 'alt') m[p] = m[p] === 2 ? 0 : 2;
       else m[p] = m[p] ? 0 : 1;
       G.touchState();
     });
@@ -187,8 +211,7 @@
       if (!t) return;
       const i = +t.dataset.i, deg = +t.dataset.deg;
       const here = m[ron + i] && m[rdg + i] === deg;
-      if (paintMode === 'erase') m[ron + i] = 0;
-      else if (paintMode === 'alt') {
+      if (paintMode === 'alt') {
         if (here) m[ron + i] = m[ron + i] === 1 ? 2 : 0;
         else { m[ron + i] = 2; m[rdg + i] = deg; }
       } else {
@@ -234,17 +257,14 @@
   function drumsTab(view) {
     const l = curLane = Math.min(curLane, G.numLanes - 1);
 
-    // lane picker
+    // lane picker — each lane is its (fixed) sample name
     const lanesRow = h('div', 'pk-lanes');
     for (let i = 0; i < G.numLanes; i++) {
       const b = h('button', 'pk-chip lane' + (i === l ? ' sel' : ''),
         `${i + 1} · ${G.SAMPLE_DEFS[G.smpA[i]].label}`);
       b.addEventListener('click', () => { curLane = i; renderTab(); });
       const li = i;
-      syncs.push(() => {
-        b.textContent = `${li + 1} · ${G.SAMPLE_DEFS[G.smpA[li]].label}`;
-        b.classList.toggle('muted', !!m[C.MUTE_A + li]);
-      });
+      syncs.push(() => b.classList.toggle('muted', !!m[C.MUTE_A + li]));
       lanesRow.append(b);
     }
     if (G.numLanes < C.LANES_CAP)
@@ -261,12 +281,10 @@
       group('', null,
         h('div', 'pk-actions',
           chip('MUTE', () => m[C.MUTE_A + l], v => m[C.MUTE_A + l] = v ? 1 : 0, 'danger'),
-          action('🥁 deal a world rhythm', () => {
+          action('🎲 choose euclidean rhythm', () => {
             say(`lane ${l + 1}: ${G.dealEuclid(l)}`);
             G.touchState();
           })),
-        seg('Sample', G.SAMPLE_DEFS.map(s => s.label),
-          () => G.smpA[l], i => G.setSmp(l, i)),
         modeBar(),
         drumGrid(l)),
       group('pattern', 'euclidean engine: pulses spread evenly across steps',
@@ -315,6 +333,10 @@
           })),
         modeBar(),
         rollGrid(si)),
+      group('instrument', 'the voice this part plays through',
+        seg('Engine', ['classic', 'string', 'glass'],
+          () => m[C.ENG_A + si], i => { m[C.ENG_A + si] = i; renderTab(); },
+          engineHint(si))),
       group('pattern', 'euclidean engine: pulses spread evenly across steps',
         slider('Steps', 1, 32, 1, () => G.sget(si, 2), v => G.sset(si, 2, v)),
         slider('Length (beats)', 0.25, 16, 0.25, () => G.sget(si, 3), v => G.sset(si, 3, v), fmtQ),
@@ -383,11 +405,11 @@
             else { m[C.LOCK_A + si] = 1; m[C.HML_A + si] = i - 1; }
           }))),
       group('volumes', null,
-        slider('Drums', 0, 100, 1, () => G.vols.drum, v => G.setVol('drum', v)),
-        slider('Bass', 0, 100, 1, () => G.vols.bass, v => G.setVol('bass', v)),
-        slider('Melody', 0, 100, 1, () => G.vols.mel, v => G.setVol('mel', v)),
-        slider('Chords', 0, 100, 1, () => G.vols.chd, v => G.setVol('chd', v)),
-        slider('Main out', 0, 100, 1, () => G.vols.master, v => G.setVol('master', v))),
+        slider('Drums', 0, 100, 5, () => G.vols.drum, v => G.setVol('drum', v)),
+        slider('Bass', 0, 100, 5, () => G.vols.bass, v => G.setVol('bass', v)),
+        slider('Melody', 0, 100, 5, () => G.vols.mel, v => G.setVol('mel', v)),
+        slider('Chords', 0, 100, 5, () => G.vols.chd, v => G.setVol('chd', v)),
+        slider('Main out', 0, 100, 5, () => G.vols.master, v => G.setVol('master', v))),
       group('tempo & reset', null,
         slider('Tempo', 40, 240, 1, () => G.bpm, v => G.setBpm(v), v => Math.round(v) + ' bpm'),
         h('div', 'pk-actions',
@@ -399,10 +421,43 @@
           }, 'danger'))));
   }
 
+  function fxTab(view) {
+    const fmtDlyBeats = v => v + ' beats';
+    view.append(
+      group('effects rack', 'a shared bus: send parts in below, or feed the whole mix through',
+        seg('Rack', ['off', 'on'], () => m[C.FX_ON], i => m[C.FX_ON] = i,
+          'master switch for the delay + glitch chain'),
+        slider('Feed full mix in', 0, 100, 5, () => m[C.FX_FEED], v => m[C.FX_FEED] = v, fmtPct,
+          'how much of the whole mix runs through the rack')),
+      group('sends into the rack', 'push individual parts into the effects',
+        slider('Drums send', 0, 100, 5, () => m[C.SEND_A], v => m[C.SEND_A] = v, fmtPct),
+        slider('Bass send', 0, 100, 5, () => m[C.SEND_A + 1], v => m[C.SEND_A + 1] = v, fmtPct),
+        slider('Melody send', 0, 100, 5, () => m[C.SEND_A + 2], v => m[C.SEND_A + 2] = v, fmtPct),
+        slider('Chords send', 0, 100, 5, () => m[C.SEND_A + 3], v => m[C.SEND_A + 3] = v, fmtPct)),
+      group('floaty delay', 'a tape-ish echo with slow pitch drift',
+        seg('Delay', ['off', 'on'], () => m[C.DLY_ON], i => m[C.DLY_ON] = i),
+        slider('Time (beats)', 0.0625, 2, 0.0625, () => m[C.DLY_TIME], v => m[C.DLY_TIME] = v, fmtDlyBeats),
+        slider('Feedback', 0, 100, 5, () => m[C.DLY_FB], v => m[C.DLY_FB] = v, fmtPct),
+        slider('Tone', 0, 100, 5, () => m[C.DLY_TONE], v => m[C.DLY_TONE] = v, fmtPct,
+          'darkens (low) or brightens (high) the echoes'),
+        slider('Float / wow', 0, 100, 5, () => m[C.DLY_WOW], v => m[C.DLY_WOW] = v, fmtPct,
+          'slow pitch drift for a seasick, floaty tail')),
+      group('avocado glitch', 'beat-synced stutter + crush for glitching out',
+        seg('Glitch', ['off', 'on'], () => m[C.AVO_ON], i => m[C.AVO_ON] = i),
+        slider('Amount', 0, 100, 5, () => m[C.AVO_AMT], v => m[C.AVO_AMT] = v, fmtPct,
+          'chance (and shortness) of a stutter each slice'),
+        slider('Rate (beats)', 0.0625, 2, 0.0625, () => m[C.AVO_RATE], v => m[C.AVO_RATE] = v, fmtDlyBeats,
+          'the grid it chops on'),
+        slider('Crush', 0, 100, 5, () => m[C.AVO_CRUSH], v => m[C.AVO_CRUSH] = v, fmtPct,
+          'bit + sample-rate reduction — grit'),
+        slider('Mix', 0, 100, 5, () => m[C.AVO_MIX], v => m[C.AVO_MIX] = v, fmtPct)));
+  }
+
   // ---- shell ----
   const TABS = [
     { id: 'drums', label: 'DRUMS' }, { id: 0, label: 'BASS' },
-    { id: 1, label: 'MELODY' }, { id: 2, label: 'CHORDS' }, { id: 'mix', label: 'KEY·MIX' },
+    { id: 1, label: 'MELODY' }, { id: 2, label: 'CHORDS' },
+    { id: 'fx', label: 'FX' }, { id: 'mix', label: 'KEY·MIX' },
   ];
 
   const playBtn = h('button', 'pk-play', '▶');
@@ -445,6 +500,7 @@
     tabBtns.forEach(t => t.b.classList.toggle('sel', t.id === curTab));
     if (curTab === 'drums') drumsTab(view);
     else if (curTab === 'mix') mixTab(view);
+    else if (curTab === 'fx') fxTab(view);
     else synthTab(view, curTab);
   }
   renderTab();

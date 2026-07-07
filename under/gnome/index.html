@@ -58,9 +58,21 @@
 			font-size: 0.9em;
 			margin-top: 14px;
 		}
+		/* ---- desktop record bar ---- */
+		#deskrec { display: flex; align-items: center; gap: 10px; margin: 4px 0 12px; }
+		#deskrec button {
+			font-family: Nunito, sans-serif; font-size: 15px; font-weight: 700;
+			padding: 9px 16px; border-radius: 10px; cursor: pointer;
+			border: 1px solid hsla(190, 30%, 34%, 0.8);
+			background: hsla(200, 20%, 15%, 1); color: hsla(190, 25%, 85%, 1);
+		}
+		#recBtn.on { background: hsl(352, 62%, 45%); color: #fff; border-color: hsl(352, 70%, 60%); }
+		#saveBtn { background: hsla(150, 45%, 24%, 1); border-color: hsla(150, 45%, 40%, 0.9); }
+		#recNote { color: hsla(190, 12%, 55%, 1); font-size: 0.9em; }
+
 		/* ---- pocket layout (touch-first tabs; body.pocket switches it on) ---- */
 		#pocket { display: none; }
-		body.pocket .gnomebox, body.pocket .hints { display: none; }
+		body.pocket .gnomebox, body.pocket .hints, body.pocket #deskrec { display: none; }
 		body.pocket #pocket { display: block; }
 		body.pocket main { max-width: 640px; padding-top: 14px; }
 		body.pocket h1 { font-size: 24px; }
@@ -69,8 +81,7 @@
 			background: #111; padding: 4px 0 6px;
 		}
 		.pk-topbar {
-			display: grid; grid-template-columns: auto auto 1fr; gap: 10px;
-			align-items: center;
+			display: flex; flex-direction: column; gap: 6px;
 			background: hsla(220, 10%, 8%, 1);
 			border: 1px solid hsla(190, 30%, 30%, 0.6);
 			border-radius: 12px;
@@ -78,6 +89,21 @@
 			margin-bottom: 8px;
 			box-shadow: 0 0 15px hsla(190, 90%, 80%, 0.1);
 		}
+		.pk-topctl { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+		.pk-rec, .pk-save {
+			min-height: 48px; padding: 0 14px; border-radius: 12px;
+			border: 1px solid hsla(190, 30%, 34%, 0.8);
+			background: hsla(200, 20%, 15%, 1); color: hsla(190, 25%, 85%, 1);
+			font-family: Nunito, sans-serif; font-size: 15px; font-weight: 700;
+			cursor: pointer; white-space: nowrap;
+		}
+		.pk-rec.on {
+			background: hsl(352, 62%, 45%); color: #fff;
+			border-color: hsl(352, 70%, 60%);
+			animation: pk-pulse 1.1s ease-in-out infinite;
+		}
+		.pk-save { background: hsla(150, 45%, 24%, 1); border-color: hsla(150, 45%, 40%, 0.9); }
+		@keyframes pk-pulse { 50% { box-shadow: 0 0 12px hsl(352, 80%, 55%); } }
 		.pk-play {
 			width: 62px; height: 62px; border-radius: 14px; border: none;
 			font-size: 26px; color: #08131a;
@@ -149,17 +175,23 @@
 			border: 1px solid hsla(190, 30%, 34%, 0.8);
 			font-family: Nunito, sans-serif; padding: 0 8px;
 		}
-		.pk-slider { margin: 12px 0; }
-		.pk-slabel { display: flex; justify-content: space-between; font-size: 14px; }
-		.pk-val { color: hsl(190, 80%, 75%); font-weight: 700; }
-		.pk-slider input[type=range] {
-			width: 100%; height: 34px; margin: 2px 0 0;
-			accent-color: hsl(190, 70%, 60%);
+		.pk-stepper { margin: 12px 0; }
+		.pk-slabel { display: flex; justify-content: space-between; align-items: baseline; font-size: 14px; }
+		.pk-val { color: hsl(190, 80%, 75%); font-weight: 700; font-size: 16px; }
+		.pk-steprow { display: flex; gap: 8px; margin-top: 5px; }
+		.pk-step-btn {
+			flex: 1; height: 48px; border-radius: 10px;
+			border: 1px solid hsla(190, 30%, 34%, 0.8);
+			background: hsla(200, 22%, 16%, 1); color: hsla(190, 40%, 85%, 1);
+			font-size: 24px; font-weight: 700; cursor: pointer;
+			touch-action: none; user-select: none;
 		}
-		.pk-gridwrap { overflow-x: auto; padding-bottom: 4px; }
-		.pk-grid { display: grid; gap: 3px; width: max-content; }
+		.pk-step-btn:active { background: hsla(190, 55%, 28%, 1); }
+		.pk-gridwrap { padding-bottom: 4px; }
+		.pk-gridwrap.tall { overflow-x: auto; }
+		.pk-grid { display: grid; gap: 4px; width: 100%; }
 		.pk-cell {
-			height: 56px; border-radius: 8px; border: none;
+			aspect-ratio: 1 / 1; min-height: 38px; border-radius: 8px; border: none;
 			background: hsla(210, 12%, 20%, 1); cursor: pointer; padding: 0;
 		}
 		.pk-cell.beat { box-shadow: inset 2px 0 0 hsla(190, 30%, 50%, 0.8); }
@@ -190,6 +222,11 @@
 		<p class="sub">the sequencer from <a href="../">under</a>, ported to your browser — same brain, no REAPER required.
 			The <a href="../">real plugin</a> is one ReaPack import away.</p>
 
+		<div id="deskrec">
+			<button id="recBtn">⏺ REC</button>
+			<button id="saveBtn" style="display:none">⬇ save .wav</button>
+			<span id="recNote"></span>
+		</div>
 		<div class="gnomebox">
 			<canvas id="gnome" width="1264" height="762"></canvas>
 		</div>
@@ -197,12 +234,13 @@
 
 		<p class="hints">
 			<strong>Drag fields vertically</strong> to change values, tap the cycling ones
-			(<code>SMP</code> <code>LSH</code> <code>SHP</code> <code>EMD</code> <code>FEL</code> <code>PRG</code> <code>SCL</code> <code>ROT</code>).
+			(<code>LSH</code> <code>SHP</code> <code>EMD</code> <code>FEL</code> <code>PRG</code> <code>SCL</code> <code>ROT</code>).
 			Click grids to place / clear, drag to draw. <strong>Right-click</strong> a note for
 			the pink/orange <em>every-2nd-cycle</em> variant (on touch, toggle <code>ALT</code> first).
 			<code>EUC</code> deals world rhythms onto a lane, <code>RND</code> writes bass / melody / chord phrases,
 			the <code>KEY</code> row rules them all when <code>B M C</code> are locked.
-			Knobs top-right set part volumes. Your state autosaves in this browser.
+			Knobs top-right set part volumes. <strong>⏺ REC</strong> captures the live output to a WAV.
+			Your state autosaves in this browser.
 		</p>
 
 		<footer>
@@ -220,6 +258,25 @@
 			e.preventDefault();
 			window.gnome.setLayout(window.gnome.usePocket ? 'desk' : 'pocket');
 		});
+
+		// desktop record controls (the pocket layout has its own in the topbar)
+		if (!window.gnome.usePocket) {
+			const G = window.gnome;
+			const recBtn = document.getElementById('recBtn');
+			const saveBtn = document.getElementById('saveBtn');
+			const note = document.getElementById('recNote');
+			const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+			recBtn.addEventListener('click', () => G.toggleRecording());
+			saveBtn.addEventListener('click', () => G.saveLastRecording());
+			(function upd() {
+				recBtn.classList.toggle('on', G.recording);
+				recBtn.textContent = G.recording ? '⏹ ' + fmt(G.recSeconds) : '⏺ REC';
+				saveBtn.style.display = G.lastRecording ? '' : 'none';
+				note.textContent = G.recording ? 'recording the live output…'
+					: G.lastRecording ? 'take ready — ' + G.lastRecording.name : '';
+				requestAnimationFrame(upd);
+			})();
+		}
 	</script>
 </body>
 </html>

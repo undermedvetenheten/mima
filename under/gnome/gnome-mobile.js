@@ -473,6 +473,16 @@
   bpmDown.addEventListener('click', () => G.setBpm(G.bpm - 5));
   bpmUp.addEventListener('click', () => G.setBpm(G.bpm + 5));
 
+  const recBtn = h('button', 'pk-rec', '⏺ REC');
+  recBtn.addEventListener('click', () => {
+    G.toggleRecording();
+    say(G.recording ? 'recording the output to a .wav…' : 'recording stopped — tap save');
+  });
+  const saveBtn = h('button', 'pk-save', '⬇ save .wav');
+  saveBtn.style.display = 'none';
+  saveBtn.addEventListener('click', () => G.saveLastRecording());
+  const fmtTime = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
   statusEl = h('div', 'pk-status', 'tap ▶ to wake the gnome and play');
 
   const tabBar = h('div', 'pk-tabs');
@@ -487,8 +497,10 @@
   root.append(
     h('div', 'pk-head',
       h('div', 'pk-topbar',
-        playBtn,
-        h('div', 'pk-bpm', bpmDown, h('div', 'pk-bpmbox', bpmVal, h('span', 'pk-hint', 'bpm')), bpmUp),
+        h('div', 'pk-topctl',
+          playBtn,
+          h('div', 'pk-bpm', bpmDown, h('div', 'pk-bpmbox', bpmVal, h('span', 'pk-hint', 'bpm')), bpmUp),
+          recBtn, saveBtn),
         statusEl),
       tabBar),
     view);
@@ -510,6 +522,9 @@
     playBtn.textContent = G.audioStarting ? '…' : G.playing ? '■' : '▶';
     playBtn.classList.toggle('playing', G.playing);
     bpmVal.textContent = String(G.bpm);
+    recBtn.classList.toggle('on', G.recording);
+    recBtn.textContent = G.recording ? '⏹ ' + fmtTime(G.recSeconds) : '⏺ REC';
+    saveBtn.style.display = G.lastRecording ? '' : 'none';
     for (const f of syncs) f();
     requestAnimationFrame(tick);
   }

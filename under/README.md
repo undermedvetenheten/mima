@@ -34,6 +34,12 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
   per-lane picker). Changing the memory layout or these offsets means bumping
   `MEM` and `STORE_KEY` in gnome.js and the mirrored constants in the worklet.
 
+  **Recording**: the worklet streams its master output (post-FX, post-limiter)
+  to the main thread as PCM chunks; gnome.js encodes a 16-bit stereo WAV on
+  stop and hands it off via the Web Share API (iOS "Save to Files") with a
+  download-link fallback. Both layouts expose a REC button; the save button
+  fires from a fresh user tap so mobile browsers allow the share/download.
+
 ## Releasing an update
 
 1. Edit `supergnome/sequencer_supergnome.jsfx` (or add/replace sample wavs).

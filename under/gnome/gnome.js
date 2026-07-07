@@ -410,6 +410,10 @@ async function initAudio() {
     if (d.type === 'tick') {
       dispBeat = d.beat;
       gsndB = d.gsndB; gsndM = d.gsndM; gsndC = d.gsndC; gsndCn = d.gsndCn;
+    } else if (d.type === 'rec') {
+      recChunks.push(d); recFrames += d.l.length;
+    } else if (d.type === 'recdone') {
+      finalizeRecording(d.sr);
     }
   };
   pushState(); pushGains(); pushTransport();
@@ -422,6 +426,80 @@ function togglePlay() {
   playing = !playing;
   if (actx && actx.state === 'suspended') actx.resume();
   pushTransport();
+}
+
+// ---- recording ----
+// The worklet streams the master output as PCM chunks; we hold them, then
+// encode a 16-bit WAV on stop. lastRec keeps the finished take so the UI can
+// offer a save button (a fresh user gesture, which iOS/Safari needs).
+let recording = false, recChunks = [], recFrames = 0, recSampleRate = 44100;
+let lastRec = null; // { url, name, blob }
+
+async function startRecording() {
+  if (recording) return;
+  if (!audioReady) await initAudio();
+  if (actx.state === 'suspended') actx.resume();
+  recSampleRate = actx.sampleRate;
+  recChunks = []; recFrames = 0; recording = true;
+  node.port.postMessage({ type: 'record', on: true });
+}
+function stopRecording() {
+  if (!recording) return;
+  recording = false;
+  node.port.postMessage({ type: 'record', on: false }); // -> flush + recdone
+}
+function toggleRecording() { recording ? stopRecording() : startRecording(); }
+
+function finalizeRecording(sr) {
+  recSampleRate = sr || (actx ? actx.sampleRate : 44100);
+  if (!recChunks.length) return;
+  const blob = encodeWav(recChunks, recSampleRate);
+  recChunks = [];
+  if (lastRec && lastRec.url) URL.revokeObjectURL(lastRec.url);
+  const d = new Date();
+  const p = n => String(n).padStart(2, '0');
+  const name = `supergnome-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}` +
+    `-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.wav`;
+  lastRec = { url: URL.createObjectURL(blob), name, blob };
+}
+
+function encodeWav(chunks, sr) {
+  let n = 0;
+  for (const c of chunks) n += c.l.length;
+  const buf = new ArrayBuffer(44 + n * 4);      // 16-bit stereo
+  const v = new DataView(buf);
+  const wr = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  wr(0, 'RIFF'); v.setUint32(4, 36 + n * 4, true); wr(8, 'WAVE');
+  wr(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+  v.setUint16(22, 2, true); v.setUint32(24, sr, true); v.setUint32(28, sr * 4, true);
+  v.setUint16(32, 4, true); v.setUint16(34, 16, true);
+  wr(36, 'data'); v.setUint32(40, n * 4, true);
+  let o = 44;
+  for (const c of chunks) {
+    const L = c.l, R = c.r;
+    for (let i = 0; i < L.length; i++) {
+      let l = L[i]; l = l < -1 ? -1 : l > 1 ? 1 : l;
+      let r = R[i]; r = r < -1 ? -1 : r > 1 ? 1 : r;
+      v.setInt16(o, l < 0 ? l * 0x8000 : l * 0x7fff, true); o += 2;
+      v.setInt16(o, r < 0 ? r * 0x8000 : r * 0x7fff, true); o += 2;
+    }
+  }
+  return new Blob([buf], { type: 'audio/wav' });
+}
+
+// save the finished take. Called from a user tap so the share sheet /
+// download is allowed. Prefers the native share sheet (iOS "Save to Files"),
+// falls back to a download link.
+async function saveLastRecording() {
+  if (!lastRec) return;
+  const file = new File([lastRec.blob], lastRec.name, { type: 'audio/wav' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: lastRec.name }); return; }
+    catch (e) { if (e && e.name === 'AbortError') return; /* else fall through */ }
+  }
+  const a = document.createElement('a');
+  a.href = lastRec.url; a.download = lastRec.name;
+  document.body.appendChild(a); a.click(); a.remove();
 }
 
 // ---- layout ----
@@ -1129,6 +1207,10 @@ window.gnome = {
     ? { type: 'sample', lane, data: decoded[s].data, nch: decoded[s].nch, sr: decoded[s].sr, len: decoded[s].len }
     : { type: 'sample', lane, data: null }),
   initAudio, togglePlay,
+  startRecording, stopRecording, toggleRecording, saveLastRecording,
+  get recording() { return recording; },
+  get recSeconds() { return recFrames / (recSampleRate || 44100); },
+  get lastRecording() { return lastRec; },
   get playing() { return playing; }, get audioReady() { return audioReady; },
   get audioStarting() { return audioStarting; },
   get decoded() { return decoded; },

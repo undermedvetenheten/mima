@@ -164,6 +164,12 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     this.avoW = 0; this.avoSlice = -1; this.avoStut = 0; this.avoLen = 1;
     this.avoRd = 0; this.avoHoldL = 0; this.avoHoldR = 0; this.avoHoldCnt = 0;
 
+    // ---- recording: stream the master output to the main thread as PCM ----
+    this.rec = false; this.REC_CHUNK = 4096;
+    this.recBufL = new Float32Array(this.REC_CHUNK);
+    this.recBufR = new Float32Array(this.REC_CHUNK);
+    this.recPos = 0;
+
     this.tickN = 0;
 
     this.port.onmessage = (e) => this.onMessage(e.data);
@@ -203,7 +209,21 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
       this.samples[d.lane] = d.data ? { data: d.data, nch: d.nch, sr: d.sr, len: d.len } : null;
       this.vOn[d.lane] = 0;
       this.vPos[d.lane] = 0;
+    } else if (d.type === 'record') {
+      if (d.on) { this.rec = true; this.recPos = 0; }
+      else { this.rec = false; this.flushRec(true); }
     }
+  }
+
+  // ship the captured PCM so far to the main thread; done => recording ended
+  flushRec(done) {
+    if (this.recPos > 0) {
+      const l = this.recBufL.slice(0, this.recPos);
+      const r = this.recBufR.slice(0, this.recPos);
+      this.port.postMessage({ type: 'rec', l, r }, [l.buffer, r.buffer]);
+      this.recPos = 0;
+    }
+    if (done) this.port.postMessage({ type: 'recdone', sr: sampleRate });
   }
 
   sget(si, k) {
@@ -741,8 +761,13 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
       }
 
       // gentle safety limiter (protects against delay-feedback runaway)
-      outL[f] = Math.tanh(spl0);
-      outR[f] = Math.tanh(spl1);
+      const oL = Math.tanh(spl0), oR = Math.tanh(spl1);
+      outL[f] = oL; outR[f] = oR;
+      if (this.rec) {
+        this.recBufL[this.recPos] = oL;
+        this.recBufR[this.recPos] = oR;
+        if (++this.recPos >= this.REC_CHUNK) this.flushRec(false);
+      }
     }
 
     // UI heartbeat: beat position + sounding pitch classes, ~every 8 blocks

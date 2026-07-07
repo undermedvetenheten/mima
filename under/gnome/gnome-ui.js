@@ -27,8 +27,8 @@ window.createGnomeUI = function (G) {
   const fmtNote = v => G.noteName(Math.round(v));
   const engineHint = si => {
     const e = m[C.ENG_A + si];
-    return e === 1 ? 'plucked string (Karplus-Strong): Resonance = sustain, Cutoff = brightness'
-      : e === 2 ? 'blown glass: stretched harmonics with a slow shimmer and breathy onset'
+    return e === 1 ? 'plucked string (Karplus-Strong): Cutoff filters it, Resonance = sustain — 100 = infinite (use the LATCH envelope for a drone)'
+      : e === 2 ? 'blown glass: stretched harmonics, shimmer + breathy onset. Turn up Harmonic cycle for an evolving drone'
       : 'classic oscillator: sine → triangle → saw morph via Wave';
   };
 
@@ -312,7 +312,11 @@ window.createGnomeUI = function (G) {
         rollGrid(si)),
       group('instrument', 'the voice this part plays through',
         seg('Engine', ['classic', 'string', 'glass'],
-          () => m[C.ENG_A + si], i => { m[C.ENG_A + si] = i; rerender(); }, engHint())),
+          () => m[C.ENG_A + si], i => { m[C.ENG_A + si] = i; rerender(); }, engHint()),
+        ...(m[C.ENG_A + si] === 2
+          ? [stepper('Harmonic cycle', 0, 100, 5, () => m[C.GLC_A + si], v => m[C.GLC_A + si] = v, fmtPct,
+              'slowly sweeps which harmonic is loudest — 0 = static')]
+          : [])),
     ];
   }
 
@@ -373,18 +377,33 @@ window.createGnomeUI = function (G) {
         stepper('Bass send', 0, 100, 5, () => m[C.SEND_A + 1], v => m[C.SEND_A + 1] = v, fmtPct),
         stepper('Melody send', 0, 100, 5, () => m[C.SEND_A + 2], v => m[C.SEND_A + 2] = v, fmtPct),
         stepper('Chords send', 0, 100, 5, () => m[C.SEND_A + 3], v => m[C.SEND_A + 3] = v, fmtPct)),
-      group('floaty delay', 'a tape-ish echo with slow pitch drift',
+      group('floaty delay', 'a tape-ish echo — pitch/reverse the repeats or let them drift',
         seg('Delay', ['off', 'on'], () => m[C.DLY_ON], i => m[C.DLY_ON] = i),
         stepper('Time (beats)', 0.0625, 2, 0.0625, () => m[C.DLY_TIME], v => m[C.DLY_TIME] = v, fmtDlyBeats),
         stepper('Feedback', 0, 100, 5, () => m[C.DLY_FB], v => m[C.DLY_FB] = v, fmtPct),
+        stepper('Pitch', -24, 24, 1, () => m[C.DLY_PITCH], v => m[C.DLY_PITCH] = v, fmtSt,
+          'each repeat shifts by this — climbing or falling echoes'),
+        seg('Reverse', ['off', 'on'], () => m[C.DLY_REV], i => m[C.DLY_REV] = i,
+          'play the echoes backwards'),
         stepper('Tone', 0, 100, 5, () => m[C.DLY_TONE], v => m[C.DLY_TONE] = v, fmtPct),
-        stepper('Float / wow', 0, 100, 5, () => m[C.DLY_WOW], v => m[C.DLY_WOW] = v, fmtPct)),
+        stepper('Float / wow', 0, 100, 5, () => m[C.DLY_WOW], v => m[C.DLY_WOW] = v, fmtPct,
+          'slow pitch drift (only when Pitch/Reverse are off)')),
       group('avocado glitch', 'beat-synced stutter + crush for glitching out',
         seg('Glitch', ['off', 'on'], () => m[C.AVO_ON], i => m[C.AVO_ON] = i),
         stepper('Amount', 0, 100, 5, () => m[C.AVO_AMT], v => m[C.AVO_AMT] = v, fmtPct),
         stepper('Rate (beats)', 0.0625, 2, 0.0625, () => m[C.AVO_RATE], v => m[C.AVO_RATE] = v, fmtDlyBeats),
         stepper('Crush', 0, 100, 5, () => m[C.AVO_CRUSH], v => m[C.AVO_CRUSH] = v, fmtPct),
         stepper('Mix', 0, 100, 5, () => m[C.AVO_MIX], v => m[C.AVO_MIX] = v, fmtPct)),
+      group('clouds', 'granular reverb — smears the sound into a pitched, textured wash',
+        seg('Clouds', ['off', 'on'], () => m[C.CLD_ON], i => m[C.CLD_ON] = i),
+        stepper('Grain size', 0, 100, 5, () => m[C.CLD_SIZE], v => m[C.CLD_SIZE] = v, fmtPct),
+        stepper('Density', 0, 100, 5, () => m[C.CLD_DENS], v => m[C.CLD_DENS] = v, fmtPct),
+        stepper('Pitch', -24, 24, 1, () => m[C.CLD_PITCH], v => m[C.CLD_PITCH] = v, fmtSt),
+        seg('Reverse grains', ['off', 'on'], () => m[C.CLD_REVG], i => m[C.CLD_REVG] = i),
+        stepper('Spread', 0, 100, 5, () => m[C.CLD_SPREAD], v => m[C.CLD_SPREAD] = v, fmtPct,
+          'how far back grains reach — bigger = more smear'),
+        stepper('Reverb tail', 0, 100, 5, () => m[C.CLD_REVERB], v => m[C.CLD_REVERB] = v, fmtPct),
+        stepper('Mix', 0, 100, 5, () => m[C.CLD_MIX], v => m[C.CLD_MIX] = v, fmtPct)),
     ];
   }
 

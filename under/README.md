@@ -12,10 +12,17 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
   `gnome-worklet.js` is a line-for-line port of the JSFX @block/@sample
   sections (MIDI and stems removed, per-part volume added); `gnome.js` ports
   @gfx to canvas and owns the state, which mirrors the JSFX serialized memory
-  layout exactly. `gnome-mobile.js` is the pocket layout: a tabbed DOM UI
-  (drums / bass / melody / chords / key·mix) that auto-activates on
-  coarse-pointer narrow screens and drives the same state through the API
-  gnome.js exposes on `window.gnome`; a footer link switches layouts. If you change the plugin's sequencing/DSP, port the same
+  layout exactly (the canvas is retired from view — both live layouts are DOM
+  now — but its draw/pointer code stays as reference).
+  `gnome-ui.js` is the shared DOM widget kit (steppers, segmented toggles,
+  selects, grids, transport, and the per-part / fx / mix section builders);
+  both layouts build their screens from it via `createGnomeUI(window.gnome)`,
+  so a control looks and behaves the same everywhere.
+  `gnome-mobile.js` is the pocket layout — tabs (drums / bass / melody /
+  chords / fx / key·mix), auto-activated on coarse-pointer narrow screens.
+  `gnome-desktop.js` is the wide layout — the same sections as labelled cards
+  packed into columns, everything visible at once. A footer link switches
+  layouts. If you change the plugin's sequencing/DSP, port the same
   change to the worklet; the tables (scales, progressions, euclid presets)
   are duplicated in both `gnome.js` and `gnome-worklet.js` and must stay in
   sync with the JSFX.

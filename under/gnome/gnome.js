@@ -517,7 +517,9 @@ const xEuc = xMute + 22, xMode = xEuc + 36, xGrid = xMode + 30;
 const cellw = 16, cellh = 28, rollrh = 8;
 function yBtn() { return laneTop + numLanes * rowh + 2; }
 function ys(si) { return yBtn() + 28 + si * 188; }
-function yStat() { return ys(2) + 180; }
+const fxH = 160;                        // demarcated FX box at the bottom
+function fxY() { return ys(2) + 184; }
+function yStat() { return fxY() + fxH + 2; }
 function totalH() { return yStat() + 22; }
 
 // KEY row layout
@@ -526,13 +528,69 @@ const kxB = 348, kxM = 398, kxC = 448; // lock buttons; +20 = mult boxes
 
 // header controls
 const PLAY_R = [130, 4, 44, 22], BPM_R = [180, 4, 52, 22],
-  INIT_R = [238, 4, 40, 22], ALT_R = [284, 4, 40, 22];
+  INIT_R = [238, 4, 40, 22], ALT_R = [284, 4, 40, 22],
+  REC_R = [330, 4, 52, 22], SAVE_R = [388, 4, 52, 22];
 const KNOBS = [
   { id: 'drum', label: 'DRUM' }, { id: 'bass', label: 'BASS' },
   { id: 'mel', label: 'MEL' }, { id: 'chd', label: 'CHD' },
   { id: 'master', label: 'MAIN' },
 ];
 function knobX(i) { return W - (KNOBS.length - i) * 52 - 8; }
+
+// FX panel cells (drawn as a demarcated box at the bottom, OG drag-field
+// idiom). Positions are absolute; rebuilt each frame so they track fxY().
+function fxFmt(kind, v) {
+  return kind === 'pct' ? Math.round(v) + '%'
+    : kind === 'st' ? (v > 0 ? '+' : '') + Math.round(v)
+    : kind === 'beats' ? fmtG(v) : String(Math.round(v));
+}
+function fxCells() {
+  const fy = fxY(), c = [];
+  const val = (x, y, w, label, off, min, max, step, fmt) =>
+    c.push({ t: 'val', x, y, w, label, off, min, max, step, fmt });
+  const tog = (x, y, w, label, off) => c.push({ t: 'tog', x, y, w, label, off });
+  const lbl = (x, y, text) => c.push({ t: 'lbl', x, y, text });
+  let x, y;
+  y = fy + 24; x = 12;
+  tog(x, y, 34, 'FX', FX_ON); x += 40;
+  val(x, y, 44, 'FEED', FX_FEED, 0, 100, 5, 'pct'); x += 54;
+  lbl(x, y + 9, 'SEND'); x += 40;
+  val(x, y, 40, 'DRM', SEND_A, 0, 100, 5, 'pct'); x += 44;
+  val(x, y, 40, 'BAS', SEND_A + 1, 0, 100, 5, 'pct'); x += 44;
+  val(x, y, 40, 'MEL', SEND_A + 2, 0, 100, 5, 'pct'); x += 44;
+  val(x, y, 40, 'CHD', SEND_A + 3, 0, 100, 5, 'pct'); x += 54;
+  lbl(x, y + 9, 'GLASS CYC'); x += 72;
+  val(x, y, 38, 'BAS', GLC_A, 0, 100, 5, 'pct'); x += 42;
+  val(x, y, 38, 'MEL', GLC_A + 1, 0, 100, 5, 'pct'); x += 42;
+  val(x, y, 38, 'CHD', GLC_A + 2, 0, 100, 5, 'pct');
+  y = fy + 60; x = 12;
+  lbl(x, y + 9, 'DELAY'); x += 52;
+  tog(x, y, 34, '', DLY_ON); x += 40;
+  val(x, y, 46, 'TIME', DLY_TIME, 0.0625, 2, 0.0625, 'beats'); x += 50;
+  val(x, y, 40, 'FB', DLY_FB, 0, 100, 5, 'pct'); x += 44;
+  val(x, y, 40, 'PIT', DLY_PITCH, -24, 24, 1, 'st'); x += 44;
+  tog(x, y, 42, 'REV', DLY_REV); x += 48;
+  val(x, y, 42, 'TONE', DLY_TONE, 0, 100, 5, 'pct'); x += 46;
+  val(x, y, 42, 'WOW', DLY_WOW, 0, 100, 5, 'pct');
+  y = fy + 96; x = 12;
+  lbl(x, y + 9, 'GLITCH'); x += 52;
+  tog(x, y, 34, '', AVO_ON); x += 40;
+  val(x, y, 44, 'AMT', AVO_AMT, 0, 100, 5, 'pct'); x += 48;
+  val(x, y, 46, 'RATE', AVO_RATE, 0.0625, 2, 0.0625, 'beats'); x += 50;
+  val(x, y, 44, 'CRSH', AVO_CRUSH, 0, 100, 5, 'pct'); x += 48;
+  val(x, y, 42, 'MIX', AVO_MIX, 0, 100, 5, 'pct');
+  y = fy + 132; x = 12;
+  lbl(x, y + 9, 'CLOUDS'); x += 52;
+  tog(x, y, 34, '', CLD_ON); x += 40;
+  val(x, y, 44, 'SIZE', CLD_SIZE, 0, 100, 5, 'pct'); x += 48;
+  val(x, y, 44, 'DENS', CLD_DENS, 0, 100, 5, 'pct'); x += 48;
+  val(x, y, 40, 'PIT', CLD_PITCH, -24, 24, 1, 'st'); x += 44;
+  tog(x, y, 48, 'REVG', CLD_REVG); x += 52;
+  val(x, y, 44, 'SPRD', CLD_SPREAD, 0, 100, 5, 'pct'); x += 48;
+  val(x, y, 44, 'TAIL', CLD_REVERB, 0, 100, 5, 'pct'); x += 48;
+  val(x, y, 42, 'MIX', CLD_MIX, 0, 100, 5, 'pct');
+  return c;
+}
 
 // drum lane fields: label, jsfx param index ('smp' = sample picker)
 const DFIELDS = [
@@ -563,7 +621,7 @@ function setStatus(s) { statusText = s; haveStatus = true; }
 
 // ---- interaction state (port of the JSFX drag machinery) ----
 let dragMode = 0, dragF = 0, dragLane = 0, dragSynth = 0, dragY = 0, dragV = 0,
-  dragMoved = false, rotApplied = 0, paint = 0, dragKnob = 0;
+  dragMoved = false, rotApplied = 0, paint = 0, dragKnob = 0, dragFx = null;
 const FEL_MULT = [1, 2 / 3, 1.5];
 
 function canvasXY(e) {
@@ -593,9 +651,28 @@ function onDown(x, y, right) {
                         : 'ALT off');
       return;
     }
+    if (inRect(x, y, REC_R)) {
+      recording ? stopRecording() : startRecording();
+      setStatus(recording ? 'recording the output to a WAV…' : 'recording stopped — hit SAVE');
+      return;
+    }
+    if (lastRec && inRect(x, y, SAVE_R)) { saveLastRecording(); return; }
     for (let i = 0; i < KNOBS.length; i++) {
       if (x >= knobX(i) && x < knobX(i) + 44) {
         dragMode = 20; dragKnob = i; dragY = y; dragV = vols[KNOBS[i].id];
+        return;
+      }
+    }
+    return;
+  }
+
+  // FX box at the bottom
+  if (y >= fxY() && y < fxY() + fxH) {
+    for (const cell of fxCells()) {
+      if (cell.t === 'lbl') continue;
+      if (x >= cell.x && x < cell.x + cell.w && y >= cell.y && y < cell.y + 30) {
+        if (cell.t === 'tog') { dragMode = 31; dragFx = cell; dragY = y; }
+        else { dragMode = 30; dragFx = cell; dragY = y; dragV = m[cell.off]; }
         return;
       }
     }
@@ -656,6 +733,10 @@ function onDown(x, y, right) {
         dragF = Math.floor((x - xFields) / fieldw);
         dragY = y; dragSynth = gsi; dragV = sget(gsi, r2map(dragF));
         dragMode = 10;
+      } else if (x >= xEuc && x < xEuc + 32) {
+        m[ENG_A + gsi] = (m[ENG_A + gsi] + 1) % 3;
+        setStatus(`${SYN_NAMES[gsi]} engine: ${['classic oscillator', 'plucked string (RES=sustain, 100=infinite)', 'blown glass (GCY on the FX panel cycles harmonics)'][m[ENG_A + gsi]]}`);
+        touchState();
       } else if (gsi === 2 && x >= xMode && x < xMode + 26) {
         sset(2, 24, sget(2, 24) ? 0 : 1);
         setStatus(`chords: ${sget(2, 24) ? 'sevenths' : 'triads'}`);
@@ -798,6 +879,11 @@ function onMove(x, y) {
   } else if (dragMode === 7) {
     const mcol = Math.floor((x - xGrid) / cellw);
     if (mcol >= 0 && mcol < sget(dragSynth, 2)) m[ronOff(dragSynth) + mcol] = 0;
+  } else if (dragMode === 30) {
+    const c = dragFx;
+    let nv = dragV + d * c.step;
+    nv = Math.round(nv / c.step) * c.step;
+    m[c.off] = Math.max(c.min, Math.min(c.max, nv));
   } else if (dragMode === 20) {
     vols[KNOBS[dragKnob].id] = Math.max(0, Math.min(100, dragV + Math.floor((dragY - y) / 2)));
     pushGains();
@@ -816,7 +902,9 @@ function saveLater() { clearTimeout(saveTimer); saveTimer = setTimeout(saveState
 function onUp() {
   if (dragMode && !dragMoved) {
     // taps on cycling fields (port of the JSFX release block)
-    if (dragMode === 8) {
+    if (dragMode === 31) {
+      m[dragFx.off] = m[dragFx.off] ? 0 : 1;
+    } else if (dragMode === 8) {
       rotatePat(dragLane, 1);
       const st = Math.max(1, m[STEPS_A + dragLane]);
       m[ROT_A + dragLane] = (m[ROT_A + dragLane] + 1) % st;
@@ -923,6 +1011,18 @@ function draw() {
   altMode ? set(0.55, 0.3, 0.4) : set(0.24, 0.26, 0.3);
   rect(...ALT_R);
   set(0.9, 0.85, 0.9); textC('ALT', ALT_R[0], ALT_R[0] + ALT_R[2], 9, F11);
+
+  const recS = recFrames / (recSampleRate || 44100);
+  recording ? set(0.62, 0.2, 0.26) : set(0.3, 0.24, 0.24);
+  rect(...REC_R);
+  set(0.95, 0.85, 0.85);
+  textC(recording ? '■ ' + Math.floor(recS / 60) + ':' +
+    String(Math.floor(recS % 60)).padStart(2, '0') : '● REC',
+    REC_R[0], REC_R[0] + REC_R[2], 9, F11);
+  if (lastRec) {
+    set(0.24, 0.4, 0.3); rect(...SAVE_R);
+    set(0.85, 0.95, 0.88); textC('SAVE', SAVE_R[0], SAVE_R[0] + SAVE_R[2], 9, F11);
+  }
 
   for (let i = 0; i < KNOBS.length; i++) {
     const kx = knobX(i) + 22, ky = 13, v = vols[KNOBS[i].id] / 100;
@@ -1085,6 +1185,13 @@ function draw() {
       textC(v, fx, fx + fieldw - 4, ysv + rowh + 18, F13);
     }
 
+    // ENG: per-synth engine selector (in the freed SYN/MID slot)
+    const eng = m[ENG_A + gsi];
+    eng === 1 ? set(0.28, 0.4, 0.5) : eng === 2 ? set(0.46, 0.4, 0.28) : set(0.28, 0.3, 0.34);
+    rect(xEuc, ysv + rowh + 4, 32, 32);
+    set(0.9, 0.92, 0.95);
+    textC(['OSC', 'STR', 'GLS'][eng], xEuc, xEuc + 32, ysv + rowh + 12, F12);
+
     if (gsi === 2) {
       m[sp + 24] ? set(0.4, 0.32, 0.24) : set(0.24, 0.24, 0.27);
       rect(xMode, ysv + rowh + 4, 26, 32);
@@ -1168,11 +1275,40 @@ function draw() {
     }
   }
 
+  // ---- FX box (demarcated panel at the bottom) ----
+  const fy = fxY();
+  const fxLit = m[FX_ON] > 0;
+  fxLit ? set(0.16, 0.19, 0.2) : set(0.145, 0.145, 0.16);
+  rect(8, fy, W - 16, fxH);
+  set(0.3, 0.32, 0.36); rect(8, fy, W - 16, 1); rect(8, fy + fxH - 1, W - 16, 1);
+  fxLit ? set(0.6, 0.85, 0.85) : set(0.5, 0.52, 0.56);
+  text('FX RACK', 12, fy + 6, F12);
+  set(0.4, 0.42, 0.46);
+  text('a shared bus: SEND parts in or FEED the mix — delay · glitch · clouds', 78, fy + 7, F10);
+  for (const cell of fxCells()) {
+    if (cell.t === 'lbl') {
+      set(0.5, 0.52, 0.56); text(cell.text, cell.x, cell.y, F10);
+      continue;
+    }
+    if (cell.t === 'tog') {
+      const on = m[cell.off] > 0;
+      on ? set(0.28, 0.5, 0.4) : set(0.26, 0.26, 0.3);
+      rect(cell.x, cell.y, cell.w, 30);
+      set(0.9, 0.92, 0.9);
+      textC(cell.label || (on ? 'ON' : 'off'), cell.x, cell.x + cell.w, cell.y + 8, F11);
+      continue;
+    }
+    set(0.2, 0.21, 0.24); rect(cell.x, cell.y, cell.w, 30);
+    set(0.45, 0.46, 0.5); textC(cell.label, cell.x, cell.x + cell.w, cell.y + 2, F10);
+    set(fxLit ? 0.85 : 0.6, fxLit ? 0.85 : 0.6, fxLit ? 0.88 : 0.62);
+    textC(fxFmt(cell.fmt, m[cell.off]), cell.x, cell.x + cell.w, cell.y + 15, F12);
+  }
+
   // status / hint line (bottom)
   if (haveStatus) { set(0.7, 0.85, 0.7); text(statusText, 8, yStat(), F11); }
   else {
     set(0.45, 0.45, 0.5);
-    text('KEY row: master key/scale/harmony, B M C locks | right-click or ALT-tap notes: every-2nd-cycle | FEL: straight/triplet/dotted', 8, yStat(), F11);
+    text('drag fields · tap ENG to pick classic/string/glass · right-click notes for 2nd-cycle · the FX box is the effects rack + sends', 8, yStat(), F11);
   }
 
   // wake overlay until the first gesture creates the AudioContext
@@ -1202,9 +1338,9 @@ const usePocket = layoutPref
 
 if (!loadState()) { initState(); seedGroove(); }
 for (let si = 0; si < NSYN; si++) m[spOff(si) + 10] = 1; // internal synth, always
-// both layouts are DOM now (gnome-mobile.js / gnome-desktop.js). The canvas
-// draw()/pointer code stays for reference but is no longer rendered.
-document.body.classList.add(usePocket ? 'pocket' : 'desk');
+// desktop = the canvas (all on one page); pocket = the DOM tab layout.
+if (usePocket) document.body.classList.add('pocket');
+else requestAnimationFrame(draw);
 
 // exposed for the pocket UI (gnome-mobile.js), the tests, and the console
 window.gnome = {

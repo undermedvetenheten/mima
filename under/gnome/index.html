@@ -36,44 +36,32 @@
 		}
 		.sub { color: hsla(190, 15%, 60%, 1); margin: 0 0 18px; }
 		a { color: hsla(190, 90%, 75%, 1); }
-		#gnome { display: none; }   /* legacy canvas, retired from view */
+		.gnomebox {
+			overflow-x: auto;
+			border: 1px solid hsla(190, 30%, 30%, 0.6);
+			border-radius: 10px;
+			box-shadow: 0 0 15px hsla(190, 90%, 80%, 0.1);
+			background: #212124;
+		}
+		canvas#gnome {
+			display: block;
+			width: 1264px;
+			max-width: none;
+			touch-action: none;
+			cursor: default;
+		}
+		@media (min-width: 1300px) {
+			canvas#gnome { width: 100%; }
+		}
 		.hints {
 			color: hsla(190, 12%, 55%, 1);
 			font-size: 0.9em;
-			margin-top: 18px;
+			margin-top: 14px;
 		}
-
-		/* ---- desktop dashboard (body.desk) ---- */
-		#desk { display: none; }
-		body.desk { }
-		body.desk main { max-width: 1400px; }
-		body.desk #desk { display: block; }
-		.desk-top {
-			position: sticky; top: 0; z-index: 6;
-			display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-			background: hsla(220, 10%, 8%, 0.97);
-			border: 1px solid hsla(190, 30%, 30%, 0.6);
-			border-radius: 12px; padding: 8px 10px; margin-bottom: 14px;
-			box-shadow: 0 0 15px hsla(190, 90%, 80%, 0.1);
-		}
-		.desk-grid { column-width: 350px; column-gap: 16px; }
-		.desk-card {
-			break-inside: avoid; display: inline-block; width: 100%;
-			margin: 0 0 16px; padding: 12px 14px 4px;
-			border: 1px solid hsla(190, 25%, 28%, 0.6); border-radius: 12px;
-			background: hsla(210, 16%, 9%, 0.6);
-			box-shadow: 0 0 15px hsla(190, 90%, 80%, 0.05);
-		}
-		.desk-card > h2 {
-			margin: 0 0 6px; font-size: 15px; letter-spacing: 0.1em;
-			color: hsl(190, 75%, 78%); text-shadow: 0 0 12px hsla(190, 90%, 60%, 0.4);
-		}
-		.desk-card .pk-group { border: none; background: none; padding: 4px 0; margin: 0; }
-		.desk-card .pk-group + .pk-group { border-top: 1px solid hsla(190, 20%, 24%, 0.5); }
 
 		/* ---- pocket layout (touch-first tabs; body.pocket switches it on) ---- */
 		#pocket { display: none; }
-		body.pocket .hints { display: none; }
+		body.pocket .gnomebox, body.pocket .hints { display: none; }
 		body.pocket #pocket { display: block; }
 		body.pocket main { max-width: 640px; padding-top: 14px; }
 		body.pocket h1 { font-size: 24px; }
@@ -223,16 +211,19 @@
 		<p class="sub">the sequencer from <a href="../">under</a>, ported to your browser — same brain, no REAPER required.
 			The <a href="../">real plugin</a> is one ReaPack import away.</p>
 
-		<div id="desk"></div>
+		<div class="gnomebox">
+			<canvas id="gnome" width="1264" height="762"></canvas>
+		</div>
 		<div id="pocket"></div>
-		<canvas id="gnome" width="1264" height="762" hidden></canvas>
 
 		<p class="hints">
-			Drag <strong>−/+</strong> to change a value (hold to repeat). Tap grid cells to
-			place / clear steps and notes; switch to <strong>2nd-cycle</strong> for notes that
-			play every other loop. Each part has an <strong>engine</strong> (classic / string /
-			glass); the <strong>FX rack</strong> adds a floaty delay and glitch. <strong>⏺ REC</strong>
-			captures the live output to a WAV. Your kit autosaves in this browser.
+			<strong>Drag fields vertically</strong> to change values; tap the cycling ones
+			(<code>ENG</code> <code>LSH</code> <code>SHP</code> <code>EMD</code> <code>FEL</code> <code>PRG</code> <code>SCL</code>).
+			Click grids to place / clear, drag to draw; <strong>right-click</strong> a note for the
+			pink/orange <em>every-2nd-cycle</em> variant. <code>EUC</code> deals rhythms, <code>RND</code>
+			writes phrases, the <code>KEY</code> row rules locked sections. Knobs top-right are the
+			mixer; the <strong>FX</strong> box at the bottom holds delay / glitch / clouds.
+			<code>REC</code> captures the output to a WAV.
 		</p>
 
 		<footer>
@@ -243,7 +234,6 @@
 	<script src="gnome.js"></script>
 	<script src="gnome-ui.js"></script>
 	<script src="gnome-mobile.js"></script>
-	<script src="gnome-desktop.js"></script>
 	<script>
 		const lt = document.getElementById('layoutToggle');
 		lt.textContent = window.gnome.usePocket

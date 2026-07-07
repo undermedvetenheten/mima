@@ -41,6 +41,14 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
     - "avocado" glitch (beat-synced stutter + bit/sample-rate crush).
     - "clouds" granular reverb (`CLD_*`): a grain pool sprayed from recent
       audio, pitch-shiftable/reversible, with a feedback tail for the wash.
+      Density maps to grain overlap (capped under the pool size) with a
+      matched spawn interval + gain, so high density stays continuous.
+  - **RND generation styles** (`GEN_STYLE`, `setStyle`): free / Appalachian /
+    West African / Gamelan / Blues / Andalusian / Middle Eastern. Picking one
+    swaps the master scale to an idiomatic choice; each part's RUN/RND then
+    generates in that flavour. Bass stays root/fifth-anchored (solid across
+    key shifts) and chords collapse to one held root chord while a progression
+    is rotating the key.
   Drum lanes are permanently paired with a sample via `LANE_SAMPLE` (no
   per-lane picker). Changing the memory layout or these offsets means bumping
   `MEM` and `STORE_KEY` in gnome.js and the mirrored constants in the worklet.

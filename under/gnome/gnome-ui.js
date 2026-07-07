@@ -412,7 +412,8 @@ window.createGnomeUI = function (G) {
       stepper('Key', 12, 108, 1, () => m[C.GKEY_NOTE], v => m[C.GKEY_NOTE] = Math.max(12, Math.min(108, v)), fmtNote),
       selectRow('Scale', T.SCALE_NAMES, () => m[C.GKEY_SCALE], v => m[C.GKEY_SCALE] = v),
       selectRow('Progression', T.PROG_NAMES, () => m[C.GKEY_PROG], v => m[C.GKEY_PROG] = v),
-      stepper('Progression speed', 0.25, 16, 0.25, () => m[C.GKEY_SPD], v => m[C.GKEY_SPD] = Math.max(0.25, v), fmtBeats));
+      stepper('Progression speed', 0.25, 16, 0.25, () => m[C.GKEY_SPD], v => m[C.GKEY_SPD] = Math.max(0.25, v), fmtBeats),
+      selectRow('Generate style', T.STYLE_NAMES, () => m[C.GEN_STYLE], v => G.setStyle(v)));
   }
 
   function locksSection() {

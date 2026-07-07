@@ -589,6 +589,13 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     const cldRate = m[CLD_REVG] ? -Math.pow(2, m[CLD_PITCH] / 12) : Math.pow(2, m[CLD_PITCH] / 12);
     const cldSpread = m[CLD_SPREAD] / 100;
     const cldReverb = Math.min(0.94, m[CLD_REVERB] / 100 * 0.94);
+    // density = how many grains overlap. Cap overlap under the pool size and
+    // scale the interval to the grain length so grains stay continuous (no
+    // gaps -> no drop-outs) and normalise the gain so louder overlap doesn't
+    // just saturate. This is what fixes density 100% cutting out.
+    const cldOverlap = 1 + cldDens * (this.CLD_GRAINS - 4);
+    const cldInterval = Math.max(1, Math.floor(cldGrainLen / cldOverlap));
+    const cldGain = 1.2 / Math.sqrt(cldOverlap);
     const CMAX = this.CLD_MAX;
     this.cldFbL = sane(this.cldFbL); this.cldFbR = sane(this.cldFbR);
     const fxActive = fxOn && (dlyOn || avoOn || cldOn);
@@ -830,7 +837,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
           this.cldL[this.cldW] = sigL + this.cldFbL * cldReverb;
           this.cldR[this.cldW] = sigR + this.cldFbR * cldReverb;
           if (--this.cldSpawn <= 0) {
-            this.cldSpawn = Math.max(1, Math.floor(cldGrainLen * (1.05 - cldDens) * 0.5));
+            this.cldSpawn = cldInterval;
             for (let gi = 0; gi < this.CLD_GRAINS; gi++) {
               if (!this.gOn[gi]) {
                 this.gOn[gi] = 1; this.gAge[gi] = 0; this.gLen[gi] = cldGrainLen;
@@ -854,7 +861,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
             this.gPos[gi] += this.gRate[gi];
             if (++this.gAge[gi] >= len) this.gOn[gi] = 0;
           }
-          wetL *= 0.9; wetR *= 0.9;
+          wetL *= cldGain; wetR *= cldGain;
           this.cldFbL = wetL; this.cldFbR = wetR;
           sigL = sigL + (wetL - sigL) * cldMix;
           sigR = sigR + (wetR - sigR) * cldMix;

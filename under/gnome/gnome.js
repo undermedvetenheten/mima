@@ -1195,8 +1195,9 @@ const usePocket = layoutPref
 
 if (!loadState()) { initState(); seedGroove(); }
 for (let si = 0; si < NSYN; si++) m[spOff(si) + 10] = 1; // internal synth, always
-if (usePocket) document.body.classList.add('pocket');
-else requestAnimationFrame(draw);
+// both layouts are DOM now (gnome-mobile.js / gnome-desktop.js). The canvas
+// draw()/pointer code stays for reference but is no longer rendered.
+document.body.classList.add(usePocket ? 'pocket' : 'desk');
 
 // exposed for the pocket UI (gnome-mobile.js), the tests, and the console
 window.gnome = {

@@ -234,13 +234,22 @@ function degNear(scix, cents) {
   return bi;
 }
 
-// BASS: root-anchored (mostly root + fifth, occasional octave / neighbour) so
-// it stays solid when the harmony rotates. Appalachian alternates root/fifth
-// (boom-chuck); West African repeats a short cell.
+// BASS. Free style keeps the original random walk (kept as the default so RND
+// stays surprising). Named styles anchor to root + fifth so the bass stays
+// solid when the harmony rotates.
 function genBass(style) {
   const ron = ronOff(0), rdg = rdgOff(0), n = sget(0, 2), scix = effScale(0);
   const cnt = SCL[scix][0], fifth = degNear(scix, 700);
   applySynEuclid(0);
+  if (style === 0) {                            // original random walk
+    let prev = Math.floor(Math.random() * 6);
+    for (let i = 0; i < n; i++) if (m[ron + i]) {
+      prev = prev + Math.floor(Math.random() * 7) - 3;
+      if (prev < 0) prev += 5; if (prev > NROWS - 1) prev -= 5;
+      m[rdg + i] = Math.max(0, Math.min(NROWS - 1, prev));
+    }
+    return;
+  }
   m[ron] = 1;                                   // root on the downbeat
   if (style === 1) {                            // Appalachian boom-chuck
     let tog = 0;
@@ -261,15 +270,36 @@ function genBass(style) {
   }
 }
 
-// MELODY: a style-flavoured contour over the euclidean rhythm.
+// MELODY. Free style keeps the original per-bar euclid + sweeping arc (random
+// arps). Named styles use a flavoured contour.
 function genMelody(style) {
   const ron = ronOff(1), rdg = rdgOff(1), n = sget(1, 2), scix = effScale(1);
   const cnt = SCL[scix][0], top = NROWS - 1;    // roll rows = degrees 0..11
+
+  if (style === 0) {                            // original: per-bar variations + arc
+    const k = sget(1, 4);
+    const bars = Math.max(1, Math.floor(sget(1, 3) / 4 + 0.5));
+    const sbar = Math.floor(n / bars);
+    if (sbar > 0 && sbar * bars === n) {
+      for (let b = 0; b < bars; b++) {
+        const kk = Math.min(k, sbar);
+        for (let i = 0; i < sbar; i++) {
+          const ii = ((i - sget(1, 5) - b) % sbar + sbar) % sbar;
+          m[ron + b * sbar + i] = kk > 0 ? ((ii * kk) % sbar < kk ? 1 : 0) : 0;
+        }
+      }
+    } else applySynEuclid(1);
+    const arc = Math.random();
+    for (let i = 0; i < n; i++) if (m[ron + i]) {
+      const dgv = Math.floor(5.5 + 4.5 * Math.sin(2 * Math.PI * (i / n + arc)) + Math.random() * 3 - 1);
+      m[rdg + i] = Math.max(0, Math.min(NROWS - 1, dgv));
+    }
+    return;
+  }
+
   // rhythm: fuller for busy styles, euclidean otherwise
   if (style === 1 || style === 4) {
-    const k = Math.max(sget(1, 4), Math.round(n * 0.7));
     for (let i = 0; i < n; i++) m[ron + i] = 1;  // busy, mostly-continuous line
-    void k;
   } else applySynEuclid(1);
 
   const ons = [];
@@ -320,13 +350,24 @@ function genMelody(style) {
 function genChords(style) {
   const ron = ronOff(2), rdg = rdgOff(2), n = sget(2, 2), cnt = SCL[effScale(2)][0];
   const progActive = (m[LOCK_A + 2] ? m[GKEY_PROG] : sget(2, 22)) > 0;
+  // one held root chord while a progression is rotating the key (any style)
   if (progActive) {
     for (let i = 0; i < n; i++) { m[ron + i] = 0; m[rdg + i] = 0; }
-    m[ron] = 1; m[rdg] = 0;                       // one held root chord
+    m[ron] = 1; m[rdg] = 0;
     if (n >= 8) { const h = Math.floor(n / 2); m[ron + h] = 1; m[rdg + h] = 0; }
     return;
   }
   applySynEuclid(2);
+  if (style === 0) {                              // original 4th/5th root walk
+    let prev = 0;
+    for (let i = 0; i < n; i++) if (m[ron + i]) {
+      const rr = Math.random();
+      prev += rr < 0.28 ? 3 : rr < 0.56 ? -3 : rr < 0.72 ? 4 : rr < 0.82 ? -4 : rr < 0.92 ? 1 : 0;
+      prev = ((prev % cnt) + cnt) % cnt;
+      m[rdg + i] = prev;
+    }
+    return;
+  }
   const good = [0, Math.min(3, cnt - 1), Math.min(4, cnt - 1), Math.min(5, cnt - 1)];
   let prev = 0;
   for (let i = 0; i < n; i++) {
@@ -416,7 +457,7 @@ const STORE_KEY = 'supergnome_web_v2';
 function saveState() {
   try {
     localStorage.setItem(STORE_KEY, JSON.stringify({
-      mem: Array.from(m), numLanes, vols, bpm,
+      mem: Array.from(m), numLanes, vols, bpm, smp: smpA,
     }));
   } catch (e) { /* private mode etc - just don't persist */ }
 }
@@ -429,7 +470,7 @@ function loadState() {
     numLanes = Math.max(1, Math.min(LANES_CAP, s.numLanes || 3));
     vols = Object.assign(vols, s.vols);
     bpm = s.bpm || 120;
-    smpA = LANE_SAMPLE.slice();               // samples are lane-locked
+    smpA = (s.smp && s.smp.length === LANES_CAP) ? s.smp.slice() : LANE_SAMPLE.slice();
     for (let si = 0; si < NSYN; si++) m[spOff(si) + 10] = 1; // always internal
     return true;
   } catch (e) { return false; }
@@ -486,14 +527,38 @@ async function loadSamples() {
   for (let l = 0; l < LANES_CAP; l++) pushSample(l);
 }
 
+// iOS Safari mutes Web Audio when the ring/silent switch is on unless an
+// HTMLMediaElement has played — that flips the audio session to "playback".
+// Play a tiny silent clip (in the unlocking gesture) to bump the session.
+let iosTag = null;
+function iosSessionUnlock() {
+  if (iosTag) { iosTag.play().catch(() => { }); return; }
+  try {
+    iosTag = new Audio('data:audio/wav;base64,UklGRiQBAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+    iosTag.loop = true; iosTag.setAttribute('playsinline', ''); iosTag.volume = 0.001;
+    iosTag.play().catch(() => { });
+  } catch (e) { /* ignore */ }
+}
+
 async function initAudio() {
   if (audioReady || audioStarting) return;
   audioStarting = true;
   actx = new (window.AudioContext || window.webkitAudioContext)();
+  // iOS Safari: the context is born suspended and only unlocks if we resume
+  // (and make a sound) synchronously inside this unlocking gesture — before
+  // any await hands control back to the event loop.
+  iosSessionUnlock();
+  try { actx.resume(); } catch (e) { /* ignore */ }
+  try {
+    const b = actx.createBuffer(1, 1, actx.sampleRate);
+    const src = actx.createBufferSource();
+    src.buffer = b; src.connect(actx.destination); src.start(0);
+  } catch (e) { /* ignore */ }
   await actx.audioWorklet.addModule('gnome-worklet.js');
   node = new AudioWorkletNode(actx, 'supergnome',
     { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
   node.connect(actx.destination);
+  try { await actx.resume(); } catch (e) { /* ignore */ }
   node.port.onmessage = (e) => {
     const d = e.data;
     if (d.type === 'tick') {
@@ -1001,7 +1066,9 @@ function onUp() {
       rotateSyn(dragSynth, 1);
       sset(dragSynth, 5, (sget(dragSynth, 5) + 1) % st);
     } else if (dragMode === 1 && dragF === 'smp') {
-      // samples are lane-locked now - the field is just a label
+      smpA[dragLane] = (smpA[dragLane] + 1) % SAMPLE_DEFS.length;
+      pushSample(dragLane);
+      setStatus(`lane ${dragLane + 1} sample: ${SAMPLE_DEFS[smpA[dragLane]].label}`);
     } else if (dragMode === 1 && dragF === 13) {
       m[LSHAPE_A + dragLane] = (m[LSHAPE_A + dragLane] + 1) % 4;
       setStatus(`lane ${dragLane + 1} LFO shape: ${SHAPE_NAMES[m[LSHAPE_A + dragLane]]}`);
@@ -1437,6 +1504,15 @@ for (let si = 0; si < NSYN; si++) m[spOff(si) + 10] = 1; // internal synth, alwa
 if (usePocket) document.body.classList.add('pocket');
 else requestAnimationFrame(draw);
 
+// iOS Safari: a suspended context can need more than one gesture to unlock,
+// and it re-suspends when the app is backgrounded. Nudge it back on any tap.
+['pointerdown', 'touchend'].forEach(ev => document.addEventListener(ev, () => {
+  if (actx && actx.state === 'suspended') actx.resume().catch(() => { });
+}, { passive: true }));
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && playing && actx && actx.state === 'suspended') actx.resume().catch(() => { });
+});
+
 // exposed for the pocket UI (gnome-mobile.js), the tests, and the console
 window.gnome = {
   m, get numLanes() { return numLanes; },
@@ -1478,6 +1554,10 @@ window.gnome = {
   applyEuclid, applySynEuclid, rotatePat, rotateSyn, synGenerate, dealEuclid, setStyle,
   resetAll, touchState, pushTransport, pushGains, pushSample,
   get smpA() { return smpA; },
+  setSmp(lane, i) {
+    smpA[lane] = ((i % SAMPLE_DEFS.length) + SAMPLE_DEFS.length) % SAMPLE_DEFS.length;
+    pushSample(lane); saveLater();
+  },
   get vols() { return vols; },
   setVol(id, v) { vols[id] = Math.max(0, Math.min(100, v)); pushGains(); saveLater(); },
   get bpm() { return bpm; },

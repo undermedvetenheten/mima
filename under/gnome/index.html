@@ -37,21 +37,21 @@
 		.sub { color: hsla(190, 15%, 60%, 1); margin: 0 0 18px; }
 		a { color: hsla(190, 90%, 75%, 1); }
 		.gnomebox {
-			overflow-x: auto;
 			border: 1px solid hsla(190, 30%, 30%, 0.6);
 			border-radius: 10px;
 			box-shadow: 0 0 15px hsla(190, 90%, 80%, 0.1);
 			background: #212124;
 		}
+		/* Always fit the viewport width so the whole panel — mixer top-right,
+		   FX box at the bottom — is visible without a sideways scroll (which
+		   also used to swallow drag-to-draw). */
 		canvas#gnome {
 			display: block;
-			width: 1264px;
-			max-width: none;
+			width: 100%;
+			max-width: 1264px;
+			margin: 0 auto;
 			touch-action: none;
 			cursor: default;
-		}
-		@media (min-width: 1300px) {
-			canvas#gnome { width: 100%; }
 		}
 		.hints {
 			color: hsla(190, 12%, 55%, 1);

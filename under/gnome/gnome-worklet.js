@@ -22,20 +22,25 @@ const PAT = 0, STEPS_A = 272, SPAN_A = 280, PUL_A = 288,
   GKEY_SPD = 719, LOCK_A = 720, HML_A = 724;
 
 // ---- web-only region (>= 728; extends the JSFX block, kept in gnome.js) ----
-const MEM = 768;
+const MEM = 800;
 // per-synth engine: 0 classic osc, 1 plucked string, 2 blown glass (3 slots)
 const ENG_A = 728;
 // FX rack (delay -> avocado glitch -> clouds) fed by the full mix + sends
 const FX_ON = 736, DLY_ON = 737, DLY_TIME = 738, DLY_FB = 739, DLY_TONE = 740,
   DLY_WOW = 741, FX_FEED = 742, AVO_ON = 743, AVO_AMT = 744, AVO_RATE = 745,
   AVO_CRUSH = 746, AVO_MIX = 747, DLY_PITCH = 748, DLY_REV = 749;
-// per-part send into the FX rack: drums, bass, melody, chords (4 slots)
+// legacy single-bus send (superseded by SND_MTX; kept for offset alignment)
 const SEND_A = 752;
 // per-synth glass harmonic-cycle rate (3 slots)
 const GLC_A = 756;
 // Clouds granular reverb
 const CLD_ON = 760, CLD_MIX = 761, CLD_SIZE = 762, CLD_DENS = 763,
   CLD_PITCH = 764, CLD_SPREAD = 765, CLD_REVERB = 766, CLD_REVG = 767;
+// routing matrix: part (0 drums,1 bass,2 melody,3 chords) × fx (0 delay,
+// 1 glitch, 2 clouds) send = SND_MTX + part*3 + fx
+const SND_MTX = 768;
+// live-perform mute/solo (drum lanes reuse MUTE_A)
+const MUTE_SYN = 780, SOLO_LANE = 783, SOLO_SYN = 791;
 
 // ---- scale / progression tables (mirror of the JSFX; keep in sync) ----
 const SCL = [
@@ -569,8 +574,20 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     const wowDepth = m[DLY_WOW] / 100 * 45;             // samples of pitch drift
     const wowInc = TAU * 0.27 / srate;
     const feed = m[FX_FEED] / 100;
-    const sendArr = [m[SEND_A] / 100, m[SEND_A + 1] / 100,
-                     m[SEND_A + 2] / 100, m[SEND_A + 3] / 100];
+    // routing matrix as fractions: mtx[part][fx] (part 0 drums..3 chords)
+    const mtx = [];
+    for (let p = 0; p < 4; p++)
+      mtx[p] = [m[SND_MTX + p * 3] / 100, m[SND_MTX + p * 3 + 1] / 100,
+                m[SND_MTX + p * 3 + 2] / 100];
+    // live mute/solo: if any channel is soloed, only soloed channels sound
+    let anySolo = 0;
+    for (let l = 0; l < this.numLanes; l++) if (m[SOLO_LANE + l]) anySolo = 1;
+    for (let si2 = 0; si2 < NSYN; si2++) if (m[SOLO_SYN + si2]) anySolo = 1;
+    const laneAud = [], synAud = [];
+    for (let l = 0; l < this.numLanes; l++)
+      laneAud[l] = anySolo ? (m[SOLO_LANE + l] ? 1 : 0) : (m[MUTE_A + l] ? 0 : 1);
+    for (let si2 = 0; si2 < NSYN; si2++)
+      synAud[si2] = anySolo ? (m[SOLO_SYN + si2] ? 1 : 0) : (m[MUTE_SYN + si2] ? 0 : 1);
     const avoAmt = m[AVO_AMT] / 100;
     const avoRate = Math.max(0.03125, m[AVO_RATE]);
     const avoCrush = m[AVO_CRUSH];
@@ -601,7 +618,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     const fxActive = fxOn && (dlyOn || avoOn || cldOn);
 
     for (let f = 0; f < nframes; f++) {
-      let spl0 = 0, spl1 = 0, fxIn = 0;
+      let spl0 = 0, spl1 = 0, dIn = 0, aIn = 0, cIn = 0;
 
       // drum sample voices
       for (let c = 0; c < this.numLanes; c++) {
@@ -641,9 +658,11 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
             this.fltBp2[c] += fl2 * hp;
             smix2 = this.fltLo2[c];
           }
-          spl0 += smix * gD;
-          spl1 += smix2 * gD;
-          fxIn += (smix + smix2) * 0.5 * gD * sendArr[0];
+          const la = laneAud[c];
+          spl0 += smix * gD * la;
+          spl1 += smix2 * gD * la;
+          const dc = (smix + smix2) * 0.5 * gD * la;
+          dIn += dc * mtx[0][0]; aIn += dc * mtx[0][1]; cIn += dc * mtx[0][2];
           this.vPos[c] = vp + vrate;
         } else this.vOn[c] = 0;
       }
@@ -752,14 +771,20 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
           this.svBp[si2] += sf * sHp;
           so = this.svLo[si2];
         }
-        spl0 += so * gS[si2];
-        spl1 += so * gS[si2];
-        fxIn += so * gS[si2] * sendArr[si2 + 1];
+        const ps = so * gS[si2] * synAud[si2];
+        spl0 += ps;
+        spl1 += ps;
+        const pt = si2 + 1;
+        dIn += ps * mtx[pt][0]; aIn += ps * mtx[pt][1]; cIn += ps * mtx[pt][2];
       }
 
-      // ---- FX rack: floaty delay -> avocado glitch ----
+      // ---- FX rack: floaty delay -> avocado glitch -> clouds ----
+      // Each part routes to a stage's input (dIn/aIn/cIn); FEED taps the whole
+      // mix into the head of the chain. Injections happen at each stage so an
+      // instrument sent to CLOUDS only enters the granulator, etc.
       if (fxActive) {
-        fxIn += (spl0 + spl1) * 0.5 * feed;
+        dIn += (spl0 + spl1) * 0.5 * feed;
+        const fxIn = dIn;
         let sigL = fxIn, sigR = fxIn;
         if (dlyOn) {
           let rL, rR;
@@ -791,6 +816,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
           sigL = rL; sigR = rR;
         }
         if (avoOn) {
+          sigL += aIn; sigR += aIn;   // instruments routed straight to glitch
           // rolling capture of the chain signal
           this.avoL[this.avoW] = sigL; this.avoR[this.avoW] = sigR;
           const beat = blkStart + f / spb;
@@ -832,6 +858,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
           sigR = sigR + (gr - sigR) * avoMix;
         }
         if (cldOn) {
+          sigL += cIn; sigR += cIn;   // instruments routed straight to clouds
           // Clouds-style granulator: spray windowed grains from recent audio,
           // pitch-shiftable and reversible, with a feedback tail = reverb
           this.cldL[this.cldW] = sigL + this.cldFbL * cldReverb;

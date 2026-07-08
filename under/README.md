@@ -33,8 +33,15 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
     glass (stretched partials + shimmer + breathy onset, with a per-synth
     harmonic-cycle rate `GLC_A` that sweeps the emphasised partial for
     evolving drones).
-  - a global **FX rack** (`FX_*`), delay → glitch → clouds, fed by per-part
-    sends (`SEND_A`) and/or the full mix (`FX_FEED`):
+  - a global **FX rack** (`FX_*`), delay → glitch → clouds, with a
+    per-instrument → per-fx **routing matrix** (`SND_MTX`: part 0-3 drums/bass/
+    melody/chords × fx 0-2 delay/glitch/clouds). Each fx stage has its own
+    DR/BS/ML/CH sends, so any instrument can be dropped into just the delay,
+    just the glitch, just the clouds, or any mix; `FX_FEED` still taps the
+    whole mix into the head of the chain. The chain stays series, but sends
+    inject at their stage (a part sent to CLOUDS only enters the granulator).
+    Pre-routing (768-length) saves migrate their old single-bus sends onto the
+    delay column.
     - floaty tape delay with `DLY_PITCH` (repeats climb/fall — a two-grain
       resampler in the feedback path) and `DLY_REV` (reversed echoes); wow
       drift applies only when neither is engaged.
@@ -43,13 +50,24 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
       audio, pitch-shiftable/reversible, with a feedback tail for the wash.
       Density maps to grain overlap (capped under the pool size) with a
       matched spawn interval + gain, so high density stays continuous.
-  - **RND generation styles** (`GEN_STYLE`, `setStyle`): free / Appalachian /
-    West African / Gamelan / Blues / Andalusian / Middle Eastern. **free**
-    keeps the original random generators (random walks / arps) so RND stays
-    surprising by default; the named styles swap the master scale to an
-    idiomatic choice and steer the contour. Named-style bass stays
-    root/fifth-anchored (solid across key shifts) and chords collapse to one
-    held root chord while a progression is rotating the key (any style).
+  - **Perform mute/solo** (`MUTE_A` per drum lane, `MUTE_SYN`, `SOLO_LANE`,
+    `SOLO_SYN`): the pocket KEY·MIX tab has a live mixer with M/S per channel.
+    If any channel is soloed only soloed channels sound. Gated at the audio
+    render so it responds instantly.
+  - **Undo/redo** (canvas ⤺/⤼ buttons + Ctrl/Cmd+Z/Y, pocket transport
+    chips): a burst of edits (one drag) coalesces into a single history entry
+    committed shortly after you stop. **Named notes**: placing a roll note
+    shows its note name (C#4, F6) or, on the chords part, the chord it builds
+    (e.g. Bbm7) in the status line.
+  - **Two generators, two buttons.** RND (per part, `synGenerate`) is purely
+    random and key-independent — random rhythm + scale-degree scatter. GEN KEY
+    (`synKeyGen`, on the canvas KEY row / "in key" in the pocket) writes a
+    musical part that matches the master key and the **GEN style**
+    (`GEN_STYLE`, `setStyle`): free / Appalachian / West African / Gamelan /
+    Blues / Andalusian / Middle Eastern (each swaps the master scale to an
+    idiomatic choice and steers the contour). GEN-KEY bass stays
+    root/fifth-anchored and chords collapse to one held root chord while a
+    progression is rotating the key.
 
   The canvas scales to fit the viewport width (no sideways scroll), so the
   mixer knobs (top-right) and the FX box (bottom) are always reachable, and

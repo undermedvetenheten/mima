@@ -12,7 +12,7 @@
 'use strict';
 window.createGnomeUI = function (G) {
   const C = G.consts, T = G.tables, m = G.m;
-  const st = { syncs: [], paint: 'draw' };
+  const st = { syncs: [], paint: 'draw', say: () => { } };
 
   // ---- formatting ----
   const fmtInt = v => String(Math.round(v));
@@ -214,6 +214,7 @@ window.createGnomeUI = function (G) {
         if (here) m[ron + i] = 0;
         else { m[ron + i] = 1; m[rdg + i] = deg; }
       }
+      if (m[ron + i]) st.say(G.rollLabel(si, deg));
       G.touchState();
     });
     st.syncs.push(() => {
@@ -303,10 +304,14 @@ window.createGnomeUI = function (G) {
         m[C.LOCK_A + si] ? null : 'independent of the master key',
         h('div', 'pk-actions',
           chip('MUTE', () => G.sget(si, 11), v => G.sset(si, 11, v ? 1 : 0), 'danger'),
-          action('✨ new phrase', () => {
+          action('🎲 random', () => {
             G.synGenerate(si);
-            say(`${T.SYN_NAMES[si]}: new phrase in ${T.SCALE_NAMES[G.effScale(si)]}` +
-              (si === 0 ? ' (random walk)' : si === 1 ? ' (sweeping arc)' : ' (roots by 4ths/5ths)'));
+            say(`${T.SYN_NAMES[si]}: random pattern`);
+            G.touchState();
+          }),
+          action('🎯 in key', () => {
+            G.synKeyGen(si);
+            say(`${T.SYN_NAMES[si]}: generated in ${T.STYLE_NAMES[m[C.GEN_STYLE] || 0]} / ${T.SCALE_NAMES[G.effScale(si)]}`);
             G.touchState();
           })),
         modeBar(),
@@ -369,15 +374,16 @@ window.createGnomeUI = function (G) {
 
   function fxSections() {
     const fmtDlyBeats = v => v + ' beats';
+    // per-fx routing: send each part (0 drums,1 bass,2 melody,3 chords) into
+    // this specific fx stage (fxi 0 delay, 1 glitch, 2 clouds).
+    const route = fxi => ['Drums', 'Bass', 'Melody', 'Chords'].map((nm, p) => {
+      const off = C.SND_MTX + p * 3 + fxi;
+      return stepper(nm + ' →', 0, 100, 5, () => m[off], v => m[off] = v, fmtPct);
+    });
     return [
-      group('effects rack', 'a shared bus: send parts in, or feed the whole mix through',
+      group('effects rack', 'each fx has its own per-part sends, or feed the whole mix through',
         seg('Rack', ['off', 'on'], () => m[C.FX_ON], i => m[C.FX_ON] = i),
         stepper('Feed full mix in', 0, 100, 5, () => m[C.FX_FEED], v => m[C.FX_FEED] = v, fmtPct)),
-      group('sends into the rack', 'push individual parts into the effects',
-        stepper('Drums send', 0, 100, 5, () => m[C.SEND_A], v => m[C.SEND_A] = v, fmtPct),
-        stepper('Bass send', 0, 100, 5, () => m[C.SEND_A + 1], v => m[C.SEND_A + 1] = v, fmtPct),
-        stepper('Melody send', 0, 100, 5, () => m[C.SEND_A + 2], v => m[C.SEND_A + 2] = v, fmtPct),
-        stepper('Chords send', 0, 100, 5, () => m[C.SEND_A + 3], v => m[C.SEND_A + 3] = v, fmtPct)),
       group('floaty delay', 'a tape-ish echo — pitch/reverse the repeats or let them drift',
         seg('Delay', ['off', 'on'], () => m[C.DLY_ON], i => m[C.DLY_ON] = i),
         stepper('Time (beats)', 0.0625, 2, 0.0625, () => m[C.DLY_TIME], v => m[C.DLY_TIME] = v, fmtDlyBeats),
@@ -388,13 +394,15 @@ window.createGnomeUI = function (G) {
           'play the echoes backwards'),
         stepper('Tone', 0, 100, 5, () => m[C.DLY_TONE], v => m[C.DLY_TONE] = v, fmtPct),
         stepper('Float / wow', 0, 100, 5, () => m[C.DLY_WOW], v => m[C.DLY_WOW] = v, fmtPct,
-          'slow pitch drift (only when Pitch/Reverse are off)')),
+          'slow pitch drift (only when Pitch/Reverse are off)'),
+        ...route(0)),
       group('avocado glitch', 'beat-synced stutter + crush for glitching out',
         seg('Glitch', ['off', 'on'], () => m[C.AVO_ON], i => m[C.AVO_ON] = i),
         stepper('Amount', 0, 100, 5, () => m[C.AVO_AMT], v => m[C.AVO_AMT] = v, fmtPct),
         stepper('Rate (beats)', 0.0625, 2, 0.0625, () => m[C.AVO_RATE], v => m[C.AVO_RATE] = v, fmtDlyBeats),
         stepper('Crush', 0, 100, 5, () => m[C.AVO_CRUSH], v => m[C.AVO_CRUSH] = v, fmtPct),
-        stepper('Mix', 0, 100, 5, () => m[C.AVO_MIX], v => m[C.AVO_MIX] = v, fmtPct)),
+        stepper('Mix', 0, 100, 5, () => m[C.AVO_MIX], v => m[C.AVO_MIX] = v, fmtPct),
+        ...route(1)),
       group('clouds', 'granular reverb — smears the sound into a pitched, textured wash',
         seg('Clouds', ['off', 'on'], () => m[C.CLD_ON], i => m[C.CLD_ON] = i),
         stepper('Grain size', 0, 100, 5, () => m[C.CLD_SIZE], v => m[C.CLD_SIZE] = v, fmtPct),
@@ -404,7 +412,8 @@ window.createGnomeUI = function (G) {
         stepper('Spread', 0, 100, 5, () => m[C.CLD_SPREAD], v => m[C.CLD_SPREAD] = v, fmtPct,
           'how far back grains reach — bigger = more smear'),
         stepper('Reverb tail', 0, 100, 5, () => m[C.CLD_REVERB], v => m[C.CLD_REVERB] = v, fmtPct),
-        stepper('Mix', 0, 100, 5, () => m[C.CLD_MIX], v => m[C.CLD_MIX] = v, fmtPct)),
+        stepper('Mix', 0, 100, 5, () => m[C.CLD_MIX], v => m[C.CLD_MIX] = v, fmtPct),
+        ...route(2)),
     ];
   }
 
@@ -433,6 +442,23 @@ window.createGnomeUI = function (G) {
       stepper('Main out', 0, 100, 5, () => G.vols.master, v => G.setVol('master', v)));
   }
 
+  // ---- perform mixer: per-channel mute / solo (live) ----
+  function performSection() {
+    const msRow = (label, muteOff, soloOff) =>
+      h('div', 'pk-msrow',
+        h('span', 'pk-mslabel', label),
+        chip('M', () => m[muteOff], v => m[muteOff] = v ? 1 : 0, 'ms mute'),
+        chip('S', () => m[soloOff], v => m[soloOff] = v ? 1 : 0, 'ms solo'));
+    const rows = [];
+    for (let l = 0; l < G.numLanes; l++)
+      rows.push(msRow(`lane ${l + 1} · ${G.SAMPLE_DEFS[G.smpA[l]].label}`,
+        C.MUTE_A + l, C.SOLO_LANE + l));
+    rows.push(msRow('BASS', C.MUTE_SYN, C.SOLO_SYN));
+    rows.push(msRow('MELODY', C.MUTE_SYN + 1, C.SOLO_SYN + 1));
+    rows.push(msRow('CHORDS', C.MUTE_SYN + 2, C.SOLO_SYN + 2));
+    return group('perform — mute / solo', 'solo any channel to hear it alone', ...rows);
+  }
+
   // ---- transport widgets (play / bpm / record / save) ----
   function transport(say) {
     const play = h('button', 'pk-play', '▶');
@@ -454,6 +480,11 @@ window.createGnomeUI = function (G) {
     const save = h('button', 'pk-save', '⬇ save .wav');
     save.style.display = 'none';
     save.addEventListener('click', () => G.saveLastRecording());
+    const undo = h('button', 'pk-chip', '⤺');
+    const redo = h('button', 'pk-chip', '⤼');
+    undo.addEventListener('click', () => { G.undo(); say('undo'); });
+    redo.addEventListener('click', () => { G.redo(); say('redo'); });
+    const undoBox = h('div', 'pk-undo', undo, redo);
     const fmtTime = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
     const bpmBox = h('div', 'pk-bpm', bpmDown, h('div', 'pk-bpmbox', bpmVal, h('span', 'pk-hint', 'bpm')), bpmUp);
     function upd() {
@@ -463,18 +494,20 @@ window.createGnomeUI = function (G) {
       rec.classList.toggle('on', G.recording);
       rec.textContent = G.recording ? '⏹ ' + fmtTime(G.recSeconds) : '⏺ REC';
       save.style.display = G.lastRecording ? '' : 'none';
+      undo.disabled = !G.canUndo; redo.disabled = !G.canRedo;
     }
-    return { play, bpmBox, rec, save, upd };
+    return { play, bpmBox, rec, save, undoBox, upd };
   }
 
   return {
     st, h,
+    setSay(fn) { st.say = fn || (() => { }); },
     beginRender() { st.syncs = []; st.paint = 'draw'; },
     frame() { for (const f of st.syncs) f(); },
     stepper, seg, chip, action, selectRow, group, modeBar, rotateRow,
     drumGrid, rollGrid, laneStrip, engineHint, transport,
     drumMain, drumParams, synthMain, synthParams, fxSections,
-    masterKeySection, locksSection, volumesSection,
+    masterKeySection, locksSection, volumesSection, performSection,
     SYN_LABELS: ['BASS', 'MELODY', 'CHORDS'],
   };
 };

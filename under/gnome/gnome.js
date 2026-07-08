@@ -527,14 +527,38 @@ async function loadSamples() {
   for (let l = 0; l < LANES_CAP; l++) pushSample(l);
 }
 
+// iOS Safari mutes Web Audio when the ring/silent switch is on unless an
+// HTMLMediaElement has played — that flips the audio session to "playback".
+// Play a tiny silent clip (in the unlocking gesture) to bump the session.
+let iosTag = null;
+function iosSessionUnlock() {
+  if (iosTag) { iosTag.play().catch(() => { }); return; }
+  try {
+    iosTag = new Audio('data:audio/wav;base64,UklGRiQBAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+    iosTag.loop = true; iosTag.setAttribute('playsinline', ''); iosTag.volume = 0.001;
+    iosTag.play().catch(() => { });
+  } catch (e) { /* ignore */ }
+}
+
 async function initAudio() {
   if (audioReady || audioStarting) return;
   audioStarting = true;
   actx = new (window.AudioContext || window.webkitAudioContext)();
+  // iOS Safari: the context is born suspended and only unlocks if we resume
+  // (and make a sound) synchronously inside this unlocking gesture — before
+  // any await hands control back to the event loop.
+  iosSessionUnlock();
+  try { actx.resume(); } catch (e) { /* ignore */ }
+  try {
+    const b = actx.createBuffer(1, 1, actx.sampleRate);
+    const src = actx.createBufferSource();
+    src.buffer = b; src.connect(actx.destination); src.start(0);
+  } catch (e) { /* ignore */ }
   await actx.audioWorklet.addModule('gnome-worklet.js');
   node = new AudioWorkletNode(actx, 'supergnome',
     { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
   node.connect(actx.destination);
+  try { await actx.resume(); } catch (e) { /* ignore */ }
   node.port.onmessage = (e) => {
     const d = e.data;
     if (d.type === 'tick') {
@@ -1479,6 +1503,15 @@ for (let si = 0; si < NSYN; si++) m[spOff(si) + 10] = 1; // internal synth, alwa
 // desktop = the canvas (all on one page); pocket = the DOM tab layout.
 if (usePocket) document.body.classList.add('pocket');
 else requestAnimationFrame(draw);
+
+// iOS Safari: a suspended context can need more than one gesture to unlock,
+// and it re-suspends when the app is backgrounded. Nudge it back on any tap.
+['pointerdown', 'touchend'].forEach(ev => document.addEventListener(ev, () => {
+  if (actx && actx.state === 'suspended') actx.resume().catch(() => { });
+}, { passive: true }));
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && playing && actx && actx.state === 'suspended') actx.resume().catch(() => { });
+});
 
 // exposed for the pocket UI (gnome-mobile.js), the tests, and the console
 window.gnome = {

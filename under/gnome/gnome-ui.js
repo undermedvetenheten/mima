@@ -260,6 +260,7 @@ window.createGnomeUI = function (G) {
       h('div', 'pk-actions',
         chip('MUTE', () => m[C.MUTE_A + l], v => m[C.MUTE_A + l] = v ? 1 : 0, 'danger'),
         action('🎲 choose euclidean rhythm', () => { say(`lane ${l + 1}: ${G.dealEuclid(l)}`); G.touchState(); })),
+      seg('Sample', G.SAMPLE_DEFS.map(s => s.label), () => G.smpA[l], i => G.setSmp(l, i)),
       modeBar(),
       drumGrid(l));
   }

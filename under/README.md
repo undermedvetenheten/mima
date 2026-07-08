@@ -44,11 +44,18 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
       Density maps to grain overlap (capped under the pool size) with a
       matched spawn interval + gain, so high density stays continuous.
   - **RND generation styles** (`GEN_STYLE`, `setStyle`): free / Appalachian /
-    West African / Gamelan / Blues / Andalusian / Middle Eastern. Picking one
-    swaps the master scale to an idiomatic choice; each part's RUN/RND then
-    generates in that flavour. Bass stays root/fifth-anchored (solid across
-    key shifts) and chords collapse to one held root chord while a progression
-    is rotating the key.
+    West African / Gamelan / Blues / Andalusian / Middle Eastern. **free**
+    keeps the original random generators (random walks / arps) so RND stays
+    surprising by default; the named styles swap the master scale to an
+    idiomatic choice and steer the contour. Named-style bass stays
+    root/fifth-anchored (solid across key shifts) and chords collapse to one
+    held root chord while a progression is rotating the key (any style).
+
+  The canvas scales to fit the viewport width (no sideways scroll), so the
+  mixer knobs (top-right) and the FX box (bottom) are always reachable, and
+  drag-to-draw isn't swallowed by an overflow container. Drum lanes keep a
+  per-lane sample picker (`SMP` field on the canvas; a Sample selector in the
+  pocket drums tab), persisted per lane.
   Drum lanes are permanently paired with a sample via `LANE_SAMPLE` (no
   per-lane picker). Changing the memory layout or these offsets means bumping
   `MEM` and `STORE_KEY` in gnome.js and the mirrored constants in the worklet.

@@ -16,6 +16,7 @@
   const say = s => { if (statusEl) statusEl.textContent = s; };
 
   const T = UI.transport(say);
+  UI.setSay(say);
   statusEl = h('div', 'pk-status', 'tap ▶ to wake the gnome and play');
 
   const TABS = [
@@ -35,7 +36,7 @@
   root.append(
     h('div', 'pk-head',
       h('div', 'pk-topbar',
-        h('div', 'pk-topctl', T.play, T.bpmBox, T.rec, T.save),
+        h('div', 'pk-topctl', T.play, T.bpmBox, T.undoBox, T.rec, T.save),
         statusEl),
       tabBar),
     view);
@@ -58,6 +59,7 @@
 
   function mixTab() {
     view.append(
+      UI.performSection(),
       UI.masterKeySection(), UI.locksSection(), UI.volumesSection(),
       UI.group('tempo & reset', null,
         UI.stepper('Tempo', 40, 240, 1, () => G.bpm, v => G.setBpm(v), v => Math.round(v) + ' bpm'),

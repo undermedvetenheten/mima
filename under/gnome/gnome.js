@@ -21,16 +21,25 @@ const PAT = 0, NOTE_A = 256, CHAN_A = 264, STEPS_A = 272, SPAN_A = 280,
   GKEY_SCALE = 717, GKEY_PROG = 718, GKEY_SPD = 719, LOCK_A = 720, HML_A = 724;
 
 // ---- web-only region (>= 728; extends the JSFX block, kept in the worklet) ----
-const MEM = 768;
+const MEM = 800;
 const ENG_A = 728;            // per-synth engine: 0 osc, 1 string, 2 glass
 const GEN_STYLE = 731;        // RND generation style (index into STYLE_NAMES)
 const FX_ON = 736, DLY_ON = 737, DLY_TIME = 738, DLY_FB = 739, DLY_TONE = 740,
   DLY_WOW = 741, FX_FEED = 742, AVO_ON = 743, AVO_AMT = 744, AVO_RATE = 745,
   AVO_CRUSH = 746, AVO_MIX = 747, DLY_PITCH = 748, DLY_REV = 749;
-const SEND_A = 752;          // per-part send: drums, bass, melody, chords
+const SEND_A = 752;          // legacy per-part send (delay column of SND_MTX on load)
 const GLC_A = 756;           // per-synth glass harmonic-cycle rate
 const CLD_ON = 760, CLD_MIX = 761, CLD_SIZE = 762, CLD_DENS = 763,
   CLD_PITCH = 764, CLD_SPREAD = 765, CLD_REVERB = 766, CLD_REVG = 767;
+// routing matrix: part (0 drums, 1 bass, 2 melody, 3 chords) × fx (0 delay,
+// 1 glitch, 2 clouds) send amount = SND_MTX + part*3 + fx. Lets any instrument
+// feed any fx stage independently.
+const SND_MTX = 768;
+// live-perform mute/solo. Drum lanes reuse MUTE_A (per lane); solos + synth
+// mutes live here. When any solo is lit, only soloed channels sound.
+const MUTE_SYN = 780;        // 3: bass / melody / chords mute
+const SOLO_LANE = 783;       // 8: per drum-lane solo
+const SOLO_SYN = 791;        // 3: per-synth solo
 
 const m = new Float64Array(MEM);
 let numLanes = 3;
@@ -106,6 +115,37 @@ let altMode = false; // touch stand-in for right-click
 function noteName(n) {
   const NM = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
   return NM[((n % 12) + 12) % 12] + (Math.floor(n / 12) - 1);
+}
+
+// cents of a scale degree (mirror of the worklet's degCents)
+function degCentsJ(dg, scix) {
+  const s = SCL[scix], cnt = Math.max(1, s[0]);
+  const oc = Math.floor(dg / cnt);
+  return oc * 1200 + s[1 + (dg - oc * cnt)];
+}
+// the note a bass/melody roll degree sounds (written, ignoring live rotation)
+function degNoteName(si, deg) {
+  const scix = effScale(si);
+  return noteName(effBase(si) + Math.round(degCentsJ(deg, scix) / 100));
+}
+// name the chord a chords-roll root degree builds (e.g. "Bbm7")
+function chordName(rootDeg) {
+  const scix = effScale(2), base = effBase(2), has7 = sget(2, 24) > 0;
+  const r0 = Math.round(degCentsJ(rootDeg, scix) / 100);
+  const degs = has7 ? [0, 2, 4, 6] : [0, 2, 4];
+  const iv = degs.map(dd => Math.round(degCentsJ(rootDeg + dd, scix) / 100) - r0);
+  const third = iv[1], fifth = iv[2], sev = has7 ? iv[3] : null;
+  let q;
+  if (third === 4 && fifth === 7) q = has7 ? (sev === 11 ? 'maj7' : '7') : '';
+  else if (third === 3 && fifth === 7) q = has7 ? 'm7' : 'm';
+  else if (third === 3 && fifth === 6) q = has7 ? 'm7♭5' : 'dim';
+  else if (third === 4 && fifth === 8) q = 'aug';
+  else q = (third <= 3 ? 'm' : '') + (has7 ? '7' : '');
+  return noteName(base + r0).replace(/-?\d+$/, '') + q;
+}
+// label for a roll note just placed (used in the status line)
+function rollLabel(si, deg) {
+  return si === 2 ? `chords: ${chordName(deg)}` : `${SYN_NAMES[si]}: ${degNoteName(si, deg)}`;
 }
 
 function getParam(l, f) {
@@ -474,8 +514,15 @@ function loadState() {
   try {
     const s = JSON.parse(localStorage.getItem(STORE_KEY));
     // v1 saves lack the engine/FX region - let them re-init cleanly
-    if (!s || !s.mem || s.mem.length !== MEM) return false;
-    m.set(s.mem);
+    if (!s || !s.mem) return false;
+    if (s.mem.length === MEM) m.set(s.mem);
+    else if (s.mem.length === 768) {
+      // pre-routing save: keep it, and map the old single-bus sends onto the
+      // delay column of the new matrix so it sounds the same.
+      m.fill(0);
+      m.set(s.mem.slice(0, 768));
+      for (let p = 0; p < 4; p++) m[SND_MTX + p * 3] = s.mem[SEND_A + p] || 0;
+    } else return false;
     numLanes = Math.max(1, Math.min(LANES_CAP, s.numLanes || 3));
     vols = Object.assign(vols, s.vols);
     bpm = s.bpm || 120;
@@ -487,8 +534,63 @@ function loadState() {
 let saveTimer = 0;
 function touchState() {
   pushState();
+  scheduleCommit();
   clearTimeout(saveTimer);
   saveTimer = setTimeout(saveState, 400);
+}
+
+// ---- undo / redo ----
+// A burst of edits (e.g. one drag) is coalesced into a single history entry,
+// committed a moment after you stop. `committed` always holds the last stable
+// snapshot; undo/redo swap it with the stacks.
+let undoStack = [], redoStack = [], committed = null, commitTimer = 0;
+function snapshot() {
+  return { mem: m.slice(), nl: numLanes, smp: smpA.slice(), vols: Object.assign({}, vols), bpm };
+}
+function sameSnap(a, b) {
+  if (!a || !b || a.nl !== b.nl || a.bpm !== b.bpm) return false;
+  for (let i = 0; i < MEM; i++) if (a.mem[i] !== b.mem[i]) return false;
+  for (let i = 0; i < LANES_CAP; i++) if (a.smp[i] !== b.smp[i]) return false;
+  for (const k in a.vols) if (a.vols[k] !== b.vols[k]) return false;
+  return true;
+}
+function scheduleCommit() {
+  if (!committed) committed = snapshot();
+  clearTimeout(commitTimer);
+  commitTimer = setTimeout(() => {
+    const cur = snapshot();
+    if (!sameSnap(cur, committed)) {
+      undoStack.push(committed);
+      if (undoStack.length > 100) undoStack.shift();
+      redoStack.length = 0;
+      committed = cur;
+    }
+  }, 350);
+}
+function restoreSnap(s) {
+  m.set(s.mem); numLanes = s.nl; smpA = s.smp.slice();
+  vols = Object.assign(vols, s.vols); bpm = s.bpm;
+  pushState(); pushGains(); pushTransport();
+  for (let l = 0; l < LANES_CAP; l++) pushSample(l);
+  clearTimeout(saveTimer); saveTimer = setTimeout(saveState, 400);
+}
+function undo() {
+  clearTimeout(commitTimer);
+  const cur = snapshot();
+  if (!sameSnap(cur, committed)) { redoStack.push(cur); committed = cur; } // fold in an uncommitted burst
+  if (!undoStack.length) { setStatus('nothing to undo'); return; }
+  redoStack.push(committed);
+  committed = undoStack.pop();
+  restoreSnap(committed);
+  setStatus('undo');
+}
+function redo() {
+  clearTimeout(commitTimer);
+  if (!redoStack.length) { setStatus('nothing to redo'); return; }
+  undoStack.push(committed);
+  committed = redoStack.pop();
+  restoreSnap(committed);
+  setStatus('redo');
 }
 
 // ---- audio ----
@@ -687,7 +789,8 @@ const GENKEY_X = 1108, GENKEY_W = 148; // "GEN KEY" — generate all parts in ke
 // header controls
 const PLAY_R = [130, 4, 44, 22], BPM_R = [180, 4, 52, 22],
   INIT_R = [238, 4, 40, 22], ALT_R = [284, 4, 40, 22],
-  REC_R = [330, 4, 52, 22], SAVE_R = [388, 4, 52, 22];
+  REC_R = [330, 4, 52, 22], SAVE_R = [388, 4, 52, 22],
+  UNDO_R = [446, 4, 34, 22], REDO_R = [484, 4, 34, 22];
 const KNOBS = [
   { id: 'drum', label: 'DRUM' }, { id: 'bass', label: 'BASS' },
   { id: 'mel', label: 'MEL' }, { id: 'chd', label: 'CHD' },
@@ -708,19 +811,24 @@ function fxCells() {
     c.push({ t: 'val', x, y, w, label, off, min, max, step, fmt });
   const tog = (x, y, w, label, off) => c.push({ t: 'tog', x, y, w, label, off });
   const lbl = (x, y, text) => c.push({ t: 'lbl', x, y, text });
+  // per-fx routing sends: DRM/BAS/MEL/CHD into this fx stage (fxi 0/1/2)
+  const sends = (x, y, fxi) => {
+    lbl(x, y + 9, '◂'); x += 12;
+    val(x, y, 32, 'DR', SND_MTX + 0 * 3 + fxi, 0, 100, 5, 'pct'); x += 35;
+    val(x, y, 32, 'BS', SND_MTX + 1 * 3 + fxi, 0, 100, 5, 'pct'); x += 35;
+    val(x, y, 32, 'ML', SND_MTX + 2 * 3 + fxi, 0, 100, 5, 'pct'); x += 35;
+    val(x, y, 32, 'CH', SND_MTX + 3 * 3 + fxi, 0, 100, 5, 'pct'); x += 35;
+    return x;
+  };
   let x, y;
   y = fy + 24; x = 12;
   tog(x, y, 34, 'FX', FX_ON); x += 40;
-  val(x, y, 44, 'FEED', FX_FEED, 0, 100, 5, 'pct'); x += 54;
-  lbl(x, y + 9, 'SEND'); x += 40;
-  val(x, y, 40, 'DRM', SEND_A, 0, 100, 5, 'pct'); x += 44;
-  val(x, y, 40, 'BAS', SEND_A + 1, 0, 100, 5, 'pct'); x += 44;
-  val(x, y, 40, 'MEL', SEND_A + 2, 0, 100, 5, 'pct'); x += 44;
-  val(x, y, 40, 'CHD', SEND_A + 3, 0, 100, 5, 'pct'); x += 54;
+  val(x, y, 44, 'FEED', FX_FEED, 0, 100, 5, 'pct'); x += 58;
   lbl(x, y + 9, 'GLASS CYC'); x += 72;
   val(x, y, 38, 'BAS', GLC_A, 0, 100, 5, 'pct'); x += 42;
   val(x, y, 38, 'MEL', GLC_A + 1, 0, 100, 5, 'pct'); x += 42;
-  val(x, y, 38, 'CHD', GLC_A + 2, 0, 100, 5, 'pct');
+  val(x, y, 38, 'CHD', GLC_A + 2, 0, 100, 5, 'pct'); x += 54;
+  lbl(x, y + 9, 'routing: each fx has its own DR/BS/ML/CH sends');
   y = fy + 60; x = 12;
   lbl(x, y + 9, 'DELAY'); x += 52;
   tog(x, y, 34, '', DLY_ON); x += 40;
@@ -729,14 +837,16 @@ function fxCells() {
   val(x, y, 40, 'PIT', DLY_PITCH, -24, 24, 1, 'st'); x += 44;
   tog(x, y, 42, 'REV', DLY_REV); x += 48;
   val(x, y, 42, 'TONE', DLY_TONE, 0, 100, 5, 'pct'); x += 46;
-  val(x, y, 42, 'WOW', DLY_WOW, 0, 100, 5, 'pct');
+  val(x, y, 42, 'WOW', DLY_WOW, 0, 100, 5, 'pct'); x += 50;
+  sends(x, y, 0);
   y = fy + 96; x = 12;
   lbl(x, y + 9, 'GLITCH'); x += 52;
   tog(x, y, 34, '', AVO_ON); x += 40;
   val(x, y, 44, 'AMT', AVO_AMT, 0, 100, 5, 'pct'); x += 48;
   val(x, y, 46, 'RATE', AVO_RATE, 0.0625, 2, 0.0625, 'beats'); x += 50;
   val(x, y, 44, 'CRSH', AVO_CRUSH, 0, 100, 5, 'pct'); x += 48;
-  val(x, y, 42, 'MIX', AVO_MIX, 0, 100, 5, 'pct');
+  val(x, y, 42, 'MIX', AVO_MIX, 0, 100, 5, 'pct'); x += 50;
+  sends(x, y, 1);
   y = fy + 132; x = 12;
   lbl(x, y + 9, 'CLOUDS'); x += 52;
   tog(x, y, 34, '', CLD_ON); x += 40;
@@ -746,7 +856,8 @@ function fxCells() {
   tog(x, y, 48, 'REVG', CLD_REVG); x += 52;
   val(x, y, 44, 'SPRD', CLD_SPREAD, 0, 100, 5, 'pct'); x += 48;
   val(x, y, 44, 'TAIL', CLD_REVERB, 0, 100, 5, 'pct'); x += 48;
-  val(x, y, 42, 'MIX', CLD_MIX, 0, 100, 5, 'pct');
+  val(x, y, 42, 'MIX', CLD_MIX, 0, 100, 5, 'pct'); x += 46;
+  sends(x, y, 2);
   return c;
 }
 
@@ -815,6 +926,8 @@ function onDown(x, y, right) {
       return;
     }
     if (lastRec && inRect(x, y, SAVE_R)) { saveLastRecording(); return; }
+    if (inRect(x, y, UNDO_R)) { undo(); return; }
+    if (inRect(x, y, REDO_R)) { redo(); return; }
     for (let i = 0; i < KNOBS.length; i++) {
       if (x >= knobX(i) && x < knobX(i) + 44) {
         dragMode = 20; dragKnob = i; dragY = y; dragV = vols[KNOBS[i].id];
@@ -924,6 +1037,7 @@ function onDown(x, y, right) {
           m[ron + mcol] = 1;
           m[rdg + mcol] = mrow;
           dragMode = 6;
+          setStatus(rollLabel(gsi, mrow));
         }
         dragSynth = gsi;
         touchState();
@@ -1043,6 +1157,7 @@ function onMove(x, y) {
     if (mcol >= 0 && mcol < sget(dragSynth, 2) && mrow >= 0 && mrow < NROWS) {
       m[ronOff(dragSynth) + mcol] = 1;
       m[rdgOff(dragSynth) + mcol] = mrow;
+      setStatus(rollLabel(dragSynth, mrow));
     }
   } else if (dragMode === 7) {
     const mcol = Math.floor((x - xGrid) / cellw);
@@ -1193,6 +1308,15 @@ function draw() {
     set(0.24, 0.4, 0.3); rect(...SAVE_R);
     set(0.85, 0.95, 0.88); textC('SAVE', SAVE_R[0], SAVE_R[0] + SAVE_R[2], 9, F11);
   }
+
+  undoStack.length ? set(0.26, 0.26, 0.32) : set(0.18, 0.18, 0.2);
+  rect(...UNDO_R);
+  set(undoStack.length ? 0.85 : 0.4, undoStack.length ? 0.85 : 0.4, 0.9);
+  textC('⤺', UNDO_R[0], UNDO_R[0] + UNDO_R[2], 8, '14px Arial');
+  redoStack.length ? set(0.26, 0.26, 0.32) : set(0.18, 0.18, 0.2);
+  rect(...REDO_R);
+  set(redoStack.length ? 0.85 : 0.4, redoStack.length ? 0.85 : 0.4, 0.9);
+  textC('⤼', REDO_R[0], REDO_R[0] + REDO_R[2], 8, '14px Arial');
 
   for (let i = 0; i < KNOBS.length; i++) {
     const kx = knobX(i) + 22, ky = 13, v = vols[KNOBS[i].id] / 100;
@@ -1520,9 +1644,18 @@ const usePocket = layoutPref
 
 if (!loadState()) { initState(); seedGroove(); }
 for (let si = 0; si < NSYN; si++) m[spOff(si) + 10] = 1; // internal synth, always
+committed = snapshot();                                   // undo baseline
 // desktop = the canvas (all on one page); pocket = the DOM tab layout.
 if (usePocket) document.body.classList.add('pocket');
 else requestAnimationFrame(draw);
+
+// keyboard undo/redo (desktop)
+document.addEventListener('keydown', e => {
+  if (!(e.metaKey || e.ctrlKey)) return;
+  const k = e.key.toLowerCase();
+  if (k === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
+  else if (k === 'y') { e.preventDefault(); redo(); }
+});
 
 // iOS Safari: a suspended context can need more than one gesture to unlock,
 // and it re-suspends when the app is backgrounded. Nudge it back on any tap.
@@ -1542,6 +1675,9 @@ window.gnome = {
     ? { type: 'sample', lane, data: decoded[s].data, nch: decoded[s].nch, sr: decoded[s].sr, len: decoded[s].len }
     : { type: 'sample', lane, data: null }),
   initAudio, togglePlay,
+  undo, redo,
+  get canUndo() { return undoStack.length > 0; },
+  get canRedo() { return redoStack.length > 0; },
   startRecording, stopRecording, toggleRecording, saveLastRecording,
   get recording() { return recording; },
   get recSeconds() { return recFrames / (recSampleRate || 44100); },
@@ -1567,10 +1703,11 @@ window.gnome = {
     FX_FEED, AVO_ON, AVO_AMT, AVO_RATE, AVO_CRUSH, AVO_MIX, SEND_A,
     DLY_PITCH, DLY_REV, GLC_A, CLD_ON, CLD_MIX, CLD_SIZE, CLD_DENS,
     CLD_PITCH, CLD_SPREAD, CLD_REVERB, CLD_REVG, GEN_STYLE,
+    SND_MTX, MUTE_SYN, SOLO_LANE, SOLO_SYN,
   },
   tables: { SCALE_NAMES, PROG_NAMES, SHAPE_NAMES, SYN_NAMES, FEEL_NAMES, SCL, STYLE_NAMES },
   SAMPLE_DEFS,
-  noteName, getParam, setParam, sget, sset, ronOff, rdgOff, effScale, effBase,
+  noteName, rollLabel, getParam, setParam, sget, sset, ronOff, rdgOff, effScale, effBase,
   applyEuclid, applySynEuclid, rotatePat, rotateSyn, synGenerate, synKeyGen, dealEuclid, setStyle,
   resetAll, touchState, pushTransport, pushGains, pushSample,
   get smpA() { return smpA; },

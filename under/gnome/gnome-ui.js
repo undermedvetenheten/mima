@@ -303,10 +303,14 @@ window.createGnomeUI = function (G) {
         m[C.LOCK_A + si] ? null : 'independent of the master key',
         h('div', 'pk-actions',
           chip('MUTE', () => G.sget(si, 11), v => G.sset(si, 11, v ? 1 : 0), 'danger'),
-          action('✨ new phrase', () => {
+          action('🎲 random', () => {
             G.synGenerate(si);
-            say(`${T.SYN_NAMES[si]}: new phrase in ${T.SCALE_NAMES[G.effScale(si)]}` +
-              (si === 0 ? ' (random walk)' : si === 1 ? ' (sweeping arc)' : ' (roots by 4ths/5ths)'));
+            say(`${T.SYN_NAMES[si]}: random pattern`);
+            G.touchState();
+          }),
+          action('🎯 in key', () => {
+            G.synKeyGen(si);
+            say(`${T.SYN_NAMES[si]}: generated in ${T.STYLE_NAMES[m[C.GEN_STYLE] || 0]} / ${T.SCALE_NAMES[G.effScale(si)]}`);
             G.touchState();
           })),
         modeBar(),

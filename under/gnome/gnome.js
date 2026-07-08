@@ -234,29 +234,68 @@ function degNear(scix, cents) {
   return bi;
 }
 
-// BASS. Free style keeps the original random walk (kept as the default so RND
-// stays surprising). Named styles anchor to root + fifth so the bass stays
-// solid when the harmony rotates.
-function genBass(style) {
+// ============================================================================
+// Generation comes in two flavours, on two buttons:
+//   RND  -> synGenerate  : purely random, independent of the key/style
+//   GEN KEY -> synKeyGen  : musical, matches the master key + GEN style
+// ============================================================================
+
+// ---- RND (random, key-independent) ----
+function randBass() {
+  const ron = ronOff(0), rdg = rdgOff(0), n = sget(0, 2);
+  applySynEuclid(0);
+  let prev = Math.floor(Math.random() * 6);
+  for (let i = 0; i < n; i++) if (m[ron + i]) {
+    prev = prev + Math.floor(Math.random() * 7) - 3;
+    if (prev < 0) prev += 5; if (prev > NROWS - 1) prev -= 5;
+    m[rdg + i] = Math.max(0, Math.min(NROWS - 1, prev));
+  }
+}
+function randMelody() {
+  const ron = ronOff(1), rdg = rdgOff(1), n = sget(1, 2);
+  const k = sget(1, 4), bars = Math.max(1, Math.floor(sget(1, 3) / 4 + 0.5));
+  const sbar = Math.floor(n / bars);
+  if (sbar > 0 && sbar * bars === n) {
+    for (let b = 0; b < bars; b++) {
+      const kk = Math.min(k, sbar);
+      for (let i = 0; i < sbar; i++) {
+        const ii = ((i - sget(1, 5) - b) % sbar + sbar) % sbar;
+        m[ron + b * sbar + i] = kk > 0 ? ((ii * kk) % sbar < kk ? 1 : 0) : 0;
+      }
+    }
+  } else applySynEuclid(1);
+  const arc = Math.random();
+  for (let i = 0; i < n; i++) if (m[ron + i]) {
+    const dgv = Math.floor(5.5 + 4.5 * Math.sin(2 * Math.PI * (i / n + arc)) + Math.random() * 3 - 1);
+    m[rdg + i] = Math.max(0, Math.min(NROWS - 1, dgv));
+  }
+}
+function randChords() {
+  const ron = ronOff(2), rdg = rdgOff(2), n = sget(2, 2), cnt = SCL[effScale(2)][0];
+  applySynEuclid(2);
+  let prev = 0;
+  for (let i = 0; i < n; i++) if (m[ron + i]) {
+    const rr = Math.random();
+    prev += rr < 0.28 ? 3 : rr < 0.56 ? -3 : rr < 0.72 ? 4 : rr < 0.82 ? -4 : rr < 0.92 ? 1 : 0;
+    prev = ((prev % cnt) + cnt) % cnt;
+    m[rdg + i] = prev;
+  }
+}
+
+// ---- GEN KEY (musical, matches the key + GEN style) ----
+// BASS: root-anchored (mostly root + fifth) so it stays solid when the harmony
+// rotates. Appalachian alternates root/fifth; West African tiles a short cell.
+function keyBass(style) {
   const ron = ronOff(0), rdg = rdgOff(0), n = sget(0, 2), scix = effScale(0);
   const cnt = SCL[scix][0], fifth = degNear(scix, 700);
   applySynEuclid(0);
-  if (style === 0) {                            // original random walk
-    let prev = Math.floor(Math.random() * 6);
-    for (let i = 0; i < n; i++) if (m[ron + i]) {
-      prev = prev + Math.floor(Math.random() * 7) - 3;
-      if (prev < 0) prev += 5; if (prev > NROWS - 1) prev -= 5;
-      m[rdg + i] = Math.max(0, Math.min(NROWS - 1, prev));
-    }
-    return;
-  }
   m[ron] = 1;                                   // root on the downbeat
-  if (style === 1) {                            // Appalachian boom-chuck
+  if (style === 1) {
     let tog = 0;
     for (let i = 0; i < n; i++) if (m[ron + i]) { m[rdg + i] = tog ? fifth : 0; tog ^= 1; }
     return;
   }
-  if (style === 2) {                            // West African: short root-ish cell
+  if (style === 2) {
     const cell = [0, fifth, 0, cnt];
     for (let i = 0; i < n; i++) if (m[ron + i]) m[rdg + i] = cell[i % cell.length];
     return;
@@ -270,32 +309,10 @@ function genBass(style) {
   }
 }
 
-// MELODY. Free style keeps the original per-bar euclid + sweeping arc (random
-// arps). Named styles use a flavoured contour.
-function genMelody(style) {
+// MELODY: a style-flavoured contour over the euclidean rhythm.
+function keyMelody(style) {
   const ron = ronOff(1), rdg = rdgOff(1), n = sget(1, 2), scix = effScale(1);
   const cnt = SCL[scix][0], top = NROWS - 1;    // roll rows = degrees 0..11
-
-  if (style === 0) {                            // original: per-bar variations + arc
-    const k = sget(1, 4);
-    const bars = Math.max(1, Math.floor(sget(1, 3) / 4 + 0.5));
-    const sbar = Math.floor(n / bars);
-    if (sbar > 0 && sbar * bars === n) {
-      for (let b = 0; b < bars; b++) {
-        const kk = Math.min(k, sbar);
-        for (let i = 0; i < sbar; i++) {
-          const ii = ((i - sget(1, 5) - b) % sbar + sbar) % sbar;
-          m[ron + b * sbar + i] = kk > 0 ? ((ii * kk) % sbar < kk ? 1 : 0) : 0;
-        }
-      }
-    } else applySynEuclid(1);
-    const arc = Math.random();
-    for (let i = 0; i < n; i++) if (m[ron + i]) {
-      const dgv = Math.floor(5.5 + 4.5 * Math.sin(2 * Math.PI * (i / n + arc)) + Math.random() * 3 - 1);
-      m[rdg + i] = Math.max(0, Math.min(NROWS - 1, dgv));
-    }
-    return;
-  }
 
   // rhythm: fuller for busy styles, euclidean otherwise
   if (style === 1 || style === 4) {
@@ -344,13 +361,12 @@ function genMelody(style) {
   });
 }
 
-// CHORDS: when a progression is rotating the key, hold essentially one root
-// chord (the progression does the moving) — "one chord is best". Otherwise a
-// gentle diatonic move favouring I / IV / V / vi.
-function genChords(style) {
+// CHORDS: hold one root chord while a progression is rotating the key ("one
+// chord is best"); otherwise a gentle diatonic move favouring I / IV / V / vi.
+function keyChords(style) {
   const ron = ronOff(2), rdg = rdgOff(2), n = sget(2, 2), cnt = SCL[effScale(2)][0];
   const progActive = (m[LOCK_A + 2] ? m[GKEY_PROG] : sget(2, 22)) > 0;
-  // one held root chord while a progression is rotating the key (any style)
+  void style;
   if (progActive) {
     for (let i = 0; i < n; i++) { m[ron + i] = 0; m[rdg + i] = 0; }
     m[ron] = 1; m[rdg] = 0;
@@ -358,16 +374,6 @@ function genChords(style) {
     return;
   }
   applySynEuclid(2);
-  if (style === 0) {                              // original 4th/5th root walk
-    let prev = 0;
-    for (let i = 0; i < n; i++) if (m[ron + i]) {
-      const rr = Math.random();
-      prev += rr < 0.28 ? 3 : rr < 0.56 ? -3 : rr < 0.72 ? 4 : rr < 0.82 ? -4 : rr < 0.92 ? 1 : 0;
-      prev = ((prev % cnt) + cnt) % cnt;
-      m[rdg + i] = prev;
-    }
-    return;
-  }
   const good = [0, Math.min(3, cnt - 1), Math.min(4, cnt - 1), Math.min(5, cnt - 1)];
   let prev = 0;
   for (let i = 0; i < n; i++) {
@@ -377,11 +383,14 @@ function genChords(style) {
   }
 }
 
+// RND button: a purely random pattern, independent of key/style.
 function synGenerate(si) {
+  if (si === 0) randBass(); else if (si === 1) randMelody(); else randChords();
+}
+// GEN KEY button: a musical pattern that matches the master key + GEN style.
+function synKeyGen(si) {
   const style = m[GEN_STYLE] || 0;
-  if (si === 0) genBass(style);
-  else if (si === 1) genMelody(style);
-  else genChords(style);
+  if (si === 0) keyBass(style); else if (si === 1) keyMelody(style); else keyChords(style);
 }
 
 // pick a generation style: also swaps the master scale to something idiomatic
@@ -672,7 +681,8 @@ function totalH() { return yStat() + 22; }
 // KEY row layout
 const kxKey = 156, kxScl = 204, kxPrg = 252, kxSpd = 298;
 const kxB = 348, kxM = 398, kxC = 448; // lock buttons; +20 = mult boxes
-const STYLE_X = 1040, STYLE_W = 216;   // GEN-style button (right of the KEY row)
+const STYLE_X = 900, STYLE_W = 200;    // style selector (right of the KEY row)
+const GENKEY_X = 1108, GENKEY_W = 148; // "GEN KEY" — generate all parts in key
 
 // header controls
 const PLAY_R = [130, 4, 44, 22], BPM_R = [180, 4, 52, 22],
@@ -838,7 +848,12 @@ function onDown(x, y, right) {
     else if (x >= kxSpd && x < kxSpd + 36) { dragMode = 17; dragY = y; dragV = m[GKEY_SPD]; }
     else if (x >= STYLE_X && x < STYLE_X + STYLE_W) {
       setStyle((m[GEN_STYLE] || 0) + 1);
-      setStatus(`GEN style: ${STYLE_NAMES[m[GEN_STYLE]]}${STYLE_SCALE[m[GEN_STYLE]] >= 0 ? ' — scale set to ' + SCALE_NAMES[m[GKEY_SCALE]] + '; hit RND on a part' : ''}`);
+      setStatus(`style: ${STYLE_NAMES[m[GEN_STYLE]]}${STYLE_SCALE[m[GEN_STYLE]] >= 0 ? ' — scale set to ' + SCALE_NAMES[m[GKEY_SCALE]] + '; hit GEN KEY' : ''}`);
+      touchState();
+    }
+    else if (x >= GENKEY_X && x < GENKEY_X + GENKEY_W) {
+      for (let si = 0; si < NSYN; si++) synKeyGen(si);
+      setStatus(`generated bass + melody + chords in ${STYLE_NAMES[m[GEN_STYLE] || 0]} / ${SCALE_NAMES[m[GKEY_SCALE]]}`);
       touchState();
     }
     else {
@@ -1280,12 +1295,17 @@ function draw() {
   text(`${SCALE_NAMES[m[GKEY_SCALE]]} / ${PROG_NAMES[m[GKEY_PROG]]}  |  B M C lock sections; box = harmony speed`,
     500, yb + 4, F11);
 
-  // GEN style button (RND on each synth generates in this style)
+  // style selector + GEN KEY button. RND (per part) stays purely random;
+  // GEN KEY writes musical parts that match the key + this style.
   const stName = STYLE_NAMES[m[GEN_STYLE] || 0];
-  m[GEN_STYLE] > 0 ? set(0.32, 0.3, 0.42) : set(0.24, 0.24, 0.28);
+  set(0.26, 0.26, 0.3);
   rect(STYLE_X, yb, STYLE_W, 18);
-  set(0.85, 0.85, 0.95);
-  textC('GEN: ' + stName, STYLE_X, STYLE_X + STYLE_W, yb + 3, F11);
+  set(0.8, 0.8, 0.9);
+  textC('STYLE: ' + stName, STYLE_X, STYLE_X + STYLE_W, yb + 3, F11);
+  set(0.3, 0.42, 0.34);
+  rect(GENKEY_X, yb, GENKEY_W, 18);
+  set(0.85, 0.95, 0.88);
+  textC('GEN KEY ▸', GENKEY_X, GENKEY_X + GENKEY_W, yb + 3, F11);
 
   // ---- synth sections ----
   for (let gsi = 0; gsi < NSYN; gsi++) {
@@ -1551,7 +1571,7 @@ window.gnome = {
   tables: { SCALE_NAMES, PROG_NAMES, SHAPE_NAMES, SYN_NAMES, FEEL_NAMES, SCL, STYLE_NAMES },
   SAMPLE_DEFS,
   noteName, getParam, setParam, sget, sset, ronOff, rdgOff, effScale, effBase,
-  applyEuclid, applySynEuclid, rotatePat, rotateSyn, synGenerate, dealEuclid, setStyle,
+  applyEuclid, applySynEuclid, rotatePat, rotateSyn, synGenerate, synKeyGen, dealEuclid, setStyle,
   resetAll, touchState, pushTransport, pushGains, pushSample,
   get smpA() { return smpA; },
   setSmp(lane, i) {

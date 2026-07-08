@@ -43,13 +43,15 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
       audio, pitch-shiftable/reversible, with a feedback tail for the wash.
       Density maps to grain overlap (capped under the pool size) with a
       matched spawn interval + gain, so high density stays continuous.
-  - **RND generation styles** (`GEN_STYLE`, `setStyle`): free / Appalachian /
-    West African / Gamelan / Blues / Andalusian / Middle Eastern. **free**
-    keeps the original random generators (random walks / arps) so RND stays
-    surprising by default; the named styles swap the master scale to an
-    idiomatic choice and steer the contour. Named-style bass stays
-    root/fifth-anchored (solid across key shifts) and chords collapse to one
-    held root chord while a progression is rotating the key (any style).
+  - **Two generators, two buttons.** RND (per part, `synGenerate`) is purely
+    random and key-independent — random rhythm + scale-degree scatter. GEN KEY
+    (`synKeyGen`, on the canvas KEY row / "in key" in the pocket) writes a
+    musical part that matches the master key and the **GEN style**
+    (`GEN_STYLE`, `setStyle`): free / Appalachian / West African / Gamelan /
+    Blues / Andalusian / Middle Eastern (each swaps the master scale to an
+    idiomatic choice and steers the contour). GEN-KEY bass stays
+    root/fifth-anchored and chords collapse to one held root chord while a
+    progression is rotating the key.
 
   The canvas scales to fit the viewport width (no sideways scroll), so the
   mixer knobs (top-right) and the FX box (bottom) are always reachable, and

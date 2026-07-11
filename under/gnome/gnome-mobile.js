@@ -61,6 +61,9 @@
     view.append(
       UI.performSection(),
       UI.masterKeySection(), UI.locksSection(), UI.volumesSection(),
+      UI.group('export', 'render the current pattern as staff notation, then Save PDF / Print',
+        h('div', 'pk-actions',
+          UI.action('♪ Sheet music (PDF)', () => G.exportScore()))),
       UI.group('tempo & reset', null,
         UI.stepper('Tempo', 40, 240, 1, () => G.bpm, v => G.setBpm(v), v => Math.round(v) + ' bpm'),
         h('div', 'pk-actions',

@@ -78,6 +78,17 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
   per-lane picker). Changing the memory layout or these offsets means bumping
   `MEM` and `STORE_KEY` in gnome.js and the mirrored constants in the worklet.
 
+  **Sheet music (PDF)**: `gnome-score.js` renders the current pattern as staff
+  notation — one system per pitched part (clef auto-picked from each part's
+  pitch range so notes land on the staff, not stacks of ledger lines), plus a
+  drum grid (x = hit, ◆ = accent). `buildScoreModel` in gnome.js does the
+  musical mapping (pitches match playback at the nearest semitone — microtonal
+  scales are labelled as approximated; rhythm is the step grid, beats per step
+  = span ÷ steps). It's drawn as inline SVG into an on-screen preview and saved
+  via the browser's print-to-PDF (`window.print`), so it works the same on
+  desktop and iOS. The canvas has a ♪ PDF header button; the pocket has a
+  "Sheet music (PDF)" action on the KEY·MIX tab.
+
   **Recording**: the worklet streams its master output (post-FX, post-limiter)
   to the main thread as PCM chunks; gnome.js encodes a 16-bit stereo WAV on
   stop and hands it off via the Web Share API (iOS "Save to Files") with a

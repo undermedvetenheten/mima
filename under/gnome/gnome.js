@@ -148,6 +148,63 @@ function rollLabel(si, deg) {
   return si === 2 ? `chords: ${chordName(deg)}` : `${SYN_NAMES[si]}: ${degNoteName(si, deg)}`;
 }
 
+// MIDI note a bass/melody degree sounds (written, ignoring live key rotation)
+function degMidi(si, deg) {
+  return effBase(si) + Math.round(degCentsJ(deg, effScale(si)) / 100);
+}
+// A clef/rhythm-agnostic musical model of the current pattern, for the score
+// export. Pitches match what plays (nearest semitone — microtonal scales are
+// approximated); timing is the step grid (beats per step = span / steps).
+function buildScoreModel() {
+  const parts = [];
+  const chordHas7 = () => sget(2, 24) > 0;
+  for (let si = 0; si < NSYN; si++) {
+    const ron = ronOff(si), rdg = rdgOff(si);
+    const steps = Math.round(sget(si, 2)), span = sget(si, 3);
+    const bps = span / steps;
+    const scix = effScale(si), base = effBase(si);
+    const notes = [];
+    for (let i = 0; i < steps; i++) {
+      if (!m[ron + i]) { notes.push(null); continue; }
+      const deg = m[rdg + i], accent = m[ron + i] === 2;
+      let midis;
+      if (si === 2) {
+        const degs = chordHas7() ? [0, 2, 4, 6] : [0, 2, 4];
+        midis = degs.map(dd => base + Math.round(degCentsJ(deg + dd, scix) / 100));
+      } else midis = [degMidi(si, deg)];
+      notes.push({ midis, accent, label: si === 2 ? chordName(deg) : noteName(midis[0]) });
+    }
+    if (notes.some(Boolean)) {
+      // pick the clef from the part's pitch range so notes sit on the staff
+      // instead of stacks of ledger lines (chords/low parts go to bass clef).
+      const allMidi = notes.filter(Boolean).flatMap(n => n.midis).sort((a, b) => a - b);
+      const median = allMidi[Math.floor(allMidi.length / 2)];
+      parts.push({ name: SYN_NAMES[si].toUpperCase(), clef: median < 59 ? 'bass' : 'treble',
+        steps, span, bps, notes });
+    }
+  }
+  const drums = [];
+  for (let l = 0; l < numLanes; l++) {
+    const steps = Math.round(m[STEPS_A + l]), span = m[SPAN_A + l];
+    const hits = [];
+    let any = false;
+    for (let i = 0; i < steps; i++) {
+      const v = m[PAT + l * MAX_STEPS + i];
+      hits.push(v ? (v === 2 ? 2 : 1) : 0);
+      if (v) any = true;
+    }
+    if (any) drums.push({ name: SAMPLE_DEFS[smpA[l]].label, steps, span, bps: span / steps, hits });
+  }
+  const keyNote = m[GKEY_NOTE], scix = m[GKEY_SCALE];
+  return {
+    title: 'SuperGnome',
+    key: noteName(keyNote).replace(/-?\d+$/, ''),
+    scale: SCALE_NAMES[scix] || '',
+    microtonal: [11, 12, 13].includes(scix), // Pelog / Slendro / Rast approximated
+    bpm, parts, drums,
+  };
+}
+
 function getParam(l, f) {
   const off = [NOTE_A, CHAN_A, STEPS_A, SPAN_A, PUL_A, ROT_A, VEL_A, GATE_A,
     PIT_A, LPF_A, FENV_A, LRATE_A, LDEP_A, LSHAPE_A, LPT_A, SWG_A, NDG_A, VHM_A][f];
@@ -790,7 +847,8 @@ const GENKEY_X = 1108, GENKEY_W = 148; // "GEN KEY" — generate all parts in ke
 const PLAY_R = [130, 4, 44, 22], BPM_R = [180, 4, 52, 22],
   INIT_R = [238, 4, 40, 22], ALT_R = [284, 4, 40, 22],
   REC_R = [330, 4, 52, 22], SAVE_R = [388, 4, 52, 22],
-  UNDO_R = [446, 4, 34, 22], REDO_R = [484, 4, 34, 22];
+  UNDO_R = [446, 4, 34, 22], REDO_R = [484, 4, 34, 22],
+  SHEET_R = [524, 4, 56, 22];
 const KNOBS = [
   { id: 'drum', label: 'DRUM' }, { id: 'bass', label: 'BASS' },
   { id: 'mel', label: 'MEL' }, { id: 'chd', label: 'CHD' },
@@ -928,6 +986,7 @@ function onDown(x, y, right) {
     if (lastRec && inRect(x, y, SAVE_R)) { saveLastRecording(); return; }
     if (inRect(x, y, UNDO_R)) { undo(); return; }
     if (inRect(x, y, REDO_R)) { redo(); return; }
+    if (inRect(x, y, SHEET_R)) { if (window.gnome.exportScore) window.gnome.exportScore(); return; }
     for (let i = 0; i < KNOBS.length; i++) {
       if (x >= knobX(i) && x < knobX(i) + 44) {
         dragMode = 20; dragKnob = i; dragY = y; dragV = vols[KNOBS[i].id];
@@ -1317,6 +1376,8 @@ function draw() {
   rect(...REDO_R);
   set(redoStack.length ? 0.85 : 0.4, redoStack.length ? 0.85 : 0.4, 0.9);
   textC('⤼', REDO_R[0], REDO_R[0] + REDO_R[2], 8, '14px Arial');
+  set(0.24, 0.3, 0.36); rect(...SHEET_R);
+  set(0.82, 0.9, 0.95); textC('♪ PDF', SHEET_R[0], SHEET_R[0] + SHEET_R[2], 9, F11);
 
   for (let i = 0; i < KNOBS.length; i++) {
     const kx = knobX(i) + 22, ky = 13, v = vols[KNOBS[i].id] / 100;
@@ -1708,6 +1769,7 @@ window.gnome = {
   tables: { SCALE_NAMES, PROG_NAMES, SHAPE_NAMES, SYN_NAMES, FEEL_NAMES, SCL, STYLE_NAMES },
   SAMPLE_DEFS,
   noteName, rollLabel, getParam, setParam, sget, sset, ronOff, rdgOff, effScale, effBase,
+  buildScoreModel, setStatus,
   applyEuclid, applySynEuclid, rotatePat, rotateSyn, synGenerate, synKeyGen, dealEuclid, setStyle,
   resetAll, touchState, pushTransport, pushGains, pushSample,
   get smpA() { return smpA; },

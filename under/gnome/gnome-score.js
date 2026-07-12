@@ -30,8 +30,13 @@
   }
 
   const esc = s => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-  const el = (t, a, inner) => `<${t} ${Object.entries(a).map(([k, v]) =>
-    `${k}="${v}"`).join(' ')}${inner == null ? '/>' : `>${inner}</${t}>`}`;
+  const el = (t, a, inner) => {
+    const at = Object.entries(a).map(([k, v]) => ` ${k}="${v}"`).join('');
+    return `<${t}${at}${inner == null ? '/>' : `>${inner}</${t}>`}`;
+  };
+  // barline grouping: 4/4 measures when the span divides into them, else the
+  // whole span is one measure (odd spans get a single bar, not fake 4/4)
+  const measBeats = span => span % 4 === 0 ? 4 : span;
 
   // draw a single notehead + optional accidental + ledger lines at staff-step s
   function head(x, yOf, s, filled, botLine, topLine, acc) {
@@ -74,13 +79,13 @@
     svg += el('text', { x: 4, y: staffTop - 16, 'font-size': 13, fill: '#333',
       'font-family': 'Nunito,Arial,sans-serif', 'font-weight': 700 }, esc(part.name));
     const dur = nearestDur(part.bps), filled = dur[1], stem = dur[2], flags = dur[3];
-    const measBeats = part.span % 4 === 0 ? 4 : (Number.isInteger(part.span) ? part.span : part.span);
+    const mb = measBeats(part.span);
     // opening bar line
     svg += el('line', { x1: labelW, y1: staffTop, x2: labelW, y2: staffTop + 4 * SP, stroke: '#111', 'stroke-width': 1.4 });
     for (let i = 0; i < part.steps; i++) {
       const x = labelW + i * stepW + stepW / 2;
       const beat = i * part.bps;
-      if (i > 0 && Math.abs(beat / measBeats - Math.round(beat / measBeats)) < 1e-6)
+      if (i > 0 && Math.abs(beat / mb - Math.round(beat / mb)) < 1e-6)
         svg += el('line', { x1: labelW + i * stepW, y1: staffTop, x2: labelW + i * stepW, y2: staffTop + 4 * SP,
           stroke: '#111', 'stroke-width': 1 });
       const n = part.notes[i];
@@ -122,10 +127,10 @@
     svg += el('text', { x: 4, y: y + 4, 'font-size': 12, fill: '#333',
       'font-family': 'Nunito,Arial,sans-serif', 'font-weight': 700 }, esc(lane.name));
     svg += el('line', { x1: labelW, y1: y - 8, x2: labelW, y2: y + 8, stroke: '#111', 'stroke-width': 1.4 });
-    const measBeats = lane.span % 4 === 0 ? 4 : (Number.isInteger(lane.span) ? lane.span : lane.span);
+    const mb = measBeats(lane.span);
     for (let i = 0; i < lane.steps; i++) {
       const x = labelW + i * stepW + stepW / 2, beat = i * lane.bps;
-      if (i > 0 && Math.abs(beat / measBeats - Math.round(beat / measBeats)) < 1e-6)
+      if (i > 0 && Math.abs(beat / mb - Math.round(beat / mb)) < 1e-6)
         svg += el('line', { x1: labelW + i * stepW, y1: y - 8, x2: labelW + i * stepW, y2: y + 8, stroke: '#ccc', 'stroke-width': 1 });
       if (lane.hits[i] === 2)
         svg += el('path', { d: `M ${x} ${y - 6} L ${x + 6} ${y} L ${x} ${y + 6} L ${x - 6} ${y} Z`, fill: '#111' });

@@ -901,7 +901,10 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
             this.gPos[gi] += this.gRate[gi];
             if (++this.gAge[gi] >= len) this.gOn[gi] = 0;
           }
-          wetL *= cldGain; wetR *= cldGain;
+          // sane() maps NaN/Inf to 0 (NaN fails both comparisons), so a grain
+          // that read a poisoned ring cell can't NaN the mix or the feedback;
+          // the ring then heals as new finite writes overwrite the poison.
+          wetL = sane(wetL * cldGain); wetR = sane(wetR * cldGain);
           this.cldFbL = wetL; this.cldFbR = wetR;
           sigL = sigL + (wetL - sigL) * cldMix;
           sigR = sigR + (wetR - sigR) * cldMix;

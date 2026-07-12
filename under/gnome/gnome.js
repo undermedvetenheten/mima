@@ -123,10 +123,15 @@ function degCentsJ(dg, scix) {
   const oc = Math.floor(dg / cnt);
   return oc * 1200 + s[1 + (dg - oc * cnt)];
 }
+// MIDI note a synth degree sounds (written, ignoring live key rotation)
+function degMidi(si, deg) {
+  return effBase(si) + Math.round(degCentsJ(deg, effScale(si)) / 100);
+}
 // the note a bass/melody roll degree sounds (written, ignoring live rotation)
-function degNoteName(si, deg) {
-  const scix = effScale(si);
-  return noteName(effBase(si) + Math.round(degCentsJ(deg, scix) / 100));
+function degNoteName(si, deg) { return noteName(degMidi(si, deg)); }
+// a scale is microtonal when any degree misses the 12-TET semitone grid
+function scaleIsMicro(scix) {
+  return SCL[scix].slice(1).some(c => c % 100 !== 0);
 }
 // name the chord a chords-roll root degree builds (e.g. "Bbm7")
 function chordName(rootDeg) {
@@ -148,33 +153,29 @@ function rollLabel(si, deg) {
   return si === 2 ? `chords: ${chordName(deg)}` : `${SYN_NAMES[si]}: ${degNoteName(si, deg)}`;
 }
 
-// MIDI note a bass/melody degree sounds (written, ignoring live key rotation)
-function degMidi(si, deg) {
-  return effBase(si) + Math.round(degCentsJ(deg, effScale(si)) / 100);
-}
 // A clef/rhythm-agnostic musical model of the current pattern, for the score
 // export. Pitches match what plays (nearest semitone — microtonal scales are
 // approximated); timing is the step grid (beats per step = span / steps).
 function buildScoreModel() {
   const parts = [];
-  const chordHas7 = () => sget(2, 24) > 0;
+  const has7 = sget(2, 24) > 0;
+  const chordDegs = has7 ? [0, 2, 4, 6] : [0, 2, 4];
+  let microtonal = false;
   for (let si = 0; si < NSYN; si++) {
     const ron = ronOff(si), rdg = rdgOff(si);
     const steps = Math.round(sget(si, 2)), span = sget(si, 3);
     const bps = span / steps;
-    const scix = effScale(si), base = effBase(si);
     const notes = [];
     for (let i = 0; i < steps; i++) {
       if (!m[ron + i]) { notes.push(null); continue; }
       const deg = m[rdg + i], accent = m[ron + i] === 2;
-      let midis;
-      if (si === 2) {
-        const degs = chordHas7() ? [0, 2, 4, 6] : [0, 2, 4];
-        midis = degs.map(dd => base + Math.round(degCentsJ(deg + dd, scix) / 100));
-      } else midis = [degMidi(si, deg)];
-      notes.push({ midis, accent, label: si === 2 ? chordName(deg) : noteName(midis[0]) });
+      const midis = si === 2 ? chordDegs.map(dd => degMidi(2, deg + dd)) : [degMidi(si, deg)];
+      notes.push({ midis, accent });
     }
     if (notes.some(Boolean)) {
+      // the disclaimer covers every part that actually sounds, using the
+      // scale that part plays in (unlocked parts have their own scale)
+      if (scaleIsMicro(effScale(si))) microtonal = true;
       // pick the clef from the part's pitch range so notes sit on the staff
       // instead of stacks of ledger lines (chords/low parts go to bass clef).
       const allMidi = notes.filter(Boolean).flatMap(n => n.midis).sort((a, b) => a - b);
@@ -185,6 +186,7 @@ function buildScoreModel() {
   }
   const drums = [];
   for (let l = 0; l < numLanes; l++) {
+    if (!smpA[l]) continue;   // '---' lane is silent: don't notate phantom hits
     const steps = Math.round(m[STEPS_A + l]), span = m[SPAN_A + l];
     const hits = [];
     let any = false;
@@ -195,12 +197,12 @@ function buildScoreModel() {
     }
     if (any) drums.push({ name: SAMPLE_DEFS[smpA[l]].label, steps, span, bps: span / steps, hits });
   }
-  const keyNote = m[GKEY_NOTE], scix = m[GKEY_SCALE];
+  const scix = m[GKEY_SCALE];
   return {
     title: 'SuperGnome',
-    key: noteName(keyNote).replace(/-?\d+$/, ''),
+    key: noteName(m[GKEY_NOTE]).replace(/-?\d+$/, ''),
     scale: SCALE_NAMES[scix] || '',
-    microtonal: [11, 12, 13].includes(scix), // Pelog / Slendro / Rast approximated
+    microtonal,
     bpm, parts, drums,
   };
 }

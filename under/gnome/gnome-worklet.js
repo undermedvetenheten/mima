@@ -613,8 +613,20 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     const cldOverlap = 1 + cldDens * (this.CLD_GRAINS - 4);
     const cldInterval = Math.max(1, Math.floor(cldGrainLen / cldOverlap));
     const cldGain = 1.2 / Math.sqrt(cldOverlap);
+    // The reverb tail is a feedback loop through the grain cloud whose gain
+    // scales with how many grains overlap (~0.6*sqrt(overlap) per pass), so a
+    // fixed CLD_REVERB goes unstable at high density: the buffer grows to
+    // Infinity, a zero grain envelope makes 0*Inf = NaN, and the NaN poisons
+    // the whole mix. Normalise the feedback by the overlap so TAIL means the
+    // same decay at any density (and stays < 1).
+    const cldFbG = cldReverb * Math.min(1, 1 / (0.6 * Math.sqrt(cldOverlap)));
     const CMAX = this.CLD_MAX;
     this.cldFbL = sane(this.cldFbL); this.cldFbR = sane(this.cldFbR);
+    // recover a buffer already poisoned by Inf/NaN (old saves / mid-blowup)
+    const lastW = (this.cldW - 1 + CMAX) % CMAX;
+    if (!Number.isFinite(this.cldL[lastW]) || !Number.isFinite(this.cldR[lastW])) {
+      this.cldL.fill(0); this.cldR.fill(0); this.cldFbL = 0; this.cldFbR = 0;
+    }
     const fxActive = fxOn && (dlyOn || avoOn || cldOn);
 
     for (let f = 0; f < nframes; f++) {
@@ -861,8 +873,9 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
           sigL += cIn; sigR += cIn;   // instruments routed straight to clouds
           // Clouds-style granulator: spray windowed grains from recent audio,
           // pitch-shiftable and reversible, with a feedback tail = reverb
-          this.cldL[this.cldW] = sigL + this.cldFbL * cldReverb;
-          this.cldR[this.cldW] = sigR + this.cldFbR * cldReverb;
+          // tanh bounds the fed-back energy so the loop can never reach Inf
+          this.cldL[this.cldW] = sigL + Math.tanh(this.cldFbL * cldFbG);
+          this.cldR[this.cldW] = sigR + Math.tanh(this.cldFbR * cldFbG);
           if (--this.cldSpawn <= 0) {
             this.cldSpawn = cldInterval;
             for (let gi = 0; gi < this.CLD_GRAINS; gi++) {

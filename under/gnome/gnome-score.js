@@ -34,9 +34,15 @@
     const at = Object.entries(a).map(([k, v]) => ` ${k}="${v}"`).join('');
     return `<${t}${at}${inner == null ? '/>' : `>${inner}</${t}>`}`;
   };
-  // barline grouping: 4/4 measures when the span divides into them, else the
-  // whole span is one measure (odd spans get a single bar, not fake 4/4)
-  const measBeats = span => span % 4 === 0 ? 4 : span;
+  // beats per measure from a {n, d} time signature (7/8 -> 3.5 beats)
+  const sigBeats = sig => sig.n * 4 / sig.d;
+  // stacked time-signature digits at x, on a 5-line staff starting at staffTop
+  function sigGlyph(x, staffTop, sig) {
+    const f = { 'font-size': 19, fill: '#111', 'font-family': 'Georgia,serif',
+      'font-weight': 700, 'text-anchor': 'middle' };
+    return el('text', Object.assign({ x, y: staffTop + SP * 1.7 }, f), sig.n)
+      + el('text', Object.assign({ x, y: staffTop + SP * 3.7 }, f), sig.d);
+  }
 
   // draw a single notehead + optional accidental + ledger lines at staff-step s
   function head(x, yOf, s, filled, botLine, topLine, acc) {
@@ -59,7 +65,7 @@
   // one system (staff) for a pitched part
   function pitchedSystem(part) {
     const stepW = Math.max(28, SP * 3.2);
-    const labelW = 74, padTop = 46, padBot = 34;
+    const labelW = 104, padTop = 46, padBot = 34;
     const staffW = part.steps * stepW;
     const W = labelW + staffW + 24;
     const H = padTop + padBot + SP * 4;
@@ -72,14 +78,15 @@
     for (let i = 0; i < 5; i++)
       svg += el('line', { x1: labelW, y1: staffTop + i * SP, x2: labelW + staffW, y2: staffTop + i * SP,
         stroke: '#111', 'stroke-width': 1 });
-    // clef (unicode glyph, broad font stack) + part label
-    svg += el('text', { x: labelW - 30, y: staffTop + (isB ? 1.6 : 3.1) * SP, 'font-size': isB ? 34 : 44,
+    // clef + time signature (in the label margin) + part label
+    svg += el('text', { x: labelW - 60, y: staffTop + (isB ? 1.6 : 3.1) * SP, 'font-size': isB ? 34 : 44,
       fill: '#111', 'font-family': "'Noto Music','Bravura','Apple Symbols','Segoe UI Symbol',serif" },
       isB ? '𝄢' : '𝄞');
+    svg += sigGlyph(labelW - 15, staffTop, part.sig);
     svg += el('text', { x: 4, y: staffTop - 16, 'font-size': 13, fill: '#333',
       'font-family': 'Nunito,Arial,sans-serif', 'font-weight': 700 }, esc(part.name));
     const dur = nearestDur(part.bps), filled = dur[1], stem = dur[2], flags = dur[3];
-    const mb = measBeats(part.span);
+    const mb = sigBeats(part.sig);
     // opening bar line
     svg += el('line', { x1: labelW, y1: staffTop, x2: labelW, y2: staffTop + 4 * SP, stroke: '#111', 'stroke-width': 1.4 });
     for (let i = 0; i < part.steps; i++) {
@@ -118,16 +125,20 @@
     return `<svg viewBox="0 0 ${W} ${H}" class="sc-sys" preserveAspectRatio="xMinYMid meet">${svg}</svg>`;
   }
 
-  // compact rhythm staff for a drum lane (x = hit, ◆ = accent)
-  function drumSystem(lane) {
+  // compact rhythm staff for a drum lane (x = hit, ◆ = accent). A lane whose
+  // meter differs from the global one shows its own sig (polymeter made visible).
+  function drumSystem(lane, globalSig) {
     const stepW = Math.max(24, SP * 3), labelW = 74, pad = 18;
     const staffW = lane.steps * stepW, W = labelW + staffW + 24, H = pad * 2 + 12;
     const y = pad + 6;
     let svg = el('line', { x1: labelW, y1: y, x2: labelW + staffW, y2: y, stroke: '#111', 'stroke-width': 1 });
     svg += el('text', { x: 4, y: y + 4, 'font-size': 12, fill: '#333',
       'font-family': 'Nunito,Arial,sans-serif', 'font-weight': 700 }, esc(lane.name));
+    if (lane.sig.n !== globalSig.n || lane.sig.d !== globalSig.d)
+      svg += el('text', { x: labelW - 8, y: y + 4, 'font-size': 12, fill: '#111', 'text-anchor': 'end',
+        'font-family': 'Georgia,serif', 'font-weight': 700 }, `${lane.sig.n}/${lane.sig.d}`);
     svg += el('line', { x1: labelW, y1: y - 8, x2: labelW, y2: y + 8, stroke: '#111', 'stroke-width': 1.4 });
-    const mb = measBeats(lane.span);
+    const mb = sigBeats(lane.sig);
     for (let i = 0; i < lane.steps; i++) {
       const x = labelW + i * stepW + stepW / 2, beat = i * lane.bps;
       if (i > 0 && Math.abs(beat / mb - Math.round(beat / mb)) < 1e-6)
@@ -159,9 +170,7 @@
     #sc-sheet{max-width:900px;margin:18px auto;background:#fff;color:#111;padding:34px 40px;
       border-radius:4px;box-shadow:0 6px 30px rgba(0,0,0,.5);}
     #sc-sheet .sc-title{font-family:Georgia,serif;text-align:center;}
-    #sc-sheet .sc-title h1{font-size:26px;margin:0 0 4px;color:#111;text-shadow:none;
-      letter-spacing:normal;font-style:normal;}
-    #sc-sheet .sc-title p{margin:0;color:#444;font-size:13px;}
+    #sc-sheet .sc-title p{margin:0;color:#222;font-size:16px;}
     #sc-sheet h3{font-size:12px;letter-spacing:.08em;color:#666;margin:22px 0 2px;
       border-bottom:1px solid #ddd;padding-bottom:3px;text-transform:uppercase;}
     #sc-sheet .sc-sys{display:block;width:100%;height:auto;margin:2px 0;}
@@ -185,15 +194,17 @@
     ensureStyle();
     const old = document.getElementById('sc-overlay');
     if (old) old.remove();
-    let body = `<div class="sc-title"><h1>${esc(model.title)}</h1>` +
-      `<p>${esc(model.key)} ${esc(model.scale)} · ${Math.round(model.bpm)} bpm</p></div>`;
+    let body = `<div class="sc-title"><p>${esc(model.key)} ${esc(model.scale)}` +
+      ` · ${Math.round(model.bpm)} bpm · ${model.meter.n}/${model.meter.d}</p></div>`;
     for (const p of model.parts) body += el('h3', {}, esc(p.name)) + pitchedSystem(p);
     if (model.drums.length) {
       body += el('h3', {}, 'Drums');
-      for (const d of model.drums) body += drumSystem(d);
+      for (const d of model.drums) body += drumSystem(d, model.meter);
     }
-    let note = 'Notation follows the step grid (beats per step = span ÷ steps). ';
-    if (model.microtonal) note += 'This scale is microtonal — pitches are rounded to the nearest semitone. ';
+    let note = 'Notation follows the step grid (beats per step = span ÷ steps). '
+      + 'The time signature is guessed from the kick/bass emphasis; parts in '
+      + 'another meter carry their own signature. ';
+    if (model.microtonal) note += 'A scale in use is microtonal — pitches are rounded to the nearest semitone. ';
     body += `<p class="sc-note">${esc(note)}</p>`;
 
     const ov = document.createElement('div');

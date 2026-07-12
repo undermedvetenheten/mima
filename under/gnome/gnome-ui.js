@@ -383,7 +383,9 @@ window.createGnomeUI = function (G) {
     return [
       group('effects rack', 'each fx has its own per-part sends, or feed the whole mix through',
         seg('Rack', ['off', 'on'], () => m[C.FX_ON], i => m[C.FX_ON] = i),
-        stepper('Feed full mix in', 0, 100, 5, () => m[C.FX_FEED], v => m[C.FX_FEED] = v, fmtPct)),
+        stepper('Feed full mix in', 0, 100, 5, () => m[C.FX_FEED], v => m[C.FX_FEED] = v, fmtPct),
+        seg('Sends tap', ['post-fader', 'pre-fader'], () => m[C.SND_PRE], i => m[C.SND_PRE] = i,
+          'pre-fader: pull a part’s volume down and its fx wash stays')),
       group('floaty delay', 'a tape-ish echo — pitch/reverse the repeats or let them drift',
         seg('Delay', ['off', 'on'], () => m[C.DLY_ON], i => m[C.DLY_ON] = i),
         stepper('Time (beats)', 0.0625, 2, 0.0625, () => m[C.DLY_TIME], v => m[C.DLY_TIME] = v, fmtDlyBeats),
@@ -459,6 +461,30 @@ window.createGnomeUI = function (G) {
     return group('perform — mute / solo', 'solo any channel to hear it alone', ...rows);
   }
 
+  // ---- presets: A/B/C live slots, each downloadable / loadable as .json ----
+  function presetsSection(say) {
+    const rows = ['A', 'B', 'C'].map(id => {
+      const load = h('button', 'pk-chip', '▶ load');
+      load.addEventListener('click', () => { G.recallPreset(id); say(`preset ${id}`); });
+      const save = h('button', 'pk-chip', '⊙ save');
+      save.addEventListener('click', () => { G.storePreset(id); say(`preset ${id} stored`); });
+      const dl = h('button', 'pk-chip', '⇩ file');
+      dl.addEventListener('click', () => G.downloadPreset(id));
+      const ul = h('button', 'pk-chip', '⇧ file');
+      ul.addEventListener('click', () => { G.importToPreset(id); });
+      const lab = h('span', 'pk-mslabel', id);
+      st.syncs.push(() => {
+        const used = G.presetUsed(id);
+        lab.textContent = `${id} ${used ? '●' : '○'}`;
+        load.disabled = dl.disabled = !used;
+      });
+      return h('div', 'pk-msrow', lab, load, save, dl, ul);
+    });
+    return group('presets — live A/B/C',
+      'save the groove into a slot, tap load to switch live; ⇩/⇧ move slots as .json files',
+      ...rows);
+  }
+
   // ---- transport widgets (play / bpm / record / save) ----
   function transport(say) {
     const play = h('button', 'pk-play', '▶');
@@ -507,7 +533,7 @@ window.createGnomeUI = function (G) {
     stepper, seg, chip, action, selectRow, group, modeBar, rotateRow,
     drumGrid, rollGrid, laneStrip, engineHint, transport,
     drumMain, drumParams, synthMain, synthParams, fxSections,
-    masterKeySection, locksSection, volumesSection, performSection,
+    masterKeySection, locksSection, volumesSection, performSection, presetsSection,
     SYN_LABELS: ['BASS', 'MELODY', 'CHORDS'],
   };
 };

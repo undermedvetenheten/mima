@@ -39,8 +39,8 @@ const CLD_ON = 760, CLD_MIX = 761, CLD_SIZE = 762, CLD_DENS = 763,
 // routing matrix: part (0 drums,1 bass,2 melody,3 chords) × fx (0 delay,
 // 1 glitch, 2 clouds) send = SND_MTX + part*3 + fx
 const SND_MTX = 768;
-// live-perform mute/solo (drum lanes reuse MUTE_A)
-const MUTE_SYN = 780, SOLO_LANE = 783, SOLO_SYN = 791;
+// live-perform mute/solo (drum lanes reuse MUTE_A) + pre-fader send switch
+const MUTE_SYN = 780, SOLO_LANE = 783, SOLO_SYN = 791, SND_PRE = 794;
 
 // ---- scale / progression tables (mirror of the JSFX; keep in sync) ----
 const SCL = [
@@ -579,6 +579,10 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     for (let p = 0; p < 4; p++)
       mtx[p] = [m[SND_MTX + p * 3] / 100, m[SND_MTX + p * 3 + 1] / 100,
                 m[SND_MTX + p * 3 + 2] / 100];
+    // pre-fader sends: fx taps a fixed nominal level (the default 90% fader)
+    // so pulling a part's volume down leaves its fx wash in place
+    const sndPre = m[SND_PRE] ? 1 : 0;
+    const PRE_G = 0.81;
     // live mute/solo: if any channel is soloed, only soloed channels sound
     let anySolo = 0;
     for (let l = 0; l < this.numLanes; l++) if (m[SOLO_LANE + l]) anySolo = 1;
@@ -673,7 +677,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
           const la = laneAud[c];
           spl0 += smix * gD * la;
           spl1 += smix2 * gD * la;
-          const dc = (smix + smix2) * 0.5 * gD * la;
+          const dc = (smix + smix2) * 0.5 * (sndPre ? PRE_G : gD) * la;
           dIn += dc * mtx[0][0]; aIn += dc * mtx[0][1]; cIn += dc * mtx[0][2];
           this.vPos[c] = vp + vrate;
         } else this.vOn[c] = 0;
@@ -787,7 +791,8 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
         spl0 += ps;
         spl1 += ps;
         const pt = si2 + 1;
-        dIn += ps * mtx[pt][0]; aIn += ps * mtx[pt][1]; cIn += ps * mtx[pt][2];
+        const px = so * (sndPre ? PRE_G : gS[si2]) * synAud[si2];
+        dIn += px * mtx[pt][0]; aIn += px * mtx[pt][1]; cIn += px * mtx[pt][2];
       }
 
       // ---- FX rack: floaty delay -> avocado glitch -> clouds ----

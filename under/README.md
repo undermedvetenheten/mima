@@ -84,10 +84,27 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
   drum grid (x = hit, ◆ = accent). `buildScoreModel` in gnome.js does the
   musical mapping (pitches match playback at the nearest semitone — microtonal
   scales are labelled as approximated; rhythm is the step grid, beats per step
-  = span ÷ steps). It's drawn as inline SVG into an on-screen preview and saved
-  via the browser's print-to-PDF (`window.print`), so it works the same on
-  desktop and iOS. The canvas has a ♪ PDF header button; the pocket has a
-  "Sheet music (PDF)" action on the KEY·MIX tab.
+  = span ÷ steps). The **time signature is guessed** (`guessMeter`) from where
+  the kick and bass put their weight — candidate meters that divide the spans
+  are scored by average downbeat emphasis — and parts whose span disagrees
+  with the global meter carry their own signature (polymeter notated as-is).
+  It's drawn as inline SVG into an on-screen preview and saved via the
+  browser's print-to-PDF (`window.print`), so it works the same on desktop and
+  iOS. The canvas has a ♪ PDF header button; the pocket has a "Sheet music
+  (PDF)" action on the KEY·MIX tab.
+
+  **Presets** (A/B/C): full-groove slots stored in their own localStorage key,
+  recallable live mid-playback (recall is a single undoable step). Canvas: tap
+  A/B/C to recall, ALT/right-click to store, ⇩/⇧ save/load the current groove
+  as a .json file. Pocket (KEY·MIX tab): per-slot load / save / ⇩ file / ⇧
+  file. Groove files from the pre-routing layout migrate on import.
+
+  **Solo/mute everywhere**: the canvas has an S button beside every lane and
+  synth M (amber = soloed; any solo means only soloed channels sound); the
+  pocket keeps the perform mixer. Sends can be switched **pre-fader** (PRE on
+  the canvas FX row, "Sends tap" in the pocket rack): a part's fx wash then
+  survives pulling its volume down. Live send cells glow in the FX box so the
+  routing is visible at a glance.
 
   **Recording**: the worklet streams its master output (post-FX, post-limiter)
   to the main thread as PCM chunks; gnome.js encodes a 16-bit stereo WAV on

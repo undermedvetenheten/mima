@@ -40,6 +40,7 @@ const SND_MTX = 768;
 const MUTE_SYN = 780;        // 3: bass / melody / chords mute
 const SOLO_LANE = 783;       // 8: per drum-lane solo
 const SOLO_SYN = 791;        // 3: per-synth solo
+const SND_PRE = 794;         // 1: sends tap pre-fader (part volume down ≠ fx down)
 
 const m = new Float64Array(MEM);
 let numLanes = 3;
@@ -153,13 +154,60 @@ function rollLabel(si, deg) {
   return si === 2 ? `chords: ${chordName(deg)}` : `${SYN_NAMES[si]}: ${degNoteName(si, deg)}`;
 }
 
-// A clef/rhythm-agnostic musical model of the current pattern, for the score
-// export. Pitches match what plays (nearest semitone — microtonal scales are
-// approximated); timing is the step grid (beats per step = span / steps).
+// Guess the global meter (beats per measure) from where the kick drum and
+// bass put their weight. For each candidate measure length that divides a
+// part's span, score the average accent weight landing on its downbeats —
+// a four-on-the-floor kick ties everything and the prior picks 4/4, but a
+// kick on 1 & 4 of a 6-beat span makes 3 win (waltz feel), etc.
+function guessMeter() {
+  const on = [];   // onsets: { b: beat position, w: weight }
+  for (let l = 0; l < numLanes; l++) {
+    if (!smpA[l]) continue;
+    const steps = m[STEPS_A + l], bps = m[SPAN_A + l] / steps;
+    const w = SAMPLE_DEFS[smpA[l]].label === 'BD' ? 3 : 1;   // the kick leads
+    for (let i = 0; i < steps; i++)
+      if (m[PAT + l * MAX_STEPS + i]) on.push({ b: i * bps, w });
+  }
+  const bron = ronOff(0), bsteps = sget(0, 2), bbps = sget(0, 3) / bsteps;
+  for (let i = 0; i < bsteps; i++)
+    if (m[bron + i]) on.push({ b: i * bbps, w: 2 });         // bass emphasis
+  if (!on.length) return 4;
+  const spans = [];
+  for (let l = 0; l < numLanes; l++) if (smpA[l]) spans.push(m[SPAN_A + l]);
+  spans.push(sget(0, 3));
+  let best = 4, bestScore = -1;
+  for (const M of [4, 3, 2, 6, 5, 7]) {
+    if (!spans.some(sp => Math.abs(sp / M - Math.round(sp / M)) < 1e-6)) continue;
+    let hit = 0, down = 0;
+    for (const o of on) {
+      const r = o.b % M;
+      if (r < 1e-6 || M - r < 1e-6) hit += o.w;
+    }
+    for (const sp of spans) down += Math.max(1, Math.round(sp / M));
+    const score = hit / down + (M === 4 ? 0.02 : M === 3 ? 0.01 : 0);
+    if (score > bestScore + 1e-9) { bestScore = score; best = M; }
+  }
+  return best;
+}
+// time signature {n, d} for a span, preferring the global meter; parts whose
+// span the global meter doesn't divide get their own (polymeter shown as-is)
+function spanSig(span, meterM) {
+  let b = Math.abs(span / meterM - Math.round(span / meterM)) < 1e-6 ? meterM
+    : span % 4 === 0 ? 4 : span % 3 === 0 ? 3 : span;
+  let d = 4;
+  while (b !== Math.round(b) && d <= 16) { b *= 2; d *= 2; }   // 3.5 -> 7/8
+  return { n: Math.round(b), d };
+}
+const sigBeats = sig => sig.n * 4 / sig.d;
+
+// A musical model of the current pattern, for the score export. Pitches match
+// what plays (nearest semitone — microtonal scales are approximated); timing
+// is the step grid (beats per step = span / steps).
 function buildScoreModel() {
   const parts = [];
   const has7 = sget(2, 24) > 0;
   const chordDegs = has7 ? [0, 2, 4, 6] : [0, 2, 4];
+  const meterM = guessMeter();
   let microtonal = false;
   for (let si = 0; si < NSYN; si++) {
     const ron = ronOff(si), rdg = rdgOff(si);
@@ -181,7 +229,7 @@ function buildScoreModel() {
       const allMidi = notes.filter(Boolean).flatMap(n => n.midis).sort((a, b) => a - b);
       const median = allMidi[Math.floor(allMidi.length / 2)];
       parts.push({ name: SYN_NAMES[si].toUpperCase(), clef: median < 59 ? 'bass' : 'treble',
-        steps, span, bps, notes });
+        steps, span, bps, notes, sig: spanSig(span, meterM) });
     }
   }
   const drums = [];
@@ -195,13 +243,14 @@ function buildScoreModel() {
       hits.push(v ? (v === 2 ? 2 : 1) : 0);
       if (v) any = true;
     }
-    if (any) drums.push({ name: SAMPLE_DEFS[smpA[l]].label, steps, span, bps: span / steps, hits });
+    if (any) drums.push({ name: SAMPLE_DEFS[smpA[l]].label, steps, span,
+      bps: span / steps, hits, sig: spanSig(span, meterM) });
   }
   const scix = m[GKEY_SCALE];
   return {
-    title: 'SuperGnome',
     key: noteName(m[GKEY_NOTE]).replace(/-?\d+$/, ''),
     scale: SCALE_NAMES[scix] || '',
+    meter: spanSig(meterM, meterM),
     microtonal,
     bpm, parts, drums,
   };
@@ -652,6 +701,94 @@ function redo() {
   setStatus('redo');
 }
 
+// ---- presets (A/B/C live slots + .json file export/import) ----
+// A preset is a full serialized groove (same shape as an undo snapshot but
+// with plain arrays so it JSONs). Recall is undoable and works mid-playback.
+const PRESET_KEY = 'supergnome_presets_v1';
+let presets = { A: null, B: null, C: null };
+try {
+  const pp = JSON.parse(localStorage.getItem(PRESET_KEY));
+  if (pp) for (const k of ['A', 'B', 'C']) if (pp[k]) presets[k] = pp[k];
+} catch (e) { /* fresh */ }
+function serializeState() {
+  return { mem: Array.from(m), nl: numLanes, smp: smpA.slice(),
+    vols: Object.assign({}, vols), bpm };
+}
+// validate + migrate an imported/stored state into snapshot shape (null = bad)
+function normalizeState(s) {
+  if (!s || !Array.isArray(s.mem)) return null;
+  let mem;
+  if (s.mem.length === MEM) mem = s.mem.slice();
+  else if (s.mem.length === 768) {          // pre-routing groove: migrate sends
+    mem = s.mem.concat(new Array(MEM - 768).fill(0));
+    for (let p = 0; p < 4; p++) mem[SND_MTX + p * 3] = s.mem[SEND_A + p] || 0;
+  } else return null;
+  const smp = (Array.isArray(s.smp) && s.smp.length === LANES_CAP)
+    ? s.smp.slice() : LANE_SAMPLE.slice();
+  return {
+    mem, smp,
+    nl: Math.max(1, Math.min(LANES_CAP, s.nl || s.numLanes || 3)),
+    vols: Object.assign({ drum: 90, bass: 90, mel: 90, chd: 90, master: 80 }, s.vols),
+    bpm: Math.max(30, Math.min(260, s.bpm || 120)),
+  };
+}
+function savePresets() {
+  try { localStorage.setItem(PRESET_KEY, JSON.stringify(presets)); } catch (e) { }
+}
+function storePreset(id) {
+  presets[id] = serializeState();
+  savePresets();
+  setStatus(`preset ${id} stored`);
+}
+function recallPreset(id) {
+  const p = normalizeState(presets[id]);
+  if (!p) { setStatus(`preset ${id} is empty — ALT-tap (canvas) or Save (pocket) stores the groove`); return; }
+  recallPresetState(p, `preset ${id}`);
+}
+function downloadPreset(id) {
+  const s = id === 'now' ? serializeState() : presets[id];
+  if (!s) { setStatus(`preset ${id} is empty — nothing to download`); return; }
+  const blob = new Blob([JSON.stringify(s)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = id === 'now' ? 'supergnome-groove.json' : `supergnome-preset-${id}.json`;
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+// open a file picker, parse the groove, hand it over (bad files -> status)
+function pickGrooveFile(cb) {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = '.json,application/json';
+  inp.addEventListener('change', () => {
+    const f = inp.files && inp.files[0];
+    if (!f) return;
+    f.text().then(t => {
+      let s = null;
+      try { s = normalizeState(JSON.parse(t)); } catch (e) { }
+      if (s) cb(s); else setStatus('that file is not a gnome groove');
+    });
+  });
+  inp.click();
+}
+function importToPreset(id) {
+  pickGrooveFile(s => { presets[id] = s; savePresets(); setStatus(`file loaded into preset ${id}`); });
+}
+function importCurrent() {
+  pickGrooveFile(s => recallPresetState(s, 'groove loaded from file'));
+}
+// apply a groove (preset recall / file load) as one undoable step
+function recallPresetState(p, label) {
+  clearTimeout(commitTimer);
+  const cur = snapshot();
+  if (committed && !sameSnap(cur, committed)) undoStack.push(committed);
+  undoStack.push(cur);
+  if (undoStack.length > 100) undoStack.splice(0, undoStack.length - 100);
+  redoStack.length = 0;
+  restoreSnap(p);
+  committed = snapshot();
+  setStatus(label);
+}
+
 // ---- audio ----
 let actx = null, node = null, audioReady = false, audioStarting = false;
 let dispBeat = 0, gsndB = -1, gsndM = -1, gsndC = [0, 0, 0, 0], gsndCn = 0;
@@ -830,7 +967,8 @@ async function saveLastRecording() {
 const W = 1264;
 const laneTop = 34, rowh = 40, xFields = 8, fieldw = 36;
 const xMute = xFields + 17 * fieldw + 4;   // 624 (17 drum fields, NOTE/CH gone)
-const xEuc = xMute + 22, xMode = xEuc + 36, xGrid = xMode + 30;
+const xSolo = xMute + 22;                  // perform solo sits beside mute
+const xEuc = xSolo + 22, xMode = xEuc + 36, xGrid = xMode + 30;
 const cellw = 16, cellh = 28, rollrh = 8;
 function yBtn() { return laneTop + numLanes * rowh + 2; }
 function ys(si) { return yBtn() + 28 + si * 188; }
@@ -850,7 +988,11 @@ const PLAY_R = [130, 4, 44, 22], BPM_R = [180, 4, 52, 22],
   INIT_R = [238, 4, 40, 22], ALT_R = [284, 4, 40, 22],
   REC_R = [330, 4, 52, 22], SAVE_R = [388, 4, 52, 22],
   UNDO_R = [446, 4, 34, 22], REDO_R = [484, 4, 34, 22],
-  SHEET_R = [524, 4, 56, 22];
+  SHEET_R = [524, 4, 56, 22],
+  // preset slots: tap = recall live, ALT/right-click = store; ⇩⇧ = file io
+  PRE_RS = [[590, 4, 26, 22], [620, 4, 26, 22], [650, 4, 26, 22]],
+  PEXP_R = [684, 4, 26, 22], PIMP_R = [714, 4, 26, 22];
+const PRESET_IDS = ['A', 'B', 'C'];
 const KNOBS = [
   { id: 'drum', label: 'DRUM' }, { id: 'bass', label: 'BASS' },
   { id: 'mel', label: 'MEL' }, { id: 'chd', label: 'CHD' },
@@ -883,7 +1025,8 @@ function fxCells() {
   let x, y;
   y = fy + 24; x = 12;
   tog(x, y, 34, 'FX', FX_ON); x += 40;
-  val(x, y, 44, 'FEED', FX_FEED, 0, 100, 5, 'pct'); x += 58;
+  val(x, y, 44, 'FEED', FX_FEED, 0, 100, 5, 'pct'); x += 50;
+  tog(x, y, 40, 'PRE', SND_PRE); x += 48;
   lbl(x, y + 9, 'GLASS CYC'); x += 72;
   val(x, y, 38, 'BAS', GLC_A, 0, 100, 5, 'pct'); x += 42;
   val(x, y, 38, 'MEL', GLC_A + 1, 0, 100, 5, 'pct'); x += 42;
@@ -989,6 +1132,10 @@ function onDown(x, y, right) {
     if (inRect(x, y, UNDO_R)) { undo(); return; }
     if (inRect(x, y, REDO_R)) { redo(); return; }
     if (inRect(x, y, SHEET_R)) { if (window.gnome.exportScore) window.gnome.exportScore(); return; }
+    for (let i = 0; i < 3; i++)
+      if (inRect(x, y, PRE_RS[i])) { recallPreset(PRESET_IDS[i]); return; }
+    if (inRect(x, y, PEXP_R)) { downloadPreset('now'); setStatus('current groove saved as a .json file'); return; }
+    if (inRect(x, y, PIMP_R)) { importCurrent(); return; }
     for (let i = 0; i < KNOBS.length; i++) {
       if (x >= knobX(i) && x < knobX(i) + 44) {
         dragMode = 20; dragKnob = i; dragY = y; dragV = vols[KNOBS[i].id];
@@ -1057,6 +1204,9 @@ function onDown(x, y, right) {
         dragMode = dragF === 5 ? 9 : 5;
       } else if (x >= xMute && x < xMute + 18) {
         sset(gsi, 11, sget(gsi, 11) ? 0 : 1); touchState();
+      } else if (x >= xSolo && x < xSolo + 18) {
+        m[SOLO_SYN + gsi] = m[SOLO_SYN + gsi] ? 0 : 1; touchState();
+        setStatus(m[SOLO_SYN + gsi] ? `${SYN_NAMES[gsi]} SOLO — only soloed channels sound` : `${SYN_NAMES[gsi]} solo off`);
       } else if (x >= xEuc && x < xEuc + 32) {
         synGenerate(gsi);
         setStatus(`${SYN_NAMES[gsi]}: E(${sget(gsi, 4)},${sget(gsi, 2)}) ` +
@@ -1118,6 +1268,9 @@ function onDown(x, y, right) {
       dragMode = dragF === 5 ? 8 : 1;
     } else if (x >= xMute && x < xMute + 18) {
       m[MUTE_A + ml] = m[MUTE_A + ml] ? 0 : 1; touchState();
+    } else if (x >= xSolo && x < xSolo + 18) {
+      m[SOLO_LANE + ml] = m[SOLO_LANE + ml] ? 0 : 1; touchState();
+      setStatus(m[SOLO_LANE + ml] ? `lane ${ml + 1} SOLO — only soloed channels sound` : `lane ${ml + 1} solo off`);
     } else if (x >= xEuc && x < xEuc + 32) {
       setStatus(`lane ${ml + 1}:  ${dealEuclid(ml)}`);
       touchState();
@@ -1139,6 +1292,13 @@ function onDown(x, y, right) {
 }
 
 function onRClick(x, y) {
+  // header: ALT/right-click a preset slot stores the current groove into it
+  if (y < 28) {
+    for (let i = 0; i < 3; i++)
+      if (inRect(x, y, PRE_RS[i])) { storePreset(PRESET_IDS[i]); return; }
+    return;
+  }
+
   // rolls: cycle normal -> orange every-2nd-cycle -> off; empty = erase drag
   for (let gsi = 0; gsi < NSYN; gsi++) {
     const ysv = ys(gsi);
@@ -1380,6 +1540,18 @@ function draw() {
   textC('⤼', REDO_R[0], REDO_R[0] + REDO_R[2], 8, '14px Arial');
   set(0.24, 0.3, 0.36); rect(...SHEET_R);
   set(0.82, 0.9, 0.95); textC('♪ PDF', SHEET_R[0], SHEET_R[0] + SHEET_R[2], 9, F11);
+  // preset slots: lit when stored; tap recalls, ALT/right-click stores
+  for (let i = 0; i < 3; i++) {
+    const r = PRE_RS[i], used = !!presets[PRESET_IDS[i]];
+    used ? set(0.3, 0.42, 0.3) : set(0.18, 0.19, 0.21);
+    rect(...r);
+    used ? set(0.85, 0.95, 0.85) : set(0.45, 0.46, 0.5);
+    textC(PRESET_IDS[i], r[0], r[0] + r[2], 9, F11);
+  }
+  set(0.24, 0.28, 0.34); rect(...PEXP_R);
+  set(0.8, 0.85, 0.9); textC('⇩', PEXP_R[0], PEXP_R[0] + PEXP_R[2], 8, '14px Arial');
+  set(0.24, 0.28, 0.34); rect(...PIMP_R);
+  set(0.8, 0.85, 0.9); textC('⇧', PIMP_R[0], PIMP_R[0] + PIMP_R[2], 8, '14px Arial');
 
   for (let i = 0; i < KNOBS.length; i++) {
     const kx = knobX(i) + 22, ky = 13, v = vols[KNOBS[i].id] / 100;
@@ -1423,6 +1595,11 @@ function draw() {
     m[MUTE_A + gl] ? set(0.75, 0.25, 0.25) : set(0.25, 0.25, 0.28);
     rect(xMute, ry + 4, 18, 32);
     set(0.9, 0.9, 0.9); textC('M', xMute, xMute + 18, ry + 12, F12);
+
+    m[SOLO_LANE + gl] ? set(0.8, 0.62, 0.15) : set(0.25, 0.25, 0.28);
+    rect(xSolo, ry + 4, 18, 32);
+    m[SOLO_LANE + gl] ? set(0.15, 0.12, 0.05) : set(0.9, 0.9, 0.9);
+    textC('S', xSolo, xSolo + 18, ry + 12, F12);
 
     set(0.22, 0.3, 0.24); rect(xEuc, ry + 4, 32, 32);
     set(0.7, 0.9, 0.7); textC('EUC', xEuc, xEuc + 32, ry + 12, F12);
@@ -1526,6 +1703,11 @@ function draw() {
     m[sp + 11] ? set(0.75, 0.25, 0.25) : set(0.25, 0.25, 0.28);
     rect(xMute, ysv + 4, 18, 32);
     set(0.9, 0.9, 0.9); textC('M', xMute, xMute + 18, ysv + 12, F12);
+
+    m[SOLO_SYN + gsi] ? set(0.8, 0.62, 0.15) : set(0.25, 0.25, 0.28);
+    rect(xSolo, ysv + 4, 18, 32);
+    m[SOLO_SYN + gsi] ? set(0.15, 0.12, 0.05) : set(0.9, 0.9, 0.9);
+    textC('S', xSolo, xSolo + 18, ysv + 12, F12);
 
     set(0.3, 0.24, 0.34); rect(xEuc, ysv + 4, 32, 32);
     set(0.9, 0.75, 0.95); textC('RND', xEuc, xEuc + 32, ysv + 12, F12);
@@ -1653,7 +1835,7 @@ function draw() {
   fxLit ? set(0.6, 0.85, 0.85) : set(0.5, 0.52, 0.56);
   text('FX RACK', 12, fy + 6, F12);
   set(0.4, 0.42, 0.46);
-  text('a shared bus: SEND parts in or FEED the mix — delay · glitch · clouds', 78, fy + 7, F10);
+  text('each fx has its own DR/BS/ML/CH sends · PRE = sends ignore the faders · FEED taps the whole mix', 78, fy + 7, F10);
   for (const cell of fxCells()) {
     if (cell.t === 'lbl') {
       set(0.5, 0.52, 0.56); text(cell.text, cell.x, cell.y, F10);
@@ -1667,9 +1849,16 @@ function draw() {
       textC(cell.label || (on ? 'ON' : 'off'), cell.x, cell.x + cell.w, cell.y + 8, F11);
       continue;
     }
-    set(0.2, 0.21, 0.24); rect(cell.x, cell.y, cell.w, 30);
-    set(0.45, 0.46, 0.5); textC(cell.label, cell.x, cell.x + cell.w, cell.y + 2, F10);
-    set(fxLit ? 0.85 : 0.6, fxLit ? 0.85 : 0.6, fxLit ? 0.88 : 0.62);
+    // routing tint: a live send (matrix cell > 0) glows so you can see at a
+    // glance which instruments feed which fx
+    const isSend = cell.off >= SND_MTX && cell.off < SND_MTX + 12;
+    const live = isSend && m[cell.off] > 0;
+    live ? set(0.16, 0.34, 0.36) : set(0.2, 0.21, 0.24);
+    rect(cell.x, cell.y, cell.w, 30);
+    live ? set(0.55, 0.85, 0.85) : set(0.45, 0.46, 0.5);
+    textC(cell.label, cell.x, cell.x + cell.w, cell.y + 2, F10);
+    if (live) set(0.75, 0.95, 0.95);
+    else set(fxLit ? 0.85 : 0.6, fxLit ? 0.85 : 0.6, fxLit ? 0.88 : 0.62);
     textC(fxFmt(cell.fmt, m[cell.off]), cell.x, cell.x + cell.w, cell.y + 15, F12);
   }
 
@@ -1741,6 +1930,8 @@ window.gnome = {
   undo, redo,
   get canUndo() { return undoStack.length > 0; },
   get canRedo() { return redoStack.length > 0; },
+  storePreset, recallPreset, downloadPreset, importToPreset, importCurrent,
+  presetUsed(id) { return !!presets[id]; },
   startRecording, stopRecording, toggleRecording, saveLastRecording,
   get recording() { return recording; },
   get recSeconds() { return recFrames / (recSampleRate || 44100); },
@@ -1766,7 +1957,7 @@ window.gnome = {
     FX_FEED, AVO_ON, AVO_AMT, AVO_RATE, AVO_CRUSH, AVO_MIX, SEND_A,
     DLY_PITCH, DLY_REV, GLC_A, CLD_ON, CLD_MIX, CLD_SIZE, CLD_DENS,
     CLD_PITCH, CLD_SPREAD, CLD_REVERB, CLD_REVG, GEN_STYLE,
-    SND_MTX, MUTE_SYN, SOLO_LANE, SOLO_SYN,
+    SND_MTX, MUTE_SYN, SOLO_LANE, SOLO_SYN, SND_PRE,
   },
   tables: { SCALE_NAMES, PROG_NAMES, SHAPE_NAMES, SYN_NAMES, FEEL_NAMES, SCL, STYLE_NAMES },
   SAMPLE_DEFS,

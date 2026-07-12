@@ -59,7 +59,7 @@
 
   function mixTab() {
     view.append(
-      UI.performSection(),
+      UI.performSection(), UI.presetsSection(say),
       UI.masterKeySection(), UI.locksSection(), UI.volumesSection(),
       UI.group('export', 'render the current pattern as staff notation, then Save PDF / Print',
         h('div', 'pk-actions',

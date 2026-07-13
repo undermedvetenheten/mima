@@ -22,7 +22,7 @@ const PAT = 0, STEPS_A = 272, SPAN_A = 280, PUL_A = 288,
   GKEY_SPD = 719, LOCK_A = 720, HML_A = 724;
 
 // ---- web-only region (>= 728; extends the JSFX block, kept in gnome.js) ----
-const MEM = 800;
+const MEM = 864;
 // per-synth engine: 0 classic osc, 1 plucked string, 2 blown glass (3 slots)
 const ENG_A = 728;
 // FX rack (delay -> avocado glitch -> clouds) fed by the full mix + sends
@@ -41,6 +41,10 @@ const CLD_ON = 760, CLD_MIX = 761, CLD_SIZE = 762, CLD_DENS = 763,
 const SND_MTX = 768;
 // live-perform mute/solo (drum lanes reuse MUTE_A) + pre-fader send switch
 const MUTE_SYN = 780, SOLO_LANE = 783, SOLO_SYN = 791, SND_PRE = 794;
+// splice sampler (per synth): crop %, pitch mode, fine tune
+const SPL_ST_A = 800, SPL_EN_A = 803, SPL_MODE_A = 806, SPL_TUNE_A = 809;
+// synth drum voice (per lane): noise mix, pitch sweep, 30Hz sub, click
+const DNSE_A = 812, DSWP_A = 820, DSUB_A = 828, DCLK_A = 836;
 
 // ---- scale / progression tables (mirror of the JSFX; keep in sync) ----
 const SCL = [
@@ -128,6 +132,19 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     const F = n => new Float64Array(n);
     this.vDel = F(LANES_CAP); this.vPos = F(LANES_CAP); this.vOn = F(LANES_CAP);
     this.vGain = F(LANES_CAP); this.vRt = F(LANES_CAP);
+    // synth drum voice (lanes set to SYN): amp env, noise env, body/sub phase,
+    // per-hit decay coefs + control amounts, base freq
+    this.dEnv = F(LANES_CAP); this.dNzE = F(LANES_CAP);
+    this.dPh = F(LANES_CAP); this.dSubPh = F(LANES_CAP);
+    this.dDecC = F(LANES_CAP); this.dNzDecC = F(LANES_CAP); this.dF0 = F(LANES_CAP);
+    this.dNseA = F(LANES_CAP); this.dSwpA = F(LANES_CAP);
+    this.dSubA = F(LANES_CAP); this.dClkA = F(LANES_CAP);
+    // splice sampler: per-synth sample + play positions (0 bass, 1 melody,
+    // 2..7 the chord voices)
+    this.spl = [null, null, null];
+    this.spPos = F(8);
+    this.spSt = F(NSYN); this.spEnWin = F(NSYN);
+    this.spFix = F(NSYN); this.spTrk = F(NSYN);
     this.fltLo = F(LANES_CAP); this.fltBp = F(LANES_CAP);
     this.fltLo2 = F(LANES_CAP); this.fltBp2 = F(LANES_CAP);
     this.fltF = F(LANES_CAP); this.fenv = F(LANES_CAP);
@@ -233,9 +250,13 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
         pat0: Array.from(this.m.slice(0, 16)),
       });
     } else if (d.type === 'sample') {
-      this.samples[d.lane] = d.data ? { data: d.data, nch: d.nch, sr: d.sr, len: d.len } : null;
+      this.samples[d.lane] = d.synth ? { synth: true }
+        : d.data ? { data: d.data, nch: d.nch, sr: d.sr, len: d.len } : null;
       this.vOn[d.lane] = 0;
       this.vPos[d.lane] = 0;
+    } else if (d.type === 'ssmp') {
+      // per-synth splice sample (mono)
+      this.spl[d.si] = d.data ? { data: d.data, sr: d.sr, len: d.len } : null;
     } else if (d.type === 'record') {
       if (d.on) { this.rec = true; this.recPos = 0; }
       else { this.rec = false; this.flushRec(true); }
@@ -354,6 +375,28 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     return s * 0.5;
   }
 
+  // splice sampler: one voice reading the synth's cropped sample. TRK mode
+  // repitches from the voice's live frequency (C4 plays the file as-is), FIX
+  // plays at the file's own pitch shifted by TUNE. The crop window loops, so
+  // HOLD/LATCH envelopes can sustain past the sample's end.
+  spliceStep(si, vix, freq) {
+    const s = this.spl[si];
+    if (!s) return 0;
+    const rate = this.spTrk[si]
+      ? (freq / 261.6256) * (s.sr / sampleRate)
+      : this.spFix[si];
+    let p = this.spPos[vix];
+    const st = this.spSt[si], en = this.spEnWin[si];
+    if (p < st || p >= s.len) p = st;
+    const ip = Math.floor(p), fr = p - ip;
+    const d = s.data;
+    const v = d[ip] + ((ip + 1 < s.len ? d[ip + 1] : 0) - d[ip]) * fr;
+    p += rate;
+    if (p >= en) p = st + (p - en) % Math.max(1, en - st);
+    this.spPos[vix] = p;
+    return v;
+  }
+
   process(inputs, outputs) {
     // a throw here kills the node silently; report the first one to the UI
     try { return this.render(outputs); }
@@ -441,6 +484,17 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
       this.ksBright[si] = 0.16;
       // glass: WAV -> upper-partial richness
       this.glMix[si] = 0.25 + m[sp + 19] / 100 * 0.75;
+      // splice: crop window in sample frames + the fixed-pitch rate. TRK mode
+      // repitches per-sample from the voice's live frequency (C4 = original).
+      const sspl = this.spl[si];
+      if (sspl) {
+        const st = Math.floor(m[SPL_ST_A + si] / 100 * sspl.len);
+        const en = Math.floor(Math.max(m[SPL_ST_A + si] + 1, m[SPL_EN_A + si]) / 100 * sspl.len);
+        this.spSt[si] = Math.min(st, sspl.len - 64);
+        this.spEnWin[si] = Math.max(this.spSt[si] + 64, Math.min(en, sspl.len));
+        this.spFix[si] = Math.pow(2, m[SPL_TUNE_A + si] / 12) * sspl.sr / srate;
+        this.spTrk[si] = m[SPL_MODE_A + si] ? 0 : 1;
+      }
       // glass harmonic cycle: sweep the emphasised partial for evolving drones
       if (eng === 2) {
         const amt = m[GLC_A + si] / 100;
@@ -478,6 +532,18 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
                 this.vOn[l] = 1;
                 this.vGain[l] = hvel / 127;
                 this.fenv[l] = 1;
+                if (this.samples[l].synth) {
+                  // synth drum: capture the hit's voice settings now
+                  this.dEnv[l] = 1; this.dNzE[l] = 1; this.dPh[l] = 0; this.dSubPh[l] = 0;
+                  const tau = 0.02 + m[GATE_A + l] / 200 * 0.6;   // GATE = decay
+                  this.dDecC[l] = Math.exp(-1 / (tau * srate));
+                  this.dNzDecC[l] = Math.exp(-1 / (0.03 * srate));
+                  this.dF0[l] = 55 * Math.pow(2, m[PIT_A + l] / 12);
+                  this.dNseA[l] = m[DNSE_A + l] / 100;
+                  this.dSwpA[l] = m[DSWP_A + l] / 100;
+                  this.dSubA[l] = m[DSUB_A + l] / 100;
+                  this.dClkA[l] = m[DCLK_A + l] / 100;
+                }
               }
             }
           }
@@ -636,26 +702,48 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     for (let f = 0; f < nframes; f++) {
       let spl0 = 0, spl1 = 0, dIn = 0, aIn = 0, cIn = 0;
 
-      // drum sample voices
+      // drum voices (samples, or the synthesized drum when a lane is SYN)
       for (let c = 0; c < this.numLanes; c++) {
         if (this.vDel[c] > 0) { this.vDel[c] -= 1; continue; }
         if (!this.vOn[c]) continue;
         const s = this.samples[c];
         if (!s) { this.vOn[c] = 0; continue; }
-        const vp = this.vPos[c];
-        if (vp < s.len) {
+        let smix, smix2;
+        if (s.synth) {
+          // synth drum: swept sine body + noise burst + click + 30Hz sub,
+          // all gated by a fast decay (GATE) — then the shared lane filter
+          const env = this.dEnv[c];
+          if (env < 0.0008 && this.dNzE[c] < 0.0008) { this.vOn[c] = 0; continue; }
+          const f = this.dF0[c] * (1 + 4 * this.dSwpA[c] * env * env);
+          this.dPh[c] += f / srate; if (this.dPh[c] >= 1) this.dPh[c] -= 1;
+          this.dSubPh[c] += 30 / srate; if (this.dSubPh[c] >= 1) this.dSubPh[c] -= 1;
+          const nse = this.dNseA[c];
+          const body = Math.sin(2 * Math.PI * this.dPh[c]) * env * (1 - nse * 0.5);
+          const nz = (Math.random() * 2 - 1) * this.dNzE[c] * nse;
+          const clk = this.vPos[c] < 3 ? this.dClkA[c] * 0.9 : 0;
+          const sub = Math.sin(2 * Math.PI * this.dSubPh[c]) * this.dSubA[c] * env;
+          smix = (body + nz + clk + sub) * this.vGain[c] * 0.9;
+          smix2 = smix;
+          this.dEnv[c] *= this.dDecC[c];
+          this.dNzE[c] *= this.dNzDecC[c];
+          this.vPos[c] += 1;
+        } else {
+          const vp = this.vPos[c];
+          if (vp >= s.len) { this.vOn[c] = 0; continue; }
           const vrate = s.sr / srate * this.vRt[c];
           const ip = Math.floor(vp), frac = vp - ip;
           const d = s.data, nch = s.nch;
           const sa = d[ip * nch];
           const sb = ip + 1 < s.len ? d[(ip + 1) * nch] : 0;
-          let smix = (sa + (sb - sa) * frac) * this.vGain[c];
-          let smix2;
+          smix = (sa + (sb - sa) * frac) * this.vGain[c];
           if (nch >= 2) {
             const sa2 = d[ip * nch + 1];
             const sb2 = ip + 1 < s.len ? d[(ip + 1) * nch + 1] : 0;
             smix2 = (sa2 + (sb2 - sa2) * frac) * this.vGain[c];
           } else smix2 = smix;
+          this.vPos[c] = vp + vrate;
+        }
+        { // shared lane filter + output (both drum voice kinds)
           if (this.fltF[c] < 1.99) {
             const fl2 = this.fltF[c] * 0.5;
             let hp;
@@ -679,8 +767,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
           spl1 += smix2 * gD * la;
           const dc = (smix + smix2) * 0.5 * (sndPre ? PRE_G : gD) * la;
           dIn += dc * mtx[0][0]; aIn += dc * mtx[0][1]; cIn += dc * mtx[0][2];
-          this.vPos[c] = vp + vrate;
-        } else this.vOn[c] = 0;
+        }
       }
 
       // synth voices
@@ -695,6 +782,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
                 this.svFreq[si2] = this.svNfreq[si2];
               if (eng === 1) this.exciteString(si2, this.svNfreq[si2]);
               else if (eng === 2) this.glBreath[si2] = 1;
+              else if (eng === 3) this.spPos[si2] = this.spSt[si2];
             } else {
               for (let vv = 0; vv < this.chNv; vv++) {
                 this.ch4Tfreq[vv] = this.ch4Nfreq[vv];
@@ -702,6 +790,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
                   this.ch4Freq[vv] = this.ch4Nfreq[vv];
                 if (eng === 1) this.exciteString(2 + vv, this.ch4Nfreq[vv]);
                 else if (eng === 2) this.glBreathC[vv] = 1;
+                else if (eng === 3) this.spPos[2 + vv] = this.spSt[2];
               }
             }
             this.svGain[si2] = this.svNgain[si2];
@@ -737,6 +826,8 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
             osc = this.ksStep(si2, this.ksDecay[si2], this.ksBright[si2]);
           } else if (eng === 2) {
             osc = this.glassVoice(si2, ph, this.glMix[si2], false, 0);
+          } else if (eng === 3) {
+            osc = this.spliceStep(si2, si2, this.svFreq[si2]);
           } else {
             this.svPhs[si2] += this.svFreq[si2] * 0.5 / srate;
             if (this.svPhs[si2] >= 1) this.svPhs[si2] -= 1;
@@ -760,6 +851,8 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
               csum += this.ksStep(2 + vv, this.ksDecay[2], this.ksBright[2]);
             } else if (eng === 2) {
               csum += this.glassVoice(2, cph, this.glMix[2], true, vv);
+            } else if (eng === 3) {
+              csum += this.spliceStep(2, 2 + vv, this.ch4Freq[vv]);
             } else {
               const osin = Math.sin(TAU * cph) + 0.15 * Math.sin(2 * TAU * cph);
               const otri = 1 - 4 * Math.abs(cph - 0.5);
@@ -768,7 +861,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
                              : otri + (osaw - otri) * ((wv - 50) / 50);
             }
           }
-          so = csum * (eng === 1 ? 0.5 : 0.35) * this.svEnv[2] * this.svGain[2];
+          so = csum * (eng === 1 || eng === 3 ? 0.5 : 0.35) * this.svEnv[2] * this.svGain[2];
         }
 
         if (this.svFon[si2]) {

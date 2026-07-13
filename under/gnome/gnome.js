@@ -21,7 +21,7 @@ const PAT = 0, NOTE_A = 256, CHAN_A = 264, STEPS_A = 272, SPAN_A = 280,
   GKEY_SCALE = 717, GKEY_PROG = 718, GKEY_SPD = 719, LOCK_A = 720, HML_A = 724;
 
 // ---- web-only region (>= 728; extends the JSFX block, kept in the worklet) ----
-const MEM = 800;
+const MEM = 864;
 const ENG_A = 728;            // per-synth engine: 0 osc, 1 string, 2 glass
 const GEN_STYLE = 731;        // RND generation style (index into STYLE_NAMES)
 const FX_ON = 736, DLY_ON = 737, DLY_TIME = 738, DLY_FB = 739, DLY_TONE = 740,
@@ -41,6 +41,10 @@ const MUTE_SYN = 780;        // 3: bass / melody / chords mute
 const SOLO_LANE = 783;       // 8: per drum-lane solo
 const SOLO_SYN = 791;        // 3: per-synth solo
 const SND_PRE = 794;         // 1: sends tap pre-fader (part volume down ≠ fx down)
+// splice sampler (per synth): crop window %, pitch mode, fine tune
+const SPL_ST_A = 800, SPL_EN_A = 803, SPL_MODE_A = 806, SPL_TUNE_A = 809;
+// synth drum engine (per lane): noise mix, pitch sweep, 30Hz sub, click
+const DNSE_A = 812, DSWP_A = 820, DSUB_A = 828, DCLK_A = 836;
 
 const m = new Float64Array(MEM);
 let numLanes = 3;
@@ -94,17 +98,23 @@ const EUC = [
 ];
 
 // ---- samples ----
+// 4 = SYN (the synthesized drum voice), 5 = USR (a file the user loaded)
 const SAMPLE_DEFS = [
   { label: '---', file: null },
   { label: 'BD', file: '../supergnome/dr55_bd.wav' },
   { label: 'SN', file: '../supergnome/dr55_sn.wav' },
   { label: 'RIM', file: '../supergnome/dr55_rim.wav' },
+  { label: 'SYN', file: null },
+  { label: 'USR', file: null },
 ];
+const SMP_SYN = 4, SMP_USR = 5;
 // each lane is permanently paired with a sample (cycling the DR-55 kit), so a
 // lane labelled BD always is BD. New lanes inherit their slot's pairing.
 const LANE_SAMPLE = [1, 2, 3, 1, 2, 3, 1, 2];
 let smpA = LANE_SAMPLE.slice();
 const decoded = [null, null, null, null]; // {data,nch,sr,len} per SAMPLE_DEF
+const userSmp = [null, null, null, null, null, null, null, null]; // per-lane file
+const splSmp = [null, null, null];        // per-synth splice sample (mono)
 
 // ---- transport / mix ----
 let playing = false;
@@ -229,7 +239,8 @@ function buildScoreModel() {
       const allMidi = notes.filter(Boolean).flatMap(n => n.midis).sort((a, b) => a - b);
       const median = allMidi[Math.floor(allMidi.length / 2)];
       parts.push({ name: SYN_NAMES[si].toUpperCase(), clef: median < 59 ? 'bass' : 'treble',
-        steps, span, bps, notes, sig: spanSig(span, meterM) });
+        steps, span, bps, notes, sig: spanSig(span, meterM),
+        keyPc: ((effBase(si) % 12) + 12) % 12, scix: effScale(si) });
     }
   }
   const drums = [];
@@ -581,6 +592,31 @@ function initState() {
   for (let i = 0; i < 3; i++) m[GLC_A + i] = 0;
   m[CLD_ON] = 0; m[CLD_MIX] = 50; m[CLD_SIZE] = 45; m[CLD_DENS] = 55;
   m[CLD_PITCH] = 0; m[CLD_SPREAD] = 40; m[CLD_REVERB] = 55; m[CLD_REVG] = 0;
+  seedNewRegions();
+}
+// defaults for the splice + synth-drum regions (also applied to old saves)
+function seedNewRegions(arr) {
+  const a = arr || m;
+  for (let si = 0; si < NSYN; si++) {
+    a[SPL_ST_A + si] = 0; a[SPL_EN_A + si] = 100;
+    a[SPL_MODE_A + si] = 0; a[SPL_TUNE_A + si] = 0;
+  }
+  for (let l = 0; l < LANES_CAP; l++) {
+    a[DNSE_A + l] = 20; a[DSWP_A + l] = 55; a[DSUB_A + l] = 25; a[DCLK_A + l] = 25;
+  }
+}
+// bring a stored mem block (768 / 800 / 864) up to the current layout;
+// returns a MEM-length plain array, or null for an unknown length
+function migrateMem(arr) {
+  if (!arr || !arr.length) return null;
+  if (arr.length === MEM) return Array.from(arr);
+  if (arr.length !== 768 && arr.length !== 800) return null;
+  const out = Array.from(arr);
+  while (out.length < MEM) out.push(0);
+  if (arr.length === 768)   // pre-routing: old single-bus sends -> delay column
+    for (let p = 0; p < 4; p++) out[SND_MTX + p * 3] = arr[SEND_A + p] || 0;
+  seedNewRegions(out);
+  return out;
 }
 
 function seedGroove() {
@@ -623,14 +659,9 @@ function loadState() {
     const s = JSON.parse(localStorage.getItem(STORE_KEY));
     // v1 saves lack the engine/FX region - let them re-init cleanly
     if (!s || !s.mem) return false;
-    if (s.mem.length === MEM) m.set(s.mem);
-    else if (s.mem.length === 768) {
-      // pre-routing save: keep it, and map the old single-bus sends onto the
-      // delay column of the new matrix so it sounds the same.
-      m.fill(0);
-      m.set(s.mem.slice(0, 768));
-      for (let p = 0; p < 4; p++) m[SND_MTX + p * 3] = s.mem[SEND_A + p] || 0;
-    } else return false;
+    const mem = migrateMem(s.mem);
+    if (!mem) return false;
+    m.set(mem);
     numLanes = Math.max(1, Math.min(LANES_CAP, s.numLanes || 3));
     vols = Object.assign(vols, s.vols);
     bpm = s.bpm || 120;
@@ -717,12 +748,8 @@ function serializeState() {
 // validate + migrate an imported/stored state into snapshot shape (null = bad)
 function normalizeState(s) {
   if (!s || !Array.isArray(s.mem)) return null;
-  let mem;
-  if (s.mem.length === MEM) mem = s.mem.slice();
-  else if (s.mem.length === 768) {          // pre-routing groove: migrate sends
-    mem = s.mem.concat(new Array(MEM - 768).fill(0));
-    for (let p = 0; p < 4; p++) mem[SND_MTX + p * 3] = s.mem[SEND_A + p] || 0;
-  } else return null;
+  const mem = migrateMem(s.mem);
+  if (!mem) return null;
   const smp = (Array.isArray(s.smp) && s.smp.length === LANES_CAP)
     ? s.smp.slice() : LANE_SAMPLE.slice();
   return {
@@ -809,14 +836,24 @@ function pushTransport() {
 }
 function pushSample(lane) {
   if (!node) return;
-  const s = decoded[smpA[lane]];
+  const k = smpA[lane];
+  if (k === SMP_SYN) { node.port.postMessage({ type: 'sample', lane, synth: true }); return; }
+  const s = k === SMP_USR ? userSmp[lane] : decoded[k];
   node.port.postMessage(s
     ? { type: 'sample', lane, data: s.data, nch: s.nch, sr: s.sr, len: s.len }
     : { type: 'sample', lane, data: null });
 }
+function pushSplice(si) {
+  if (!node) return;
+  const s = splSmp[si];
+  node.port.postMessage(s
+    ? { type: 'ssmp', si, data: s.data, sr: s.sr, len: s.len }
+    : { type: 'ssmp', si, data: null });
+}
 
 async function loadSamples() {
   for (let i = 1; i < SAMPLE_DEFS.length; i++) {
+    if (!SAMPLE_DEFS[i].file) continue;
     try {
       const resp = await fetch(SAMPLE_DEFS[i].file);
       const buf = await actx.decodeAudioData(await resp.arrayBuffer());
@@ -832,6 +869,148 @@ async function loadSamples() {
     }
   }
   for (let l = 0; l < LANES_CAP; l++) pushSample(l);
+  for (let si = 0; si < NSYN; si++) pushSplice(si);
+}
+
+// ---- user samples (drum lanes + splice), persisted in IndexedDB ----------
+function idbOpen() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('supergnome', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('samples');
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function idbPut(key, val) {
+  try {
+    const db = await idbOpen();
+    await new Promise((res, rej) => {
+      const tx = db.transaction('samples', 'readwrite');
+      tx.objectStore('samples').put(val, key);
+      tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+    });
+  } catch (e) { /* private mode etc */ }
+}
+async function restoreUserSamples() {
+  try {
+    const db = await idbOpen();
+    const store = db.transaction('samples').objectStore('samples');
+    await new Promise((res) => {
+      const cur = store.openCursor();
+      cur.onsuccess = () => {
+        const c = cur.result;
+        if (!c) { res(); return; }
+        const v = c.value, mL = /^lane(\d)$/.exec(c.key), mS = /^syn(\d)$/.exec(c.key);
+        if (v && v.data) {
+          if (mL) userSmp[+mL[1]] = v;
+          else if (mS) splSmp[+mS[1]] = v;
+        }
+        c.continue();
+      };
+      cur.onerror = () => res();
+    });
+    if (node) {
+      for (let l = 0; l < LANES_CAP; l++) pushSample(l);
+      for (let si = 0; si < NSYN; si++) pushSplice(si);
+    }
+  } catch (e) { /* no idb - samples just don't persist */ }
+}
+restoreUserSamples();
+
+// AudioBuffer -> our transferable shapes
+function bufToStereo(buf, name) {
+  const nch = Math.min(2, buf.numberOfChannels), len = buf.length;
+  const data = new Float32Array(len * nch);
+  for (let c = 0; c < nch; c++) {
+    const ch = buf.getChannelData(c);
+    for (let j = 0; j < len; j++) data[j * nch + c] = ch[j];
+  }
+  return { data, nch, sr: buf.sampleRate, len, name: name || '' };
+}
+function bufToMono(buf, name) {
+  const len = buf.length, data = new Float32Array(len);
+  for (let c = 0; c < buf.numberOfChannels; c++) {
+    const ch = buf.getChannelData(c);
+    for (let j = 0; j < len; j++) data[j] += ch[j] / buf.numberOfChannels;
+  }
+  return { data, nch: 1, sr: buf.sampleRate, len, name: name || '' };
+}
+// pick + decode a local audio file (must run from a user gesture)
+function pickAudioFile(cb) {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'audio/*';
+  inp.addEventListener('change', async () => {
+    const f = inp.files && inp.files[0];
+    if (!f) return;
+    try {
+      if (!audioReady) await initAudio();
+      const buf = await actx.decodeAudioData(await f.arrayBuffer());
+      cb(buf, f.name);
+    } catch (e) { setStatus('could not decode that audio file'); }
+  });
+  inp.click();
+}
+function setUserSample(lane, smp) {
+  userSmp[lane] = smp;
+  smpA[lane] = SMP_USR;
+  pushSample(lane); saveLater();
+  idbPut('lane' + lane, smp);
+}
+function setSpliceSample(si, smp) {
+  splSmp[si] = smp;
+  m[ENG_A + si] = 3;
+  pushSplice(si); touchState();
+  idbPut('syn' + si, smp);
+}
+function loadUserSample(lane) {
+  pickAudioFile((buf, name) => {
+    setUserSample(lane, bufToStereo(buf, name));
+    setStatus(`lane ${lane + 1}: “${name}” loaded (USR)`);
+  });
+}
+function loadSpliceSample(si) {
+  pickAudioFile((buf, name) => {
+    setSpliceSample(si, bufToMono(buf, name));
+    setStatus(`${SYN_NAMES[si]} splice: “${name}” — crop with CRP◀/▶, TRK follows the notes`);
+  });
+}
+
+// ---- crate dig: pull a public-domain 78rpm snippet from the Internet
+// Archive (pre-1923 recordings are out of US copyright). Keyless + CORS-open.
+async function digSample(kind, idx) {
+  setStatus('digging the archive for a public-domain 78…');
+  try {
+    const page = 1 + Math.floor(Math.random() * 150);
+    const q = 'collection:georgeblood AND mediatype:audio AND year:[1900 TO 1922]';
+    const s = await (await fetch('https://archive.org/advancedsearch.php?q='
+      + encodeURIComponent(q) + '&fl[]=identifier&rows=10&page=' + page + '&output=json')).json();
+    const docs = s.response && s.response.docs;
+    if (!docs || !docs.length) throw new Error('no docs');
+    const id = docs[Math.floor(Math.random() * docs.length)].identifier;
+    const md = await (await fetch('https://archive.org/metadata/' + id)).json();
+    const f = (md.files || []).find(ff => /\.mp3$/i.test(ff.name));
+    if (!f) throw new Error('no mp3');
+    const title = (md.metadata && md.metadata.title) || id;
+    setStatus(`fetching “${title}”…`);
+    const ab = await (await fetch('https://archive.org/download/' + id + '/'
+      + encodeURIComponent(f.name))).arrayBuffer();
+    if (!audioReady) await initAudio();
+    const buf = await actx.decodeAudioData(ab);
+    // skip the needle-drop lead-in, keep a workable slice
+    const sr = buf.sampleRate;
+    const startS = Math.min(10, Math.max(0, buf.duration - 12));
+    const secs = kind === 'lane' ? 4 : 12;
+    const off = Math.floor(startS * sr);
+    const len = Math.min(buf.length - off, Math.floor(secs * sr));
+    const slice = new AudioBuffer({ numberOfChannels: 1, length: Math.max(1, len), sampleRate: sr });
+    const src = buf.getChannelData(0), dst = slice.getChannelData(0);
+    for (let i = 0; i < len; i++) dst[i] = src[off + i];
+    if (kind === 'lane') setUserSample(idx, bufToStereo(slice, title));
+    else setSpliceSample(idx, bufToMono(slice, title));
+    setStatus(`dug: “${title}” (1900–1922, public domain)`);
+  } catch (e) {
+    setStatus('crate dig failed (offline or blocked) — try again, or load a local file');
+  }
 }
 
 // iOS Safari mutes Web Audio when the ring/silent switch is on unless an
@@ -1223,11 +1402,29 @@ function onDown(x, y, right) {
     if (y >= ysv + rowh && y < ysv + 2 * rowh) {
       if (x >= xFields && x < xFields + 14 * fieldw) {
         dragF = Math.floor((x - xFields) / fieldw);
+        // splice engine reclaims the WAV/RATE/DEP/SHP slots for its own
+        // controls: crop start / crop end / fine tune / pitch-track toggle
+        if (m[ENG_A + gsi] === 3 && dragF >= 3 && dragF <= 6) {
+          if (dragF === 6) {   // TRK/FIX tap toggle
+            m[SPL_MODE_A + gsi] = m[SPL_MODE_A + gsi] ? 0 : 1;
+            setStatus(`${SYN_NAMES[gsi]} splice: ${m[SPL_MODE_A + gsi] ? 'FIX - plays at its own pitch (TUNE to taste)' : 'TRK - repitched to follow the notes'}`);
+            touchState();
+            return;
+          }
+          dragY = y; dragSynth = gsi;
+          dragFx = [SPL_ST_A, SPL_EN_A, SPL_TUNE_A][dragF - 3] + gsi;
+          dragV = m[dragFx];
+          dragMode = 42;
+          return;
+        }
         dragY = y; dragSynth = gsi; dragV = sget(gsi, r2map(dragF));
         dragMode = 10;
       } else if (x >= xEuc && x < xEuc + 32) {
-        m[ENG_A + gsi] = (m[ENG_A + gsi] + 1) % 3;
-        setStatus(`${SYN_NAMES[gsi]} engine: ${['classic oscillator', 'plucked string (RES=sustain, 100=infinite)', 'blown glass (GCY on the FX panel cycles harmonics)'][m[ENG_A + gsi]]}`);
+        m[ENG_A + gsi] = (m[ENG_A + gsi] + 1) % 4;
+        if (m[ENG_A + gsi] === 3 && !splSmp[gsi])
+          setStatus(`${SYN_NAMES[gsi]} engine: SPLICE — ALT-tap ENG to load a sample (or dig one on the FX row)`);
+        else
+          setStatus(`${SYN_NAMES[gsi]} engine: ${['classic oscillator', 'plucked string (RES=sustain, 100=infinite)', 'blown glass (GCY on the FX panel cycles harmonics)', 'splice — plays your sample; CRP crops, TRK follows the notes'][m[ENG_A + gsi]]}`);
         touchState();
       } else if (gsi === 2 && x >= xMode && x < xMode + 26) {
         sset(2, 24, sget(2, 24) ? 0 : 1);
@@ -1262,6 +1459,14 @@ function onDown(x, y, right) {
   if (ml >= 0 && ml < numLanes && y >= laneTop) {
     if (x >= xFields && x < xFields + 17 * fieldw) {
       const uiF = Math.floor((x - xFields) / fieldw);
+      // SYN lanes reclaim the LFO slots for the drum voice: NSE/SWP/SUB/CLK
+      if (smpA[ml] === SMP_SYN && uiF >= 10 && uiF <= 13) {
+        dragLane = ml; dragY = y;
+        dragFx = [DNSE_A, DSWP_A, DSUB_A, DCLK_A][uiF - 10] + ml;
+        dragV = m[dragFx];
+        dragMode = 43;
+        return;
+      }
       dragF = DFIELDS[uiF][1];
       dragLane = ml; dragY = y;
       dragV = dragF === 'smp' ? 0 : getParam(ml, dragF);
@@ -1297,6 +1502,22 @@ function onRClick(x, y) {
     for (let i = 0; i < 3; i++)
       if (inRect(x, y, PRE_RS[i])) { storePreset(PRESET_IDS[i]); return; }
     return;
+  }
+
+  // lane SMP field: ALT/right-click loads a local audio file into the lane
+  const rml = Math.floor((y - laneTop) / rowh);
+  if (rml >= 0 && rml < numLanes && y >= laneTop && y < yBtn()
+      && x >= xFields && x < xFields + fieldw) {
+    loadUserSample(rml);
+    return;
+  }
+  // synth ENG button (row 2): ALT/right-click loads a splice sample
+  for (let gsi = 0; gsi < NSYN; gsi++) {
+    const ysv = ys(gsi);
+    if (y >= ysv + rowh && y < ysv + 2 * rowh && x >= xEuc && x < xEuc + 32) {
+      loadSpliceSample(gsi);
+      return;
+    }
   }
 
   // rolls: cycle normal -> orange every-2nd-cycle -> off; empty = erase drag
@@ -1388,6 +1609,14 @@ function onMove(x, y) {
     let nv = dragV + d * c.step;
     nv = Math.round(nv / c.step) * c.step;
     m[c.off] = Math.max(c.min, Math.min(c.max, nv));
+  } else if (dragMode === 42) {
+    // splice crop / tune fields (dragFx is a raw mem offset here)
+    const tune = dragFx >= SPL_TUNE_A && dragFx < SPL_TUNE_A + 3;
+    m[dragFx] = tune ? Math.max(-12, Math.min(12, dragV + Math.floor(d / 2)))
+      : Math.max(0, Math.min(100, dragV + d));
+  } else if (dragMode === 43) {
+    // synth-drum voice fields (NSE/SWP/SUB/CLK), 0..100
+    m[dragFx] = Math.max(0, Math.min(100, dragV + d));
   } else if (dragMode === 20) {
     vols[KNOBS[dragKnob].id] = Math.max(0, Math.min(100, dragV + Math.floor((dragY - y) / 2)));
     pushGains();
@@ -1419,7 +1648,11 @@ function onUp() {
     } else if (dragMode === 1 && dragF === 'smp') {
       smpA[dragLane] = (smpA[dragLane] + 1) % SAMPLE_DEFS.length;
       pushSample(dragLane);
-      setStatus(`lane ${dragLane + 1} sample: ${SAMPLE_DEFS[smpA[dragLane]].label}`);
+      const k = smpA[dragLane];
+      setStatus(`lane ${dragLane + 1} sample: ${SAMPLE_DEFS[k].label}`
+        + (k === SMP_SYN ? ' — synth drum: PIT/GATE/LPF shape it, NSE/SWP/SUB/CLK on the LFO slots'
+          : k === SMP_USR ? (userSmp[dragLane] ? ` (“${userSmp[dragLane].name}”)` : ' — ALT-tap SMP to load a file')
+          : ''));
     } else if (dragMode === 1 && dragF === 13) {
       m[LSHAPE_A + dragLane] = (m[LSHAPE_A + dragLane] + 1) % 4;
       setStatus(`lane ${dragLane + 1} LFO shape: ${SHAPE_NAMES[m[LSHAPE_A + dragLane]]}`);
@@ -1572,17 +1805,25 @@ function draw() {
     const steps = m[STEPS_A + gl];
     const playstep = playing ? ((Math.floor(dispBeat / gsd) % steps) + steps) % steps : -1;
 
-    if (decoded[smpA[gl]]) { set(0.35, 0.8, 0.4); rect(2, ry + 4, 4, 32); }
+    const laneReady = smpA[gl] === SMP_SYN || decoded[smpA[gl]]
+      || (smpA[gl] === SMP_USR && userSmp[gl]);
+    if (laneReady) { set(0.35, 0.8, 0.4); rect(2, ry + 4, 4, 32); }
 
+    // SYN lanes reclaim the LFO slots for the drum voice: NSE/SWP/SUB/CLK
+    const isSyn = smpA[gl] === SMP_SYN;
     for (let gf = 0; gf < 17; gf++) {
       const fx = xFields + gf * fieldw;
-      set(0.19, 0.19, 0.21); rect(fx, ry + 4, fieldw - 4, 32);
+      const synF = isSyn && gf >= 10 && gf <= 13;
+      synF ? set(0.24, 0.21, 0.3) : set(0.19, 0.19, 0.21);
+      rect(fx, ry + 4, fieldw - 4, 32);
       set(0.45, 0.45, 0.5);
-      textC(DFIELDS[gf][0], fx, fx + fieldw - 4, ry + 5, F10);
+      textC(synF ? ['NSE', 'SWP', 'SUB', 'CLK'][gf - 10] : DFIELDS[gf][0],
+        fx, fx + fieldw - 4, ry + 5, F10);
       set(0.85, 0.85, 0.85);
       const f = DFIELDS[gf][1];
       let v;
-      if (f === 'smp') v = SAMPLE_DEFS[smpA[gl]].label;
+      if (synF) v = String(m[[DNSE_A, DSWP_A, DSUB_A, DCLK_A][gf - 10] + gl]);
+      else if (f === 'smp') v = SAMPLE_DEFS[smpA[gl]].label;
       else if (f === 3) v = fmtG(m[SPAN_A + gl]);
       else if (f === 7) v = m[GATE_A + gl] + '%';
       else if (f === 9) v = m[LPF_A + gl] >= 100 ? '---' : String(m[LPF_A + gl]);
@@ -1716,14 +1957,27 @@ function draw() {
     rect(xMode, ysv + 4, 26, 32);
     set(0.85, 0.85, 0.9); textC(m[sp + 15] ? 'PM' : 'PR', xMode, xMode + 26, ysv + 12, F12);
 
-    // row 2 (14 fields; SYN/MID toggle gone - always the internal synth)
+    // row 2 (14 fields; SYN/MID toggle gone - always the internal synth).
+    // With the splice engine the WAV/RATE/DEP/SHP slots become CRP◀ / CRP▶ /
+    // TUNE / TRK (crop window, fine tune, pitch-track toggle).
+    const isSpl = m[ENG_A + gsi] === 3;
     for (let gf = 0; gf < 14; gf++) {
       const fx = xFields + gf * fieldw;
-      set(0.21, 0.19, 0.23); rect(fx, ysv + rowh + 4, fieldw - 4, 32);
-      set(0.5, 0.45, 0.5); textC(S2FIELDS[gf], fx, fx + fieldw - 4, ysv + rowh + 5, F10);
+      const splF = isSpl && gf >= 3 && gf <= 6;
+      splF ? set(0.24, 0.21, 0.3) : set(0.21, 0.19, 0.23);
+      rect(fx, ysv + rowh + 4, fieldw - 4, 32);
+      set(0.5, 0.45, 0.5);
+      textC(splF ? ['CRP◀', 'CRP▶', 'TUNE', 'TRK'][gf - 3] : S2FIELDS[gf],
+        fx, fx + fieldw - 4, ysv + rowh + 5, F10);
       (glk && gf >= 12) ? set(0.5, 0.5, 0.55) : set(0.85, 0.85, 0.85);
       let v;
-      if (gf === 0) v = m[sp + 12] >= 100 ? '---' : String(m[sp + 12]);
+      if (splF) {
+        v = gf === 3 ? m[SPL_ST_A + gsi] + '%'
+          : gf === 4 ? m[SPL_EN_A + gsi] + '%'
+          : gf === 5 ? (m[SPL_TUNE_A + gsi] > 0 ? '+' : '') + m[SPL_TUNE_A + gsi]
+          : m[SPL_MODE_A + gsi] ? 'FIX' : 'TRK';
+      }
+      else if (gf === 0) v = m[sp + 12] >= 100 ? '---' : String(m[sp + 12]);
       else if (gf === 3) v = m[sp + 19] <= 0 ? 'SIN' : m[sp + 19] >= 100 ? 'SAW' :
         m[sp + 19] === 50 ? 'TRI' : String(m[sp + 19]);
       else if (gf === 4) v = fmtG(m[sp + 16]);
@@ -1736,12 +1990,15 @@ function draw() {
       textC(v, fx, fx + fieldw - 4, ysv + rowh + 18, F13);
     }
 
-    // ENG: per-synth engine selector (in the freed SYN/MID slot)
+    // ENG: per-synth engine selector (in the freed SYN/MID slot);
+    // green dot = a splice sample is loaded, ALT-tap loads one
     const eng = m[ENG_A + gsi];
-    eng === 1 ? set(0.28, 0.4, 0.5) : eng === 2 ? set(0.46, 0.4, 0.28) : set(0.28, 0.3, 0.34);
+    eng === 1 ? set(0.28, 0.4, 0.5) : eng === 2 ? set(0.46, 0.4, 0.28)
+      : eng === 3 ? set(0.36, 0.28, 0.44) : set(0.28, 0.3, 0.34);
     rect(xEuc, ysv + rowh + 4, 32, 32);
+    if (splSmp[gsi]) { set(0.4, 0.85, 0.45); rect(xEuc + 26, ysv + rowh + 6, 4, 4); }
     set(0.9, 0.92, 0.95);
-    textC(['OSC', 'STR', 'GLS'][eng], xEuc, xEuc + 32, ysv + rowh + 12, F12);
+    textC(['OSC', 'STR', 'GLS', 'SPL'][eng], xEuc, xEuc + 32, ysv + rowh + 12, F12);
 
     if (gsi === 2) {
       m[sp + 24] ? set(0.4, 0.32, 0.24) : set(0.24, 0.24, 0.27);
@@ -1923,9 +2180,17 @@ window.gnome = {
   m, get numLanes() { return numLanes; },
   setNumLanes(v) { numLanes = Math.max(1, Math.min(LANES_CAP, v)); touchState(); },
   stateMsg: () => ({ type: 'state', mem: m, numLanes }),
-  samplesMsg: () => smpA.map((s, lane) => decoded[s]
-    ? { type: 'sample', lane, data: decoded[s].data, nch: decoded[s].nch, sr: decoded[s].sr, len: decoded[s].len }
-    : { type: 'sample', lane, data: null }),
+  samplesMsg: () => smpA.map((k, lane) => {
+    if (k === SMP_SYN) return { type: 'sample', lane, synth: true };
+    const s = k === SMP_USR ? userSmp[lane] : decoded[k];
+    return s
+      ? { type: 'sample', lane, data: s.data, nch: s.nch, sr: s.sr, len: s.len }
+      : { type: 'sample', lane, data: null };
+  }).concat(splSmp.map((s, si) => s
+    ? { type: 'ssmp', si, data: s.data, sr: s.sr, len: s.len }
+    : { type: 'ssmp', si, data: null })),
+  loadUserSample, loadSpliceSample, setUserSample, setSpliceSample, digSample,
+  get userSmp() { return userSmp; }, get splSmp() { return splSmp; },
   initAudio, togglePlay,
   undo, redo,
   get canUndo() { return undoStack.length > 0; },
@@ -1958,6 +2223,8 @@ window.gnome = {
     DLY_PITCH, DLY_REV, GLC_A, CLD_ON, CLD_MIX, CLD_SIZE, CLD_DENS,
     CLD_PITCH, CLD_SPREAD, CLD_REVERB, CLD_REVG, GEN_STYLE,
     SND_MTX, MUTE_SYN, SOLO_LANE, SOLO_SYN, SND_PRE,
+    SPL_ST_A, SPL_EN_A, SPL_MODE_A, SPL_TUNE_A,
+    DNSE_A, DSWP_A, DSUB_A, DCLK_A, SMP_SYN, SMP_USR,
   },
   tables: { SCALE_NAMES, PROG_NAMES, SHAPE_NAMES, SYN_NAMES, FEEL_NAMES, SCL, STYLE_NAMES },
   SAMPLE_DEFS,

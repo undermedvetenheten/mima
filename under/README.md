@@ -106,6 +106,25 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
   survives pulling its volume down. Live send cells glow in the FX box so the
   routing is visible at a glance.
 
+  **Splice** (per-synth engine 4, `SPL_*`): a sampler voice for bass / melody
+  / chords. Load a local audio file (ALT-tap ENG on the canvas, "load audio
+  file" in the pocket) — it's persisted in IndexedDB — then crop it
+  (`CRP◀/▶`; the window loops under HOLD/LATCH envelopes) and choose TRK
+  (repitched per note, C4 = as recorded, glide works) or FIX + TUNE (plays at
+  its own pitch, nudged ±12 semitones to sit with the tune). Chords play one
+  splice voice per chord note.
+
+  **Synth drums** (`SMP` = SYN, `D*_A` regions): a lane can synthesize its
+  drum instead of playing a sample — swept-sine body (PIT = tuning, GATE =
+  decay, sweep drops 808-style), noise mix, a fixed **30Hz sub** layer to
+  beef up transients, and a click, all through the lane's filter. On the
+  canvas the four LFO fields relabel to NSE/SWP/SUB/CLK for SYN lanes.
+
+  **Crate dig**: pulls a public-domain 78rpm snippet (Internet Archive,
+  George Blood collection, recordings 1900–1922) into a lane (USR) or a
+  splice slot. Keyless API, browser-direct; fails soft with a status hint
+  when offline.
+
   **Recording**: the worklet streams its master output (post-FX, post-limiter)
   to the main thread as PCM chunks; gnome.js encodes a 16-bit stereo WAV on
   stop and hands it off via the Web Share API (iOS "Save to Files") with a

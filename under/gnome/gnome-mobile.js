@@ -49,7 +49,7 @@
           i => { curLane = i; renderTab(); },
           () => { G.setNumLanes(G.numLanes + 1); renderTab(); },
           () => { G.setNumLanes(G.numLanes - 1); curLane = Math.min(curLane, G.numLanes - 1); renderTab(); })),
-      UI.drumMain(curLane, say),
+      UI.drumMain(curLane, say, renderTab),
       ...UI.drumParams(curLane));
   }
 

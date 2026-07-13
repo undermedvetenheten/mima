@@ -29,6 +29,9 @@ window.createGnomeUI = function (G) {
     const e = m[C.ENG_A + si];
     return e === 1 ? 'plucked string (Karplus-Strong): Cutoff filters it, Resonance = sustain — 100 = infinite (use the LATCH envelope for a drone)'
       : e === 2 ? 'blown glass: stretched harmonics, shimmer + breathy onset. Turn up Harmonic cycle for an evolving drone'
+      : e === 3 ? (G.splSmp[si]
+        ? `splice: plays “${G.splSmp[si].name || 'your sample'}” — crop it, track the notes or fix the pitch`
+        : 'splice: load a sample (below) and this part plays it')
       : 'classic oscillator: sine → triangle → saw morph via Wave';
   };
 
@@ -255,19 +258,36 @@ window.createGnomeUI = function (G) {
   }
 
   // ---- section builders (return arrays of <section> groups) ----
-  function drumMain(l, say) {
+  function drumMain(l, say, rerender) {
+    const rr = rerender || (() => { });
+    const isSyn = G.smpA[l] === C.SMP_SYN, isUsr = G.smpA[l] === C.SMP_USR;
     return group('',
       m[C.MUTE_A + l] ? 'lane muted' : null,
       h('div', 'pk-actions',
         chip('MUTE', () => m[C.MUTE_A + l], v => m[C.MUTE_A + l] = v ? 1 : 0, 'danger'),
         action('🎲 choose euclidean rhythm', () => { say(`lane ${l + 1}: ${G.dealEuclid(l)}`); G.touchState(); })),
-      seg('Sample', G.SAMPLE_DEFS.map(s => s.label), () => G.smpA[l], i => G.setSmp(l, i)),
+      seg('Sample', G.SAMPLE_DEFS.map(s => s.label), () => G.smpA[l],
+        i => { G.setSmp(l, i); rr(); },
+        isSyn ? 'SYN: a synthesized drum — shape it under “synth drum voice” below'
+          : isUsr ? (G.userSmp[l] ? `“${G.userSmp[l].name}”` : 'no file yet — load or dig one below') : null),
+      ...(isUsr ? [h('div', 'pk-actions',
+        action('📂 load audio file', () => G.loadUserSample(l)),
+        action('💿 crate dig (public domain)', () => G.digSample('lane', l)))] : []),
       modeBar(),
       drumGrid(l));
   }
 
   function drumParams(l) {
     return [
+      ...(G.smpA[l] === C.SMP_SYN ? [
+        group('synth drum voice', 'Pitch = tuning, Filter shapes it, decay from Gate',
+          stepper('Noise mix', 0, 100, 5, () => m[C.DNSE_A + l], v => m[C.DNSE_A + l] = v, fmtPct),
+          stepper('Pitch sweep', 0, 100, 5, () => m[C.DSWP_A + l], v => m[C.DSWP_A + l] = v, fmtPct,
+            'the hit starts high and drops to the pitch — 808-style'),
+          stepper('30Hz sub (beef)', 0, 100, 5, () => m[C.DSUB_A + l], v => m[C.DSUB_A + l] = v, fmtPct,
+            'a low sine under the transient to fatten it'),
+          stepper('Click', 0, 100, 5, () => m[C.DCLK_A + l], v => m[C.DCLK_A + l] = v, fmtPct),
+          stepper('Decay (gate)', 5, 200, 5, () => G.getParam(l, 7), v => G.setParam(l, 7, v), fmtPct))] : []),
       group('pattern', 'euclidean engine: pulses spread evenly across steps',
         stepper('Steps', 1, 32, 1, () => G.getParam(l, 2), v => G.setParam(l, 2, v)),
         stepper('Length (beats)', 0.25, 16, 0.25, () => G.getParam(l, 3), v => G.setParam(l, 3, v), fmtQ),
@@ -317,11 +337,23 @@ window.createGnomeUI = function (G) {
         modeBar(),
         rollGrid(si)),
       group('instrument', 'the voice this part plays through',
-        seg('Engine', ['classic', 'string', 'glass'],
+        seg('Engine', ['classic', 'string', 'glass', 'splice'],
           () => m[C.ENG_A + si], i => { m[C.ENG_A + si] = i; rerender(); }, engHint()),
         ...(m[C.ENG_A + si] === 2
           ? [stepper('Harmonic cycle', 0, 100, 5, () => m[C.GLC_A + si], v => m[C.GLC_A + si] = v, fmtPct,
               'slowly sweeps which harmonic is loudest — 0 = static')]
+          : []),
+        ...(m[C.ENG_A + si] === 3
+          ? [h('div', 'pk-actions',
+              action('📂 load audio file', () => { G.loadSpliceSample(si); }),
+              action('💿 crate dig (public domain)', () => G.digSample('splice', si))),
+            stepper('Crop start', 0, 100, 1, () => m[C.SPL_ST_A + si], v => m[C.SPL_ST_A + si] = v, fmtPct),
+            stepper('Crop end', 0, 100, 1, () => m[C.SPL_EN_A + si], v => m[C.SPL_EN_A + si] = v, fmtPct,
+              'the crop window loops while a note sustains'),
+            seg('Pitch', ['track the notes', 'fixed'],
+              () => m[C.SPL_MODE_A + si], i => m[C.SPL_MODE_A + si] = i,
+              'track: repitched per note (C4 = as recorded). fixed: plays as-is'),
+            stepper('Fine tune', -12, 12, 1, () => m[C.SPL_TUNE_A + si], v => m[C.SPL_TUNE_A + si] = v, fmtSt)]
           : [])),
     ];
   }

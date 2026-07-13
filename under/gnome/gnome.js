@@ -229,7 +229,8 @@ function buildScoreModel() {
       const allMidi = notes.filter(Boolean).flatMap(n => n.midis).sort((a, b) => a - b);
       const median = allMidi[Math.floor(allMidi.length / 2)];
       parts.push({ name: SYN_NAMES[si].toUpperCase(), clef: median < 59 ? 'bass' : 'treble',
-        steps, span, bps, notes, sig: spanSig(span, meterM) });
+        steps, span, bps, notes, sig: spanSig(span, meterM),
+        keyPc: ((effBase(si) % 12) + 12) % 12, scix: effScale(si) });
     }
   }
   const drums = [];

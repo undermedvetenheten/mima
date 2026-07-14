@@ -66,6 +66,10 @@
           UI.action('♪ Sheet music (PDF)', () => G.exportScore()))),
       UI.group('tempo & reset', null,
         UI.stepper('Tempo', 40, 240, 1, () => G.bpm, v => G.setBpm(v), v => Math.round(v) + ' bpm'),
+        UI.stepper('Tempo wobble', 0, 100, 5, () => G.m[G.consts.BPM_WOB], v => { G.m[G.consts.BPM_WOB] = v; G.touchState(); },
+          v => Math.round(v) + '% (±' + (v * 0.12).toFixed(1) + '%)'),
+        UI.stepper('Wobble period', 4, 256, 4, () => G.m[G.consts.BPM_WRT], v => { G.m[G.consts.BPM_WRT] = v; G.touchState(); },
+          v => Math.round(v) + ' beats'),
         h('div', 'pk-actions',
           UI.action('🔄 INIT — fresh starter groove', () => {
             G.resetAll(); curLane = 0; renderTab(); say('fresh gnome: starter groove restored');

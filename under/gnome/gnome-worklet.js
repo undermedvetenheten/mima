@@ -45,6 +45,8 @@ const MUTE_SYN = 780, SOLO_LANE = 783, SOLO_SYN = 791, SND_PRE = 794;
 const SPL_ST_A = 800, SPL_EN_A = 803, SPL_MODE_A = 806, SPL_TUNE_A = 809;
 // synth drum voice (per lane): noise mix, pitch sweep, 30Hz sub, click
 const DNSE_A = 812, DSWP_A = 820, DSUB_A = 828, DCLK_A = 836;
+// global tempo wobble: amount (% depth) + period (beats per cycle)
+const BPM_WOB = 844, BPM_WRT = 845;
 
 // ---- scale / progression tables (mirror of the JSFX; keep in sync) ----
 const SCL = [
@@ -120,6 +122,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     this.playing = false;
     this.bpm = 120;
     this.gBeat = 0;
+    this.wobPh = 0;   // tempo-wobble LFO phase
 
     // part gains: drums, bass, melody, chords + master (0..1)
     this.gPart = [1, 1, 1, 1];
@@ -312,7 +315,8 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     }
     if (shp === 0) return Math.sin(2 * Math.PI * fr);
     if (shp === 1) return 1 - 4 * Math.abs(fr - 0.5);
-    return 1 - 2 * fr;
+    if (shp === 4) return 2 * fr - 1;   // saw up (inverse of the default saw)
+    return 1 - 2 * fr;                  // saw down
   }
 
   // pluck a Karplus-Strong string: fill its delay line with a noise burst
@@ -375,12 +379,16 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     return s * 0.5;
   }
 
+  // a synth with no splice sample of its own borrows another part's, so
+  // switching an engine to SPL always sounds once ANY sample is loaded
+  effSpl(si) { return this.spl[si] || this.spl[0] || this.spl[1] || this.spl[2]; }
+
   // splice sampler: one voice reading the synth's cropped sample. TRK mode
   // repitches from the voice's live frequency (C4 plays the file as-is), FIX
   // plays at the file's own pitch shifted by TUNE. The crop window loops, so
   // HOLD/LATCH envelopes can sustain past the sample's end.
   spliceStep(si, vix, freq) {
-    const s = this.spl[si];
+    const s = this.effSpl(si);
     if (!s) return 0;
     const rate = this.spTrk[si]
       ? (freq / 261.6256) * (s.sr / sampleRate)
@@ -415,7 +423,15 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     if (!this.haveState) return true;
 
     const m = this.m, srate = sampleRate;
-    const bps = this.bpm / 60;
+    // tempo wobble: a slow sine breathes the effective bpm up and down
+    // (depth up to ±12%, period in beats). Phase advances in musical time.
+    let effBpm = this.bpm;
+    if (m[BPM_WOB] > 0) {
+      effBpm = this.bpm * (1 + m[BPM_WOB] / 100 * 0.12 * Math.sin(2 * Math.PI * this.wobPh));
+      this.wobPh += (nframes / (srate * 60 / effBpm)) / Math.max(4, m[BPM_WRT]);
+      if (this.wobPh >= 1) this.wobPh -= 1;
+    }
+    const bps = effBpm / 60;
     const spb = srate / bps;
     const blkStart = this.gBeat;
     const blkEnd = blkStart + nframes / spb;
@@ -486,7 +502,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
       this.glMix[si] = 0.25 + m[sp + 19] / 100 * 0.75;
       // splice: crop window in sample frames + the fixed-pitch rate. TRK mode
       // repitches per-sample from the voice's live frequency (C4 = original).
-      const sspl = this.spl[si];
+      const sspl = this.effSpl(si);
       if (sspl) {
         const st = Math.floor(m[SPL_ST_A + si] / 100 * sspl.len);
         const en = Math.floor(Math.max(m[SPL_ST_A + si] + 1, m[SPL_EN_A + si]) / 100 * sspl.len);

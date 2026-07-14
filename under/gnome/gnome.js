@@ -45,6 +45,8 @@ const SND_PRE = 794;         // 1: sends tap pre-fader (part volume down ≠ fx 
 const SPL_ST_A = 800, SPL_EN_A = 803, SPL_MODE_A = 806, SPL_TUNE_A = 809;
 // synth drum engine (per lane): noise mix, pitch sweep, 30Hz sub, click
 const DNSE_A = 812, DSWP_A = 820, DSUB_A = 828, DCLK_A = 836;
+// global tempo wobble: amount (% of ±12% depth) + period in beats
+const BPM_WOB = 844, BPM_WRT = 845;
 
 const m = new Float64Array(MEM);
 let numLanes = 3;
@@ -74,7 +76,7 @@ const PROG_NAMES = ['off', 'I - IV', 'I - IV - V - IV', 'doo-wop I-vi-IV-V',
   'axis I-V-vi-IV', 'ii - V - I', '12-bar blues', 'Andalusian descent',
   'circle of fifths', 'minor 3rds (dim cycle)', 'Giant Steps (maj 3rd cycle)',
   'Coltrane V-I chain', 'harmonic series 3-5-7-11 (just)', 'overtone ladder (just)'];
-const SHAPE_NAMES = ['sine', 'triangle', 'saw down', 'random (S&H)'];
+const SHAPE_NAMES = ['sine', 'triangle', 'saw down', 'random (S&H)', 'saw up'];
 const SYN_NAMES = ['bass', 'melody', 'chords'];
 // RND generation styles. Each picks an idiomatic scale (-1 keeps the current
 // one) and steers the melodic contour; bass/chords stay root-anchored and go
@@ -287,7 +289,7 @@ function setParam(l, f, v) {
   else if (f === 10) m[FENV_A + l] = clamp(0, 100);
   else if (f === 11) m[LRATE_A + l] = clamp(0.25, 32);
   else if (f === 12) m[LDEP_A + l] = clamp(0, 100);
-  else if (f === 13) m[LSHAPE_A + l] = clamp(0, 3);
+  else if (f === 13) m[LSHAPE_A + l] = clamp(0, 4);
   else if (f === 14) m[LPT_A + l] = clamp(0, 24);
   else if (f === 15) m[SWG_A + l] = clamp(0, 75);
   else if (f === 16) m[NDG_A + l] = clamp(-50, 50);
@@ -325,7 +327,7 @@ function sset(si, k, v) {
   else if (k === 15) m[sp + 15] = v ? 1 : 0;
   else if (k === 16) m[sp + 16] = clamp(0.25, 32);
   else if (k === 17) m[sp + 17] = clamp(0, 100);
-  else if (k === 18) m[sp + 18] = clamp(0, 3);
+  else if (k === 18) m[sp + 18] = clamp(0, 4);
   else if (k === 19) m[sp + 19] = clamp(0, 100);
   else if (k === 20) m[sp + 20] = clamp(0, 2);
   else if (k === 21) m[sp + 21] = clamp(0, 2000);
@@ -604,6 +606,7 @@ function seedNewRegions(arr) {
   for (let l = 0; l < LANES_CAP; l++) {
     a[DNSE_A + l] = 20; a[DSWP_A + l] = 55; a[DSUB_A + l] = 25; a[DCLK_A + l] = 25;
   }
+  a[BPM_WOB] = 0; a[BPM_WRT] = 32;
 }
 // bring a stored mem block (768 / 800 / 864) up to the current layout;
 // returns a MEM-length plain array, or null for an unknown length
@@ -917,7 +920,14 @@ async function restoreUserSamples() {
 }
 restoreUserSamples();
 
-// AudioBuffer -> our transferable shapes
+// AudioBuffer -> our transferable shapes. Every import is peak-normalized
+// (to 0.9) so quiet files and archive digs sit at a usable level.
+function normalize(data) {
+  let peak = 0;
+  for (let i = 0; i < data.length; i++) { const a = Math.abs(data[i]); if (a > peak) peak = a; }
+  if (peak > 0.0001) { const g = 0.9 / peak; for (let i = 0; i < data.length; i++) data[i] *= g; }
+  return data;
+}
 function bufToStereo(buf, name) {
   const nch = Math.min(2, buf.numberOfChannels), len = buf.length;
   const data = new Float32Array(len * nch);
@@ -925,7 +935,7 @@ function bufToStereo(buf, name) {
     const ch = buf.getChannelData(c);
     for (let j = 0; j < len; j++) data[j * nch + c] = ch[j];
   }
-  return { data, nch, sr: buf.sampleRate, len, name: name || '' };
+  return { data: normalize(data), nch, sr: buf.sampleRate, len, name: name || '' };
 }
 function bufToMono(buf, name) {
   const len = buf.length, data = new Float32Array(len);
@@ -933,7 +943,7 @@ function bufToMono(buf, name) {
     const ch = buf.getChannelData(c);
     for (let j = 0; j < len; j++) data[j] += ch[j] / buf.numberOfChannels;
   }
-  return { data, nch: 1, sr: buf.sampleRate, len, name: name || '' };
+  return { data: normalize(data), nch: 1, sr: buf.sampleRate, len, name: name || '' };
 }
 // pick + decode a local audio file (must run from a user gesture)
 function pickAudioFile(cb) {
@@ -1210,7 +1220,10 @@ function fxCells() {
   val(x, y, 38, 'BAS', GLC_A, 0, 100, 5, 'pct'); x += 42;
   val(x, y, 38, 'MEL', GLC_A + 1, 0, 100, 5, 'pct'); x += 42;
   val(x, y, 38, 'CHD', GLC_A + 2, 0, 100, 5, 'pct'); x += 54;
-  lbl(x, y + 9, 'routing: each fx has its own DR/BS/ML/CH sends');
+  lbl(x, y + 9, 'TEMPO WOBBLE'); x += 96;
+  val(x, y, 42, 'AMT', BPM_WOB, 0, 100, 5, 'pct'); x += 46;
+  val(x, y, 46, 'BEATS', BPM_WRT, 4, 256, 4, 'raw'); x += 56;
+  lbl(x, y + 9, 'each fx row has its own DR/BS/ML/CH sends');
   y = fy + 60; x = 12;
   lbl(x, y + 9, 'DELAY'); x += 52;
   tog(x, y, 34, '', DLY_ON); x += 40;
@@ -1356,6 +1369,14 @@ function onDown(x, y, right) {
       setStatus(`generated bass + melody + chords in ${STYLE_NAMES[m[GEN_STYLE] || 0]} / ${SCALE_NAMES[m[GKEY_SCALE]]}`);
       touchState();
     }
+    else if (x >= 808 && x < 892) {
+      // DIG a public-domain 78 into a drum lane: the first USR lane, or turn
+      // the last lane into one. Every tap fetches a fresh find.
+      let tl = -1;
+      for (let l = 0; l < numLanes; l++) if (smpA[l] === SMP_USR) { tl = l; break; }
+      if (tl < 0) { tl = numLanes - 1; smpA[tl] = SMP_USR; }
+      digSample('lane', tl);
+    }
     else {
       for (let i = 0; i < NSYN; i++) {
         const gpx = [kxB, kxM, kxC][i];
@@ -1419,6 +1440,8 @@ function onDown(x, y, right) {
         }
         dragY = y; dragSynth = gsi; dragV = sget(gsi, r2map(dragF));
         dragMode = 10;
+      } else if (m[ENG_A + gsi] === 3 && x >= 516 && x < 556) {
+        digSample('splice', gsi);   // each tap swaps in a fresh archive find
       } else if (x >= xEuc && x < xEuc + 32) {
         m[ENG_A + gsi] = (m[ENG_A + gsi] + 1) % 4;
         if (m[ENG_A + gsi] === 3 && !splSmp[gsi])
@@ -1654,14 +1677,14 @@ function onUp() {
           : k === SMP_USR ? (userSmp[dragLane] ? ` (“${userSmp[dragLane].name}”)` : ' — ALT-tap SMP to load a file')
           : ''));
     } else if (dragMode === 1 && dragF === 13) {
-      m[LSHAPE_A + dragLane] = (m[LSHAPE_A + dragLane] + 1) % 4;
+      m[LSHAPE_A + dragLane] = (m[LSHAPE_A + dragLane] + 1) % 5;
       setStatus(`lane ${dragLane + 1} LFO shape: ${SHAPE_NAMES[m[LSHAPE_A + dragLane]]}`);
     } else if (dragMode === 5 && dragF === 1) {
       sset(dragSynth, 1, sget(dragSynth, 1) + 1);
       setStatus(`${SYN_NAMES[dragSynth]} scale: ${SCALE_NAMES[sget(dragSynth, 1)]}` +
         (m[LOCK_A + dragSynth] ? '  (locked to master key - unlock to use)' : ''));
     } else if (dragMode === 10 && dragF === 6) {
-      sset(dragSynth, 18, (sget(dragSynth, 18) + 1) % 4);
+      sset(dragSynth, 18, (sget(dragSynth, 18) + 1) % 5);
       setStatus(`${SYN_NAMES[dragSynth]} LFO shape: ${SHAPE_NAMES[sget(dragSynth, 18)]}`);
     } else if (dragMode === 10 && dragF === 7) {
       sset(dragSynth, 20, (sget(dragSynth, 20) + 1) % 3);
@@ -1828,7 +1851,7 @@ function draw() {
       else if (f === 7) v = m[GATE_A + gl] + '%';
       else if (f === 9) v = m[LPF_A + gl] >= 100 ? '---' : String(m[LPF_A + gl]);
       else if (f === 11) v = fmtG(m[LRATE_A + gl]);
-      else if (f === 13) v = ['SIN', 'TRI', 'SAW', 'S&H'][m[LSHAPE_A + gl]];
+      else if (f === 13) v = ['SIN', 'TRI', 'SW↓', 'S&H', 'SW↑'][m[LSHAPE_A + gl]];
       else v = String(getParam(gl, f));
       textC(v, fx, fx + fieldw - 4, ry + 18, F13);
     }
@@ -1911,6 +1934,8 @@ function draw() {
   rect(GENKEY_X, yb, GENKEY_W, 18);
   set(0.85, 0.95, 0.88);
   textC('GEN KEY ▸', GENKEY_X, GENKEY_X + GENKEY_W, yb + 3, F11);
+  set(0.3, 0.26, 0.2); rect(808, yb, 84, 18);
+  set(0.9, 0.8, 0.55); textC('DIG ▸ DRUM', 808, 892, yb + 3, F10);
 
   // ---- synth sections ----
   for (let gsi = 0; gsi < NSYN; gsi++) {
@@ -1981,7 +2006,7 @@ function draw() {
       else if (gf === 3) v = m[sp + 19] <= 0 ? 'SIN' : m[sp + 19] >= 100 ? 'SAW' :
         m[sp + 19] === 50 ? 'TRI' : String(m[sp + 19]);
       else if (gf === 4) v = fmtG(m[sp + 16]);
-      else if (gf === 6) v = ['SIN', 'TRI', 'SAW', 'S&H'][m[sp + 18]];
+      else if (gf === 6) v = ['SIN', 'TRI', 'SW↓', 'S&H', 'SW↑'][m[sp + 18]];
       else if (gf === 7) v = ['AD', 'HLD', 'LAT'][m[sp + 20]];
       else if (gf === 11) v = ['STR', 'TRP', 'DOT'][m[SFL_A + gsi]];
       else if (gf === 12) v = m[sp + 22] > 0 ? 'P' + m[sp + 22] : 'off';
@@ -1999,6 +2024,10 @@ function draw() {
     if (splSmp[gsi]) { set(0.4, 0.85, 0.45); rect(xEuc + 26, ysv + rowh + 6, 4, 4); }
     set(0.9, 0.92, 0.95);
     textC(['OSC', 'STR', 'GLS', 'SPL'][eng], xEuc, xEuc + 32, ysv + rowh + 12, F12);
+    if (eng === 3) {   // splice: crate-dig button (every tap = a fresh find)
+      set(0.3, 0.26, 0.2); rect(516, ysv + rowh + 4, 40, 32);
+      set(0.9, 0.8, 0.55); textC('DIG', 516, 556, ysv + rowh + 12, F12);
+    }
 
     if (gsi === 2) {
       m[sp + 24] ? set(0.4, 0.32, 0.24) : set(0.24, 0.24, 0.27);
@@ -2224,7 +2253,7 @@ window.gnome = {
     CLD_PITCH, CLD_SPREAD, CLD_REVERB, CLD_REVG, GEN_STYLE,
     SND_MTX, MUTE_SYN, SOLO_LANE, SOLO_SYN, SND_PRE,
     SPL_ST_A, SPL_EN_A, SPL_MODE_A, SPL_TUNE_A,
-    DNSE_A, DSWP_A, DSUB_A, DCLK_A, SMP_SYN, SMP_USR,
+    DNSE_A, DSWP_A, DSUB_A, DCLK_A, SMP_SYN, SMP_USR, BPM_WOB, BPM_WRT,
   },
   tables: { SCALE_NAMES, PROG_NAMES, SHAPE_NAMES, SYN_NAMES, FEEL_NAMES, SCL, STYLE_NAMES },
   SAMPLE_DEFS,

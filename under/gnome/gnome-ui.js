@@ -31,7 +31,9 @@ window.createGnomeUI = function (G) {
       : e === 2 ? 'blown glass: stretched harmonics, shimmer + breathy onset. Turn up Harmonic cycle for an evolving drone'
       : e === 3 ? (G.splSmp[si]
         ? `splice: plays “${G.splSmp[si].name || 'your sample'}” — crop it, track the notes or fix the pitch`
-        : 'splice: load a sample (below) and this part plays it')
+        : (G.splSmp[0] || G.splSmp[1] || G.splSmp[2])
+          ? 'splice: borrowing another part\'s sample — load one below to replace it'
+          : 'splice: load a sample (below) and this part plays it')
       : 'classic oscillator: sine → triangle → saw morph via Wave';
   };
 
@@ -308,7 +310,7 @@ window.createGnomeUI = function (G) {
       group('motion', 'a beat-synced LFO wobbles the filter (and pitch, if you let it)',
         stepper('LFO rate (beats)', 0.25, 16, 0.25, () => G.getParam(l, 11), v => G.setParam(l, 11, v), fmtQ),
         stepper('LFO → filter depth', 0, 100, 5, () => G.getParam(l, 12), v => G.setParam(l, 12, v)),
-        seg('LFO shape', ['sine', 'triangle', 'saw', 'S&H'], () => m[C.LSHAPE_A + l], i => m[C.LSHAPE_A + l] = i),
+        seg('LFO shape', ['sine', 'triangle', 'saw ↓', 'S&H', 'saw ↑'], () => m[C.LSHAPE_A + l], i => m[C.LSHAPE_A + l] = i),
         stepper('LFO → pitch (semis)', 0, 24, 1, () => G.getParam(l, 14), v => G.setParam(l, 14, v))),
       group('groove', null,
         stepper('Swing', 0, 75, 5, () => G.getParam(l, 15), v => G.setParam(l, 15, v), fmtPct),
@@ -395,7 +397,7 @@ window.createGnomeUI = function (G) {
       group('motion', null,
         stepper('LFO rate (beats)', 0.25, 16, 0.25, () => G.sget(si, 16), v => G.sset(si, 16, v), fmtQ),
         stepper('LFO → filter depth', 0, 100, 5, () => G.sget(si, 17), v => G.sset(si, 17, v)),
-        seg('LFO shape', ['sine', 'triangle', 'saw', 'S&H'], () => G.sget(si, 18), i => G.sset(si, 18, i))),
+        seg('LFO shape', ['sine', 'triangle', 'saw ↓', 'S&H', 'saw ↑'], () => G.sget(si, 18), i => G.sset(si, 18, i))),
       group('groove', null,
         stepper('Velocity', 1, 127, 1, () => G.sget(si, 6), v => G.sset(si, 6, v)),
         stepper('Gate length', 5, 200, 5, () => G.sget(si, 7), v => G.sset(si, 7, v), fmtPct),

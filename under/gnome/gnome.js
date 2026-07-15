@@ -7,6 +7,11 @@
 
 'use strict';
 
+// bump on every release: cache-busts the worklet module so a stale cached
+// DSP can never run against fresh UI code
+const APP_V = '10';
+
+
 const LANES_CAP = 8, MAX_STEPS = 32, EUC_N = 21, NROWS = 12, NSCALES = 14,
   NPROGS = 14, NSYN = 3;
 
@@ -1088,42 +1093,63 @@ function loadSpliceSample(si) {
   });
 }
 
-// ---- crate dig: pull a public-domain 78rpm snippet from the Internet
-// Archive (pre-1923 recordings are out of US copyright). Keyless + CORS-open.
+// ---- crate dig: pull free audio from Wikimedia Commons (public-domain /
+// free-licensed; the status names the file so its licence page is findable).
+// Commons is the big library with documented anonymous browser CORS
+// (origin=*); archive.org now bot-blocks cross-origin fetches.
 async function digSample(kind, idx) {
-  setStatus('digging the archive for a public-domain 78…');
+  setStatus('digging Wikimedia Commons for free audio…');
   try {
-    const page = 1 + Math.floor(Math.random() * 150);
-    const q = 'collection:georgeblood AND mediatype:audio AND year:[1900 TO 1922]';
-    const s = await (await fetch('https://archive.org/advancedsearch.php?q='
-      + encodeURIComponent(q) + '&fl[]=identifier&rows=10&page=' + page + '&output=json')).json();
-    const docs = s.response && s.response.docs;
-    if (!docs || !docs.length) throw new Error('no docs');
-    const id = docs[Math.floor(Math.random() * docs.length)].identifier;
-    const md = await (await fetch('https://archive.org/metadata/' + id)).json();
-    const f = (md.files || []).find(ff => /\.mp3$/i.test(ff.name));
-    if (!f) throw new Error('no mp3');
-    const title = (md.metadata && md.metadata.title) || id;
-    setStatus(`fetching “${title}”…`);
-    const ab = await (await fetch('https://archive.org/download/' + id + '/'
-      + encodeURIComponent(f.name))).arrayBuffer();
+    const terms = ['78 rpm record', 'phonograph cylinder', 'gramophone record',
+      'Edison record', 'shellac record music'];
+    const term = terms[Math.floor(Math.random() * terms.length)];
+    const off = Math.floor(Math.random() * 120);
+    const api = 'https://commons.wikimedia.org/w/api.php?action=query&generator=search'
+      + '&gsrsearch=' + encodeURIComponent('filetype:audio ' + term)
+      + '&gsrnamespace=6&gsrlimit=30&gsroffset=' + off
+      + '&prop=imageinfo&iiprop=url%7Cmime%7Csize&format=json&origin=*';
+    const j = await (await fetch(api)).json();
+    const pages = j.query && j.query.pages ? Object.values(j.query.pages) : [];
+    // prefer formats every browser decodes (Safari can't do ogg); cap size
+    const GOOD = ['audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/mp4',
+      'audio/flac', 'audio/x-flac'];
+    let cands = pages.filter(p => p.imageinfo && p.imageinfo[0] && p.imageinfo[0].size < 14e6);
+    const good = cands.filter(p => GOOD.includes(p.imageinfo[0].mime));
+    cands = (good.length ? good : cands).sort(() => Math.random() - 0.5);
+    if (!cands.length) throw new Error('empty');
     if (!audioReady) await initAudio();
-    const buf = await actx.decodeAudioData(ab);
-    // skip the needle-drop lead-in, keep a workable slice
-    const sr = buf.sampleRate;
-    const startS = Math.min(10, Math.max(0, buf.duration - 12));
-    const secs = kind === 'lane' ? 4 : 12;
-    const off = Math.floor(startS * sr);
-    const len = Math.min(buf.length - off, Math.floor(secs * sr));
-    const slice = new AudioBuffer({ numberOfChannels: 1, length: Math.max(1, len), sampleRate: sr });
-    const src = buf.getChannelData(0), dst = slice.getChannelData(0);
-    for (let i = 0; i < len; i++) dst[i] = src[off + i];
-    if (kind === 'lane') setUserSample(idx, bufToStereo(slice, title));
-    else setSpliceSample(idx, bufToMono(slice, title));
-    setStatus(`dug: “${title}” (1900–1922, public domain)`);
+    // try candidates until one downloads AND decodes — one bad file
+    // shouldn't kill the dig
+    for (const p of cands.slice(0, 4)) {
+      const title = String(p.title || '').replace(/^File:/, '');
+      setStatus(`fetching “${title}”…`);
+      try {
+        const ab = await (await fetch(p.imageinfo[0].url)).arrayBuffer();
+        const buf = await actx.decodeAudioData(ab);
+        applyDug(kind, idx, buf, title);
+        setStatus(`dug: “${title}” — free media from Wikimedia Commons (licence on its file page)`);
+        return;
+      } catch (e) { /* next candidate */ }
+    }
+    throw new Error('nodecode');
   } catch (e) {
-    setStatus('crate dig failed (offline or blocked) — try again, or load a local file');
+    setStatus(e && e.message === 'empty'
+      ? 'crate dig: no results this time — tap again'
+      : 'crate dig failed (network blocked or nothing decodable) — tap again, or load a local file');
   }
+}
+// slice a workable chunk out of a dug recording and land it on the target
+function applyDug(kind, idx, buf, title) {
+  const sr = buf.sampleRate;
+  const startS = Math.min(10, Math.max(0, buf.duration - 12));   // skip lead-in
+  const secs = kind === 'lane' ? 4 : 12;
+  const off = Math.floor(startS * sr);
+  const len = Math.max(1, Math.min(buf.length - off, Math.floor(secs * sr)));
+  const slice = new AudioBuffer({ numberOfChannels: 1, length: len, sampleRate: sr });
+  const src = buf.getChannelData(0), dst = slice.getChannelData(0);
+  for (let i = 0; i < len; i++) dst[i] = src[off + i];
+  if (kind === 'lane') setUserSample(idx, bufToStereo(slice, title));
+  else setSpliceSample(idx, bufToMono(slice, title));
 }
 
 // iOS Safari mutes Web Audio when the ring/silent switch is on unless an
@@ -1153,7 +1179,9 @@ async function initAudio() {
     const src = actx.createBufferSource();
     src.buffer = b; src.connect(actx.destination); src.start(0);
   } catch (e) { /* ignore */ }
-  await actx.audioWorklet.addModule('gnome-worklet.js');
+  // versioned URL: a cached stale worklet must never run against fresh UI
+  // code (that skew silently breaks features that live in the DSP)
+  await actx.audioWorklet.addModule('gnome-worklet.js?v=' + APP_V);
   node = new AudioWorkletNode(actx, 'supergnome',
     { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
   node.connect(actx.destination);

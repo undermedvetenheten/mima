@@ -274,13 +274,17 @@ window.createGnomeUI = function (G) {
           : isUsr ? (G.userSmp[l] ? `“${G.userSmp[l].name}”` : 'no file yet — load or dig one below') : null),
       ...(isUsr ? [h('div', 'pk-actions',
         action('📂 load audio file', () => G.loadUserSample(l)),
-        action('💿 crate dig (public domain)', () => G.digSample('lane', l)))] : []),
+        action('💿 wiki dig', () => G.digSample('lane', l, 'wiki')),
+        action('📀 78rpm dig', () => G.digSample('lane', l, 'ia')))] : []),
       modeBar(),
       drumGrid(l));
   }
 
   function drumParams(l) {
     return [
+      ...(G.smpA[l] === C.SMP_USR ? [
+        group('sample', 'where each hit starts in the file — LFO it for slice motion',
+          stepper('Crop start', 0, 100, 1, () => m[C.DCRP_A + l], v => m[C.DCRP_A + l] = v, fmtPct))] : []),
       ...(G.smpA[l] === C.SMP_SYN ? [
         group('synth drum voice', 'Pitch = tuning, Filter shapes it, decay from Gate',
           stepper('Noise mix', 0, 100, 5, () => m[C.DNSE_A + l], v => m[C.DNSE_A + l] = v, fmtPct),
@@ -348,7 +352,8 @@ window.createGnomeUI = function (G) {
         ...(m[C.ENG_A + si] === 3
           ? [h('div', 'pk-actions',
               action('📂 load audio file', () => { G.loadSpliceSample(si); }),
-              action('💿 crate dig (public domain)', () => G.digSample('splice', si))),
+              action('💿 wiki dig', () => G.digSample('splice', si, 'wiki')),
+              action('📀 78rpm dig', () => G.digSample('splice', si, 'ia'))),
             stepper('Crop start', 0, 100, 1, () => m[C.SPL_ST_A + si], v => m[C.SPL_ST_A + si] = v, fmtPct),
             stepper('Crop end', 0, 100, 1, () => m[C.SPL_EN_A + si], v => m[C.SPL_EN_A + si] = v, fmtPct,
               'the crop window loops while a note sustains'),
@@ -441,14 +446,22 @@ window.createGnomeUI = function (G) {
       const off = C.SND_MTX + p * 3 + fxi;
       return stepper(nm + ' →', 0, 100, 5, () => m[off], v => m[off] = v, fmtPct);
     });
+    const fmtDeg = v => Math.round(v) + '°';
+    const spaceRows = ['Drums', 'Bass', 'Melody', 'Chords'].map((nm, p) => [
+      stepper(nm + ' azimuth', -180, 180, 5, () => m[C.PAN_AZ_A + p], v => m[C.PAN_AZ_A + p] = v, fmtDeg),
+      stepper(nm + ' force', 0, 100, 5, () => m[C.PAN_FRC_A + p], v => m[C.PAN_FRC_A + p] = v, fmtPct,
+        p === 0 ? 'the part’s own energy shoves it around the head' : null),
+    ]).flat();
     return [
+      group('3D space', 'angle each part around your head — LFO the azimuth to orbit it',
+        ...spaceRows),
       ...lfoRows, modSection,
       group('effects rack', 'each fx has its own per-part sends, or feed the whole mix through',
         seg('Rack', ['off', 'on'], () => m[C.FX_ON], i => m[C.FX_ON] = i),
         stepper('Feed full mix in', 0, 100, 5, () => m[C.FX_FEED], v => m[C.FX_FEED] = v, fmtPct),
         seg('Sends tap', ['post-fader', 'pre-fader'], () => m[C.SND_PRE], i => m[C.SND_PRE] = i,
           'pre-fader: pull a part’s volume down and its fx wash stays')),
-      group('floaty delay', 'a tape-ish echo — pitch/reverse the repeats or let them drift',
+      group('dub delay', 'a tape-ish echo — pitch/reverse the repeats or let them drift',
         seg('Delay', ['off', 'on'], () => m[C.DLY_ON], i => m[C.DLY_ON] = i),
         stepper('Time (beats)', 0.0625, 2, 0.0625, () => m[C.DLY_TIME], v => m[C.DLY_TIME] = v, fmtDlyBeats),
         stepper('Feedback', 0, 100, 5, () => m[C.DLY_FB], v => m[C.DLY_FB] = v, fmtPct),
@@ -460,14 +473,14 @@ window.createGnomeUI = function (G) {
         stepper('Float / wow', 0, 100, 5, () => m[C.DLY_WOW], v => m[C.DLY_WOW] = v, fmtPct,
           'slow pitch drift (only when Pitch/Reverse are off)'),
         ...route(0)),
-      group('avocado glitch', 'beat-synced stutter + crush for glitching out',
+      group('glitch', 'beat-synced stutter + crush for glitching out',
         seg('Glitch', ['off', 'on'], () => m[C.AVO_ON], i => m[C.AVO_ON] = i),
         stepper('Amount', 0, 100, 5, () => m[C.AVO_AMT], v => m[C.AVO_AMT] = v, fmtPct),
         stepper('Rate (beats)', 0.0625, 2, 0.0625, () => m[C.AVO_RATE], v => m[C.AVO_RATE] = v, fmtDlyBeats),
         stepper('Crush', 0, 100, 5, () => m[C.AVO_CRUSH], v => m[C.AVO_CRUSH] = v, fmtPct),
         stepper('Mix', 0, 100, 5, () => m[C.AVO_MIX], v => m[C.AVO_MIX] = v, fmtPct),
         ...route(1)),
-      group('clouds', 'granular reverb — smears the sound into a pitched, textured wash',
+      group('granulator', 'granular reverb — smears the sound into a pitched, textured wash',
         seg('Clouds', ['off', 'on'], () => m[C.CLD_ON], i => m[C.CLD_ON] = i),
         stepper('Grain size', 0, 100, 5, () => m[C.CLD_SIZE], v => m[C.CLD_SIZE] = v, fmtPct),
         stepper('Density', 0, 100, 5, () => m[C.CLD_DENS], v => m[C.CLD_DENS] = v, fmtPct),

@@ -123,7 +123,21 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
   **Crate dig**: pulls a public-domain 78rpm snippet (Internet Archive,
   George Blood collection, recordings 1900–1922) into a lane (USR) or a
   splice slot. Keyless API, browser-direct; fails soft with a status hint
-  when offline.
+  when offline. Every import (file or dig) is peak-normalized.
+
+  **Mod LFOs** (`MLFO_A`, `MOD_TGT_A`/`MOD_MSK_A`): two global assignable
+  LFOs with rate / depth / shape each. Canvas: ARM L1 or L2 on the FX box's
+  MOD row, then tap any value field to toggle it as a target (tap again to
+  remove; amber/teal corner ticks mark assigned fields); pocket: pick a
+  target from the list and assign. Up to 16 assignments, stored in the
+  shared memory block so they persist and ride presets/groove files. The
+  worklet overwrites each target with its modulated value at block start
+  (swing = ±depth/2 of the target's range) and restores the base afterwards,
+  so the UI always shows and edits base values. Targets include lane
+  pitch/filter/velocity/swing, synth cutoff/resonance/wave/velocity/gate,
+  splice crop/tune, every fx parameter, the send matrix, and the tempo
+  wobble. A **tempo wobble** (`BPM_WOB/BPM_WRT`) breathes the master bpm
+  against a slow sine, and LFO shapes include an invertible saw (`SW↑`).
 
   **Recording**: the worklet streams its master output (post-FX, post-limiter)
   to the main thread as PCM chunks; gnome.js encodes a 16-bit stereo WAV on

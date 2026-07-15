@@ -22,7 +22,7 @@ const PAT = 0, STEPS_A = 272, SPAN_A = 280, PUL_A = 288,
   GKEY_SPD = 719, LOCK_A = 720, HML_A = 724;
 
 // ---- web-only region (>= 728; extends the JSFX block, kept in gnome.js) ----
-const MEM = 864;
+const MEM = 896;
 // per-synth engine: 0 classic osc, 1 plucked string, 2 blown glass (3 slots)
 const ENG_A = 728;
 // FX rack (delay -> avocado glitch -> clouds) fed by the full mix + sends
@@ -47,6 +47,8 @@ const SPL_ST_A = 800, SPL_EN_A = 803, SPL_MODE_A = 806, SPL_TUNE_A = 809;
 const DNSE_A = 812, DSWP_A = 820, DSUB_A = 828, DCLK_A = 836;
 // global tempo wobble: amount (% depth) + period (beats per cycle)
 const BPM_WOB = 844, BPM_WRT = 845;
+// two assignable mod LFOs + 16 assignment slots (target offset, mask 1|2|3)
+const MLFO_A = 846, MOD_TGT_A = 852, MOD_MSK_A = 868, MOD_SLOTS = 16;
 
 // ---- scale / progression tables (mirror of the JSFX; keep in sync) ----
 const SCL = [
@@ -110,6 +112,33 @@ function harmRaw(tb, epr, espd) {
 // catch NaN/inf - NaN fails both comparisons -> 0
 function sane(x) { return (x > -100000 && x < 100000) ? x : 0; }
 
+// legal mod-LFO targets and their ranges (mirror of gnome.js's modRange)
+function modRange(off) {
+  const within = (base, n) => off >= base && off < base + n;
+  if (within(PIT_A, 8)) return [-24, 24];
+  if (within(LPF_A, 8) || within(FENV_A, 8)) return [0, 100];
+  if (within(VEL_A, 8)) return [1, 127];
+  if (within(GATE_A, 8)) return [5, 200];
+  if (within(SWG_A, 8)) return [0, 75];
+  if (within(DNSE_A, 8) || within(DSWP_A, 8) || within(DSUB_A, 8) || within(DCLK_A, 8)) return [0, 100];
+  for (const sp of [BASS_P, MEL_P, CHD_P]) {
+    if (off === sp + 6) return [1, 127];
+    if (off === sp + 7) return [5, 200];
+    if (off === sp + 12 || off === sp + 13 || off === sp + 14 || off === sp + 19) return [0, 100];
+  }
+  if (within(SPL_ST_A, 3) || within(SPL_EN_A, 3)) return [0, 100];
+  if (within(SPL_TUNE_A, 3)) return [-12, 12];
+  if (off === DLY_TIME || off === AVO_RATE) return [0.0625, 2];
+  if (off === DLY_FB || off === DLY_TONE || off === DLY_WOW || off === FX_FEED
+    || off === AVO_AMT || off === AVO_CRUSH || off === AVO_MIX
+    || off === CLD_MIX || off === CLD_SIZE || off === CLD_DENS
+    || off === CLD_SPREAD || off === CLD_REVERB) return [0, 100];
+  if (off === DLY_PITCH || off === CLD_PITCH) return [-24, 24];
+  if (within(SND_MTX, 12) || within(GLC_A, 3)) return [0, 100];
+  if (off === BPM_WOB) return [0, 100];
+  return null;
+}
+
 const FEL_MULT = [1, 2 / 3, 1.5];
 
 class SuperGnomeProcessor extends AudioWorkletProcessor {
@@ -146,12 +175,13 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     // 2..7 the chord voices)
     this.spl = [null, null, null];
     this.spPos = F(8);
+    this.modSaves = [];   // [off, baseValue, ...] restored after each block
     this.spSt = F(NSYN); this.spEnWin = F(NSYN);
     this.spFix = F(NSYN); this.spTrk = F(NSYN);
     this.fltLo = F(LANES_CAP); this.fltBp = F(LANES_CAP);
     this.fltLo2 = F(LANES_CAP); this.fltBp2 = F(LANES_CAP);
     this.fltF = F(LANES_CAP); this.fenv = F(LANES_CAP);
-    this.shc = F(12); this.shv = F(12);
+    this.shc = F(14); this.shv = F(14);
 
     this.svDel = F(NSYN); this.svNfreq = F(NSYN); this.svNgain = F(NSYN);
     this.svFreq = F(NSYN); this.svGain = F(NSYN); this.svStage = F(NSYN);
@@ -423,6 +453,27 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     if (!this.haveState) return true;
 
     const m = this.m, srate = sampleRate;
+
+    // ---- mod LFOs: overwrite each assigned target with its modulated value
+    // for this block (swing = ±depth/2 of the target's range), remembering
+    // the base values; they're restored at the end of render so the UI's
+    // state pushes stay the source of truth.
+    this.modSaves.length = 0;
+    for (let k = 0; k < MOD_SLOTS; k++) {
+      const t = m[MOD_TGT_A + k], msk = m[MOD_MSK_A + k];
+      if (!t || !msk) continue;
+      const r = modRange(t);
+      if (!r) continue;
+      let lv = 0;
+      if (msk & 1) lv += this.lfoVal(Math.max(0.25, m[MLFO_A]), m[MLFO_A + 2], 12) * m[MLFO_A + 1] / 100;
+      if (msk & 2) lv += this.lfoVal(Math.max(0.25, m[MLFO_A + 3]), m[MLFO_A + 5], 13) * m[MLFO_A + 4] / 100;
+      const base = m[t];
+      this.modSaves.push(t, base);
+      let v = base + lv * 0.5 * (r[1] - r[0]);
+      if (v < r[0]) v = r[0]; else if (v > r[1]) v = r[1];
+      m[t] = v;
+    }
+
     // tempo wobble: a slow sine breathes the effective bpm up and down
     // (depth up to ±12%, period in beats). Phase advances in musical time.
     let effBpm = this.bpm;
@@ -1036,6 +1087,10 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
         if (++this.recPos >= this.REC_CHUNK) this.flushRec(false);
       }
     }
+
+    // restore the mod-LFO targets' base values (see the top of render)
+    for (let i = 0; i < this.modSaves.length; i += 2)
+      m[this.modSaves[i]] = this.modSaves[i + 1];
 
     // UI heartbeat: beat position + sounding pitch classes, ~every 8 blocks
     if (++this.tickN >= 8) {

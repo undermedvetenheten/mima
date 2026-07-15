@@ -406,8 +406,35 @@ window.createGnomeUI = function (G) {
     ];
   }
 
-  function fxSections() {
+  function fxSections(rerender) {
+    const rr = rerender || (() => { });
     const fmtDlyBeats = v => v + ' beats';
+    // mod LFOs: L1/L2 controls + a MIDI-learn-free assignment list for touch
+    const lfoRows = [1, 2].map(n => {
+      const b = C.MLFO_A + (n - 1) * 3;
+      return group(`mod LFO ${n}`, null,
+        stepper('Rate (beats)', 0.25, 64, 0.25, () => m[b], v => m[b] = v, fmtQ),
+        stepper('Depth', 0, 100, 5, () => m[b + 1], v => m[b + 1] = v, fmtPct),
+        seg('Shape', ['sine', 'triangle', 'saw ↓', 'S&H', 'saw ↑'], () => m[b + 2], i => m[b + 2] = i));
+    });
+    const asnRows = [];
+    for (let k = 0; k < C.MOD_SLOTS; k++) {
+      const t = m[C.MOD_TGT_A + k], msk = m[C.MOD_MSK_A + k];
+      if (!t || !msk) continue;
+      asnRows.push(h('div', 'pk-msrow',
+        h('span', 'pk-mslabel', G.modTargetName(t)),
+        ...[1, 2].filter(n => msk & n).map(n =>
+          action(`✕ L${n}`, () => { G.modToggle(n, t); rr(); }))));
+    }
+    const targets = G.modTargets();
+    const sel = h('select', 'pk-select');
+    targets.forEach((t, i) => { const o = h('option', '', t.name); o.value = i; sel.append(o); });
+    const assignRow = h('div', 'pk-actions',
+      action('assign → L1', () => { G.modToggle(1, targets[+sel.value].off); rr(); }),
+      action('assign → L2', () => { G.modToggle(2, targets[+sel.value].off); rr(); }));
+    const modSection = group('LFO assignments',
+      'two free LFOs you can point at almost anything — pick a target, assign, stack both for chaos',
+      ...asnRows, h('div', 'pk-row col', h('div', 'pk-rowlabel', 'Target'), sel), assignRow);
     // per-fx routing: send each part (0 drums,1 bass,2 melody,3 chords) into
     // this specific fx stage (fxi 0 delay, 1 glitch, 2 clouds).
     const route = fxi => ['Drums', 'Bass', 'Melody', 'Chords'].map((nm, p) => {
@@ -415,6 +442,7 @@ window.createGnomeUI = function (G) {
       return stepper(nm + ' →', 0, 100, 5, () => m[off], v => m[off] = v, fmtPct);
     });
     return [
+      ...lfoRows, modSection,
       group('effects rack', 'each fx has its own per-part sends, or feed the whole mix through',
         seg('Rack', ['off', 'on'], () => m[C.FX_ON], i => m[C.FX_ON] = i),
         stepper('Feed full mix in', 0, 100, 5, () => m[C.FX_FEED], v => m[C.FX_FEED] = v, fmtPct),

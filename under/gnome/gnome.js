@@ -21,7 +21,7 @@ const PAT = 0, NOTE_A = 256, CHAN_A = 264, STEPS_A = 272, SPAN_A = 280,
   GKEY_SCALE = 717, GKEY_PROG = 718, GKEY_SPD = 719, LOCK_A = 720, HML_A = 724;
 
 // ---- web-only region (>= 728; extends the JSFX block, kept in the worklet) ----
-const MEM = 864;
+const MEM = 896;
 const ENG_A = 728;            // per-synth engine: 0 osc, 1 string, 2 glass
 const GEN_STYLE = 731;        // RND generation style (index into STYLE_NAMES)
 const FX_ON = 736, DLY_ON = 737, DLY_TIME = 738, DLY_FB = 739, DLY_TONE = 740,
@@ -47,6 +47,10 @@ const SPL_ST_A = 800, SPL_EN_A = 803, SPL_MODE_A = 806, SPL_TUNE_A = 809;
 const DNSE_A = 812, DSWP_A = 820, DSUB_A = 828, DCLK_A = 836;
 // global tempo wobble: amount (% of ±12% depth) + period in beats
 const BPM_WOB = 844, BPM_WRT = 845;
+// two assignable mod LFOs (MIDI-learn style): rate (beats) / depth % / shape
+// for L1 + L2, then 16 assignment slots (target mem offset + mask 1|2|3)
+const MLFO_A = 846;                 // 846..851: L1 rate,depth,shape, L2 ditto
+const MOD_TGT_A = 852, MOD_MSK_A = 868, MOD_SLOTS = 16;
 
 const m = new Float64Array(MEM);
 let numLanes = 3;
@@ -269,10 +273,10 @@ function buildScoreModel() {
   };
 }
 
+const PARAM_OFF = [NOTE_A, CHAN_A, STEPS_A, SPAN_A, PUL_A, ROT_A, VEL_A, GATE_A,
+  PIT_A, LPF_A, FENV_A, LRATE_A, LDEP_A, LSHAPE_A, LPT_A, SWG_A, NDG_A, VHM_A];
 function getParam(l, f) {
-  const off = [NOTE_A, CHAN_A, STEPS_A, SPAN_A, PUL_A, ROT_A, VEL_A, GATE_A,
-    PIT_A, LPF_A, FENV_A, LRATE_A, LDEP_A, LSHAPE_A, LPT_A, SWG_A, NDG_A, VHM_A][f];
-  return m[off + l];
+  return m[PARAM_OFF[f] + l];
 }
 function setParam(l, f, v) {
   const clamp = (lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -607,18 +611,24 @@ function seedNewRegions(arr) {
     a[DNSE_A + l] = 20; a[DSWP_A + l] = 55; a[DSUB_A + l] = 25; a[DCLK_A + l] = 25;
   }
   a[BPM_WOB] = 0; a[BPM_WRT] = 32;
+  a[MLFO_A] = 8; a[MLFO_A + 1] = 50; a[MLFO_A + 2] = 0;      // L1: 8 beats, 50%
+  a[MLFO_A + 3] = 16; a[MLFO_A + 4] = 50; a[MLFO_A + 5] = 0; // L2: 16 beats
+  for (let k = 0; k < MOD_SLOTS; k++) { a[MOD_TGT_A + k] = 0; a[MOD_MSK_A + k] = 0; }
 }
 // bring a stored mem block (768 / 800 / 864) up to the current layout;
 // returns a MEM-length plain array, or null for an unknown length
 function migrateMem(arr) {
   if (!arr || !arr.length) return null;
   if (arr.length === MEM) return Array.from(arr);
-  if (arr.length !== 768 && arr.length !== 800) return null;
+  if (![768, 800, 864].includes(arr.length)) return null;
   const out = Array.from(arr);
   while (out.length < MEM) out.push(0);
   if (arr.length === 768)   // pre-routing: old single-bus sends -> delay column
     for (let p = 0; p < 4; p++) out[SND_MTX + p * 3] = arr[SEND_A + p] || 0;
-  seedNewRegions(out);
+  if (arr.length < 864) seedNewRegions(out);   // splice + drum-voice defaults
+  // regions the save predates get their defaults (mod LFOs came with 896)
+  out[MLFO_A] = out[MLFO_A] || 8; out[MLFO_A + 1] = out[MLFO_A + 1] || 50;
+  out[MLFO_A + 3] = out[MLFO_A + 3] || 16; out[MLFO_A + 4] = out[MLFO_A + 4] || 50;
   return out;
 }
 
@@ -734,6 +744,99 @@ function redo() {
   restoreSnap(committed);
   setStatus('redo');
 }
+
+// ---- mod LFOs (two global assignable LFOs, MIDI-learn style) --------------
+// modRange(off) says whether a mem offset is a legal LFO target and what its
+// value range is (the worklet swings the value across ±depth/2 of that range).
+// KEEP IN SYNC with the worklet's copy.
+function modRange(off) {
+  const within = (base, n) => off >= base && off < base + n;
+  if (within(PIT_A, 8)) return [-24, 24];
+  if (within(LPF_A, 8) || within(FENV_A, 8)) return [0, 100];
+  if (within(VEL_A, 8)) return [1, 127];
+  if (within(GATE_A, 8)) return [5, 200];
+  if (within(SWG_A, 8)) return [0, 75];
+  if (within(DNSE_A, 8) || within(DSWP_A, 8) || within(DSUB_A, 8) || within(DCLK_A, 8)) return [0, 100];
+  for (let si = 0; si < NSYN; si++) {
+    const sp = spOff(si);
+    if (off === sp + 6) return [1, 127];              // VEL
+    if (off === sp + 7) return [5, 200];              // GATE
+    if (off === sp + 12 || off === sp + 13 || off === sp + 14 || off === sp + 19) return [0, 100]; // CUT RES ENV WAV
+  }
+  if (within(SPL_ST_A, 3) || within(SPL_EN_A, 3)) return [0, 100];
+  if (within(SPL_TUNE_A, 3)) return [-12, 12];
+  if (off === DLY_TIME || off === AVO_RATE) return [0.0625, 2];
+  if (off === DLY_FB || off === DLY_TONE || off === DLY_WOW || off === FX_FEED
+    || off === AVO_AMT || off === AVO_CRUSH || off === AVO_MIX
+    || off === CLD_MIX || off === CLD_SIZE || off === CLD_DENS
+    || off === CLD_SPREAD || off === CLD_REVERB) return [0, 100];
+  if (off === DLY_PITCH || off === CLD_PITCH) return [-24, 24];
+  if (within(SND_MTX, 12) || within(GLC_A, 3)) return [0, 100];
+  if (off === BPM_WOB) return [0, 100];
+  return null;
+}
+// mask of LFOs assigned to an offset (bit 1 = L1, bit 2 = L2)
+function modMaskFor(off) {
+  for (let k = 0; k < MOD_SLOTS; k++)
+    if (m[MOD_TGT_A + k] === off) return m[MOD_MSK_A + k];
+  return 0;
+}
+// toggle an LFO (1|2) on a target; returns a status string
+function modToggle(lfo, off) {
+  if (!modRange(off)) return 'that field can’t take an LFO';
+  const bit = lfo === 2 ? 2 : 1;
+  for (let k = 0; k < MOD_SLOTS; k++) {
+    if (m[MOD_TGT_A + k] === off) {
+      m[MOD_MSK_A + k] ^= bit;
+      if (!m[MOD_MSK_A + k]) m[MOD_TGT_A + k] = 0;
+      touchState();
+      return (m[MOD_MSK_A + k] & bit) ? `L${lfo} → assigned` : `L${lfo} removed`;
+    }
+  }
+  for (let k = 0; k < MOD_SLOTS; k++) {
+    if (!m[MOD_TGT_A + k]) {
+      m[MOD_TGT_A + k] = off; m[MOD_MSK_A + k] = bit;
+      touchState();
+      return `L${lfo} → assigned`;
+    }
+  }
+  return 'all 16 LFO slots are in use — remove one first';
+}
+// human-readable catalog of every target (drives the pocket's assign UI)
+function modTargets() {
+  const out = [];
+  for (let l = 0; l < numLanes; l++) {
+    const nm = `lane ${l + 1}`;
+    out.push({ name: `${nm} pitch`, off: PIT_A + l }, { name: `${nm} filter`, off: LPF_A + l },
+      { name: `${nm} velocity`, off: VEL_A + l }, { name: `${nm} swing`, off: SWG_A + l });
+    if (smpA[l] === SMP_SYN)
+      out.push({ name: `${nm} sweep`, off: DSWP_A + l }, { name: `${nm} sub`, off: DSUB_A + l });
+  }
+  for (let si = 0; si < NSYN; si++) {
+    const sp = spOff(si), nm = SYN_NAMES[si];
+    out.push({ name: `${nm} cutoff`, off: sp + 12 }, { name: `${nm} resonance`, off: sp + 13 },
+      { name: `${nm} wave`, off: sp + 19 }, { name: `${nm} velocity`, off: sp + 6 },
+      { name: `${nm} gate`, off: sp + 7 });
+    if (m[ENG_A + si] === 3)
+      out.push({ name: `${nm} crop start`, off: SPL_ST_A + si }, { name: `${nm} tune`, off: SPL_TUNE_A + si });
+  }
+  out.push(
+    { name: 'delay time', off: DLY_TIME }, { name: 'delay feedback', off: DLY_FB },
+    { name: 'delay tone', off: DLY_TONE }, { name: 'delay pitch', off: DLY_PITCH },
+    { name: 'fx feed', off: FX_FEED },
+    { name: 'glitch amount', off: AVO_AMT }, { name: 'glitch mix', off: AVO_MIX },
+    { name: 'clouds mix', off: CLD_MIX }, { name: 'clouds density', off: CLD_DENS },
+    { name: 'clouds pitch', off: CLD_PITCH }, { name: 'clouds size', off: CLD_SIZE });
+  for (let p = 0; p < 4; p++)
+    for (let f = 0; f < 3; f++)
+      out.push({ name: `${['drums', 'bass', 'melody', 'chords'][p]} → ${['delay', 'glitch', 'clouds'][f]} send`,
+        off: SND_MTX + p * 3 + f });
+  return out;
+}
+const modTargetName = off => {
+  const t = modTargets().find(t => t.off === off);
+  return t ? t.name : 'slot ' + off;
+};
 
 // ---- presets (A/B/C live slots + .json file export/import) ----
 // A preset is a full serialized groove (same shape as an undo snapshot but
@@ -1161,7 +1264,7 @@ const xEuc = xSolo + 22, xMode = xEuc + 36, xGrid = xMode + 30;
 const cellw = 16, cellh = 28, rollrh = 8;
 function yBtn() { return laneTop + numLanes * rowh + 2; }
 function ys(si) { return yBtn() + 28 + si * 188; }
-const fxH = 160;                        // demarcated FX box at the bottom
+const fxH = 196;                        // demarcated FX box at the bottom
 function fxY() { return ys(2) + 184; }
 function yStat() { return fxY() + fxH + 2; }
 function totalH() { return yStat() + 22; }
@@ -1191,10 +1294,20 @@ function knobX(i) { return W - (KNOBS.length - i) * 52 - 8; }
 
 // FX panel cells (drawn as a demarcated box at the bottom, OG drag-field
 // idiom). Positions are absolute; rebuilt each frame so they track fxY().
+// corner ticks marking a field as an LFO target (amber = L1, teal = L2)
+function modTick(off, x, w, y) {
+  const mk = modMaskFor(off);
+  if (!mk) return;
+  if (mk & 1) { set(0.95, 0.72, 0.25); rect(x + w - 7, y + 2, 5, 5); }
+  if (mk & 2) { set(0.3, 0.85, 0.85); rect(x + w - 7, y + 9, 5, 5); }
+}
+
 function fxFmt(kind, v) {
   return kind === 'pct' ? Math.round(v) + '%'
     : kind === 'st' ? (v > 0 ? '+' : '') + Math.round(v)
-    : kind === 'beats' ? fmtG(v) : String(Math.round(v));
+    : kind === 'beats' ? fmtG(v)
+    : kind === 'shp' ? ['SIN', 'TRI', 'SW\u2193', 'S&H', 'SW\u2191'][Math.round(v)] || 'SIN'
+    : String(Math.round(v));
 }
 function fxCells() {
   const fy = fxY(), c = [];
@@ -1253,6 +1366,16 @@ function fxCells() {
   val(x, y, 44, 'TAIL', CLD_REVERB, 0, 100, 5, 'pct'); x += 48;
   val(x, y, 42, 'MIX', CLD_MIX, 0, 100, 5, 'pct'); x += 46;
   sends(x, y, 2);
+  // mod LFOs: L1 / L2 rate + depth + shape (the ARM buttons are drawn apart)
+  y = fy + 168; x = 100;
+  val(x, y, 46, 'RATE', MLFO_A, 0.25, 64, 0.25, 'beats'); x += 50;
+  val(x, y, 42, 'DEP', MLFO_A + 1, 0, 100, 5, 'pct'); x += 46;
+  val(x, y, 40, 'SHP', MLFO_A + 2, 0, 4, 1, 'shp'); x += 78;
+  x = 360;
+  val(x, y, 46, 'RATE', MLFO_A + 3, 0.25, 64, 0.25, 'beats'); x += 50;
+  val(x, y, 42, 'DEP', MLFO_A + 4, 0, 100, 5, 'pct'); x += 46;
+  val(x, y, 40, 'SHP', MLFO_A + 5, 0, 4, 1, 'shp'); x += 44;
+  lbl(x + 26, y + 9, 'ARM an LFO, then tap fields to assign it (tap again to remove)');
   return c;
 }
 
@@ -1286,6 +1409,13 @@ function setStatus(s) { statusText = s; haveStatus = true; }
 // ---- interaction state (port of the JSFX drag machinery) ----
 let dragMode = 0, dragF = 0, dragLane = 0, dragSynth = 0, dragY = 0, dragV = 0,
   dragMoved = false, rotApplied = 0, paint = 0, dragKnob = 0, dragFx = null;
+// mod-LFO assignment mode: 0 = off, 1/2 = tapping fields assigns that LFO
+let armLfo = 0;
+function tryModAssign(off) {
+  if (!armLfo) return false;
+  setStatus(`${modToggle(armLfo, off)} — ${modTargetName(off)}`);
+  return true;
+}
 const FEL_MULT = [1, 2 / 3, 1.5];
 
 function canvasXY(e) {
@@ -1339,9 +1469,23 @@ function onDown(x, y, right) {
 
   // FX box at the bottom
   if (y >= fxY() && y < fxY() + fxH) {
+    const my = fxY() + 168;
+    if (y >= my && y < my + 30) {
+      if (x >= 46 && x < 92) {
+        armLfo = armLfo === 1 ? 0 : 1;
+        setStatus(armLfo ? 'L1 armed — tap any value field to assign / remove it' : 'L1 disarmed');
+        return;
+      }
+      if (x >= 306 && x < 352) {
+        armLfo = armLfo === 2 ? 0 : 2;
+        setStatus(armLfo ? 'L2 armed — tap any value field to assign / remove it' : 'L2 disarmed');
+        return;
+      }
+    }
     for (const cell of fxCells()) {
       if (cell.t === 'lbl') continue;
       if (x >= cell.x && x < cell.x + cell.w && y >= cell.y && y < cell.y + 30) {
+        if (cell.t === 'val' && tryModAssign(cell.off)) return;
         if (cell.t === 'tog') { dragMode = 31; dragFx = cell; dragY = y; }
         else { dragMode = 30; dragFx = cell; dragY = y; dragV = m[cell.off]; }
         return;
@@ -1400,6 +1544,7 @@ function onDown(x, y, right) {
     if (y >= ysv && y < ysv + rowh) {
       if (x >= xFields && x < xFields + 10 * fieldw) {
         dragF = Math.floor((x - xFields) / fieldw);
+        if (armLfo) { tryModAssign(spOff(gsi) + dragF); return; }
         dragY = y; dragSynth = gsi; dragV = sget(gsi, dragF);
         dragMode = dragF === 5 ? 9 : 5;
       } else if (x >= xMute && x < xMute + 18) {
@@ -1426,6 +1571,11 @@ function onDown(x, y, right) {
         // splice engine reclaims the WAV/RATE/DEP/SHP slots for its own
         // controls: crop start / crop end / fine tune / pitch-track toggle
         if (m[ENG_A + gsi] === 3 && dragF >= 3 && dragF <= 6) {
+          if (armLfo) {
+            if (dragF === 6) setStatus('TRK/FIX can’t take an LFO');
+            else tryModAssign([SPL_ST_A, SPL_EN_A, SPL_TUNE_A][dragF - 3] + gsi);
+            return;
+          }
           if (dragF === 6) {   // TRK/FIX tap toggle
             m[SPL_MODE_A + gsi] = m[SPL_MODE_A + gsi] ? 0 : 1;
             setStatus(`${SYN_NAMES[gsi]} splice: ${m[SPL_MODE_A + gsi] ? 'FIX - plays at its own pitch (TUNE to taste)' : 'TRK - repitched to follow the notes'}`);
@@ -1438,6 +1588,7 @@ function onDown(x, y, right) {
           dragMode = 42;
           return;
         }
+        if (armLfo) { tryModAssign(spOff(gsi) + r2map(dragF)); return; }
         dragY = y; dragSynth = gsi; dragV = sget(gsi, r2map(dragF));
         dragMode = 10;
       } else if (m[ENG_A + gsi] === 3 && x >= 516 && x < 556) {
@@ -1484,13 +1635,20 @@ function onDown(x, y, right) {
       const uiF = Math.floor((x - xFields) / fieldw);
       // SYN lanes reclaim the LFO slots for the drum voice: NSE/SWP/SUB/CLK
       if (smpA[ml] === SMP_SYN && uiF >= 10 && uiF <= 13) {
+        const doff = [DNSE_A, DSWP_A, DSUB_A, DCLK_A][uiF - 10] + ml;
+        if (armLfo) { tryModAssign(doff); return; }
         dragLane = ml; dragY = y;
-        dragFx = [DNSE_A, DSWP_A, DSUB_A, DCLK_A][uiF - 10] + ml;
+        dragFx = doff;
         dragV = m[dragFx];
         dragMode = 43;
         return;
       }
       dragF = DFIELDS[uiF][1];
+      if (armLfo) {
+        if (typeof dragF === 'number') tryModAssign(PARAM_OFF[dragF] + ml);
+        else setStatus('that field can\u2019t take an LFO');
+        return;
+      }
       dragLane = ml; dragY = y;
       dragV = dragF === 'smp' ? 0 : getParam(ml, dragF);
       dragMode = dragF === 5 ? 8 : 1;
@@ -1854,6 +2012,8 @@ function draw() {
       else if (f === 13) v = ['SIN', 'TRI', 'SW↓', 'S&H', 'SW↑'][m[LSHAPE_A + gl]];
       else v = String(getParam(gl, f));
       textC(v, fx, fx + fieldw - 4, ry + 18, F13);
+      if (synF) modTick([DNSE_A, DSWP_A, DSUB_A, DCLK_A][gf - 10] + gl, fx, fieldw - 4, ry + 4);
+      else if (typeof f === 'number') modTick(PARAM_OFF[f] + gl, fx, fieldw - 4, ry + 4);
     }
 
     m[MUTE_A + gl] ? set(0.75, 0.25, 0.25) : set(0.25, 0.25, 0.28);
@@ -1964,6 +2124,7 @@ function draw() {
       else if (gf === 7) v = m[sp + 7] + '%';
       else v = String(m[sp + gf]);
       textC(v, fx, fx + fieldw - 4, ysv + 18, F13);
+      modTick(sp + gf, fx, fieldw - 4, ysv + 4);
     }
 
     m[sp + 11] ? set(0.75, 0.25, 0.25) : set(0.25, 0.25, 0.28);
@@ -2013,6 +2174,8 @@ function draw() {
       else if (gf === 13) v = fmtG(m[sp + 23]);
       else v = String(sget(gsi, r2map(gf)));
       textC(v, fx, fx + fieldw - 4, ysv + rowh + 18, F13);
+      if (splF && gf < 6) modTick([SPL_ST_A, SPL_EN_A, SPL_TUNE_A][gf - 3] + gsi, fx, fieldw - 4, ysv + rowh + 4);
+      else if (!splF) modTick(sp + r2map(gf), fx, fieldw - 4, ysv + rowh + 4);
     }
 
     // ENG: per-synth engine selector (in the freed SYN/MID slot);
@@ -2146,6 +2309,20 @@ function draw() {
     if (live) set(0.75, 0.95, 0.95);
     else set(fxLit ? 0.85 : 0.6, fxLit ? 0.85 : 0.6, fxLit ? 0.88 : 0.62);
     textC(fxFmt(cell.fmt, m[cell.off]), cell.x, cell.x + cell.w, cell.y + 15, F12);
+    modTick(cell.off, cell.x, cell.w, cell.y);
+  }
+  // MOD row chrome: label + the two ARM buttons (glow while armed)
+  {
+    const my = fy + 168;
+    set(0.5, 0.52, 0.56); text('MOD', 12, my + 9, F10);
+    armLfo === 1 ? set(0.95, 0.72, 0.25) : set(0.32, 0.28, 0.2);
+    rect(46, my, 46, 30);
+    armLfo === 1 ? set(0.15, 0.1, 0.02) : set(0.95, 0.85, 0.6);
+    textC(armLfo === 1 ? 'L1 ⦿' : 'L1', 46, 92, my + 8, F11);
+    armLfo === 2 ? set(0.3, 0.85, 0.85) : set(0.2, 0.3, 0.32);
+    rect(306, my, 46, 30);
+    armLfo === 2 ? set(0.02, 0.14, 0.15) : set(0.7, 0.95, 0.95);
+    textC(armLfo === 2 ? 'L2 ⦿' : 'L2', 306, 352, my + 8, F11);
   }
 
   // status / hint line (bottom)
@@ -2219,6 +2396,7 @@ window.gnome = {
     ? { type: 'ssmp', si, data: s.data, sr: s.sr, len: s.len }
     : { type: 'ssmp', si, data: null })),
   loadUserSample, loadSpliceSample, setUserSample, setSpliceSample, digSample,
+  modToggle, modTargets, modMaskFor, modTargetName,
   get userSmp() { return userSmp; }, get splSmp() { return splSmp; },
   initAudio, togglePlay,
   undo, redo,
@@ -2254,6 +2432,7 @@ window.gnome = {
     SND_MTX, MUTE_SYN, SOLO_LANE, SOLO_SYN, SND_PRE,
     SPL_ST_A, SPL_EN_A, SPL_MODE_A, SPL_TUNE_A,
     DNSE_A, DSWP_A, DSUB_A, DCLK_A, SMP_SYN, SMP_USR, BPM_WOB, BPM_WRT,
+    MLFO_A, MOD_TGT_A, MOD_MSK_A, MOD_SLOTS,
   },
   tables: { SCALE_NAMES, PROG_NAMES, SHAPE_NAMES, SYN_NAMES, FEEL_NAMES, SCL, STYLE_NAMES },
   SAMPLE_DEFS,

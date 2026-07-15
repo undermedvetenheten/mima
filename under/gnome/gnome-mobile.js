@@ -81,7 +81,7 @@
     view.innerHTML = '';
     tabBtns.forEach(t => t.b.classList.toggle('sel', t.id === curTab));
     if (curTab === 'drums') drumsTab();
-    else if (curTab === 'fx') view.append(...UI.fxSections());
+    else if (curTab === 'fx') view.append(...UI.fxSections(renderTab));
     else if (curTab === 'mix') mixTab();
     else synthTab(curTab);
   }

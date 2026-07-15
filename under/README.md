@@ -33,7 +33,9 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
     glass (stretched partials + shimmer + breathy onset, with a per-synth
     harmonic-cycle rate `GLC_A` that sweeps the emphasised partial for
     evolving drones).
-  - a global **FX rack** (`FX_*`), delay → glitch → clouds, with a
+  - a global **FX rack** (`FX_*`), dub delay → glitch → granulator (names
+    are ours; the granular design is inspired by the open Mutable Instruments
+    code but deliberately does not reuse Mutable module names), with a
     per-instrument → per-fx **routing matrix** (`SND_MTX`: part 0-3 drums/bass/
     melody/chords × fx 0-2 delay/glitch/clouds). Each fx stage has its own
     DR/BS/ML/CH sends, so any instrument can be dropped into just the delay,
@@ -42,11 +44,11 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
     inject at their stage (a part sent to CLOUDS only enters the granulator).
     Pre-routing (768-length) saves migrate their old single-bus sends onto the
     delay column.
-    - floaty tape delay with `DLY_PITCH` (repeats climb/fall — a two-grain
+    - dub delay with `DLY_PITCH` (repeats climb/fall — a two-grain
       resampler in the feedback path) and `DLY_REV` (reversed echoes); wow
       drift applies only when neither is engaged.
-    - "avocado" glitch (beat-synced stutter + bit/sample-rate crush).
-    - "clouds" granular reverb (`CLD_*`): a grain pool sprayed from recent
+    - glitch (beat-synced stutter + bit/sample-rate crush).
+    - granulator (`CLD_*`): a grain pool sprayed from recent
       audio, pitch-shiftable/reversible, with a feedback tail for the wash.
       Density maps to grain overlap (capped under the pool size) with a
       matched spawn interval + gain, so high density stays continuous.
@@ -120,10 +122,19 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
   beef up transients, and a click, all through the lane's filter. On the
   canvas the four LFO fields relabel to NSE/SWP/SUB/CLK for SYN lanes.
 
-  **Crate dig**: pulls a public-domain 78rpm snippet (Internet Archive,
-  George Blood collection, recordings 1900–1922) into a lane (USR) or a
-  splice slot. Keyless API, browser-direct; fails soft with a status hint
-  when offline. Every import (file or dig) is peak-normalized.
+  **Crate digs**: WIKI pulls free audio from Wikimedia Commons (documented
+  anonymous CORS; licence on each file's page), 78s pulls a public-domain
+  78rpm snippet from the Internet Archive (1900–1922; the IA bot-blocks some
+  networks, so this one may fail where WIKI works) — into a lane (USR) or a
+  splice slot. Every import (file or dig) is peak-normalized. USR lanes get a
+  `CRP` field (sample start %, LFO-able for slice motion).
+
+  **3D space** (`PAN_AZ_A`, `PAN_FRC_A`): each part (drums/bass/melody/
+  chords) has an azimuth — equal-power L/R plus a back-of-head lowpass so
+  180° genuinely sounds behind you — on the FX box's SPACE row / the pocket's
+  "3D space" group. Azimuth is an LFO target (a saw orbits the part around
+  your head); FRC uses the part's own energy as a physics force that shoves
+  its angle around with damping, so loud hits send it wandering.
 
   **Mod LFOs** (`MLFO_A`, `MOD_TGT_A`/`MOD_MSK_A`): two global assignable
   LFOs with rate / depth / shape each. Canvas: ARM L1 or L2 on the FX box's

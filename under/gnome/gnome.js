@@ -9,7 +9,7 @@
 
 // bump on every release: cache-busts the worklet module so a stale cached
 // DSP can never run against fresh UI code
-const APP_V = '10';
+const APP_V = '11';
 
 
 const LANES_CAP = 8, MAX_STEPS = 32, EUC_N = 21, NROWS = 12, NSCALES = 14,
@@ -26,7 +26,7 @@ const PAT = 0, NOTE_A = 256, CHAN_A = 264, STEPS_A = 272, SPAN_A = 280,
   GKEY_SCALE = 717, GKEY_PROG = 718, GKEY_SPD = 719, LOCK_A = 720, HML_A = 724;
 
 // ---- web-only region (>= 728; extends the JSFX block, kept in the worklet) ----
-const MEM = 896;
+const MEM = 928;
 const ENG_A = 728;            // per-synth engine: 0 osc, 1 string, 2 glass
 const GEN_STYLE = 731;        // RND generation style (index into STYLE_NAMES)
 const FX_ON = 736, DLY_ON = 737, DLY_TIME = 738, DLY_FB = 739, DLY_TONE = 740,
@@ -56,6 +56,11 @@ const BPM_WOB = 844, BPM_WRT = 845;
 // for L1 + L2, then 16 assignment slots (target mem offset + mask 1|2|3)
 const MLFO_A = 846;                 // 846..851: L1 rate,depth,shape, L2 ditto
 const MOD_TGT_A = 852, MOD_MSK_A = 868, MOD_SLOTS = 16;
+// per-lane sample start % (USR lanes; LFO-able slice motion)
+const DCRP_A = 884;
+// 3D space per part (drums,bass,melody,chords): azimuth in degrees and an
+// audio-force amount - the part's own energy shoves it around the head
+const PAN_AZ_A = 896, PAN_FRC_A = 900;
 
 const m = new Float64Array(MEM);
 let numLanes = 3;
@@ -619,13 +624,15 @@ function seedNewRegions(arr) {
   a[MLFO_A] = 8; a[MLFO_A + 1] = 50; a[MLFO_A + 2] = 0;      // L1: 8 beats, 50%
   a[MLFO_A + 3] = 16; a[MLFO_A + 4] = 50; a[MLFO_A + 5] = 0; // L2: 16 beats
   for (let k = 0; k < MOD_SLOTS; k++) { a[MOD_TGT_A + k] = 0; a[MOD_MSK_A + k] = 0; }
+  for (let l = 0; l < LANES_CAP; l++) a[DCRP_A + l] = 0;
+  for (let p = 0; p < 4; p++) { a[PAN_AZ_A + p] = 0; a[PAN_FRC_A + p] = 0; }
 }
 // bring a stored mem block (768 / 800 / 864) up to the current layout;
 // returns a MEM-length plain array, or null for an unknown length
 function migrateMem(arr) {
   if (!arr || !arr.length) return null;
   if (arr.length === MEM) return Array.from(arr);
-  if (![768, 800, 864].includes(arr.length)) return null;
+  if (![768, 800, 864, 896].includes(arr.length)) return null;
   const out = Array.from(arr);
   while (out.length < MEM) out.push(0);
   if (arr.length === 768)   // pre-routing: old single-bus sends -> delay column
@@ -778,6 +785,8 @@ function modRange(off) {
   if (off === DLY_PITCH || off === CLD_PITCH) return [-24, 24];
   if (within(SND_MTX, 12) || within(GLC_A, 3)) return [0, 100];
   if (off === BPM_WOB) return [0, 100];
+  if (within(DCRP_A, 8) || within(PAN_FRC_A, 4)) return [0, 100];
+  if (within(PAN_AZ_A, 4)) return [-180, 180];
   return null;
 }
 // mask of LFOs assigned to an offset (bit 1 = L1, bit 2 = L2)
@@ -816,6 +825,8 @@ function modTargets() {
       { name: `${nm} velocity`, off: VEL_A + l }, { name: `${nm} swing`, off: SWG_A + l });
     if (smpA[l] === SMP_SYN)
       out.push({ name: `${nm} sweep`, off: DSWP_A + l }, { name: `${nm} sub`, off: DSUB_A + l });
+    if (smpA[l] === SMP_USR)
+      out.push({ name: `${nm} crop start`, off: DCRP_A + l });
   }
   for (let si = 0; si < NSYN; si++) {
     const sp = spOff(si), nm = SYN_NAMES[si];
@@ -826,16 +837,19 @@ function modTargets() {
       out.push({ name: `${nm} crop start`, off: SPL_ST_A + si }, { name: `${nm} tune`, off: SPL_TUNE_A + si });
   }
   out.push(
-    { name: 'delay time', off: DLY_TIME }, { name: 'delay feedback', off: DLY_FB },
+    { name: 'dub delay time', off: DLY_TIME }, { name: 'dub delay feedback', off: DLY_FB },
     { name: 'delay tone', off: DLY_TONE }, { name: 'delay pitch', off: DLY_PITCH },
     { name: 'fx feed', off: FX_FEED },
     { name: 'glitch amount', off: AVO_AMT }, { name: 'glitch mix', off: AVO_MIX },
-    { name: 'clouds mix', off: CLD_MIX }, { name: 'clouds density', off: CLD_DENS },
-    { name: 'clouds pitch', off: CLD_PITCH }, { name: 'clouds size', off: CLD_SIZE });
-  for (let p = 0; p < 4; p++)
+    { name: 'granulator mix', off: CLD_MIX }, { name: 'granulator density', off: CLD_DENS },
+    { name: 'granulator pitch', off: CLD_PITCH }, { name: 'granulator size', off: CLD_SIZE });
+  for (let p = 0; p < 4; p++) {
+    const pn = ['drums', 'bass', 'melody', 'chords'][p];
     for (let f = 0; f < 3; f++)
-      out.push({ name: `${['drums', 'bass', 'melody', 'chords'][p]} → ${['delay', 'glitch', 'clouds'][f]} send`,
+      out.push({ name: `${pn} → ${['dub delay', 'glitch', 'granulator'][f]} send`,
         off: SND_MTX + p * 3 + f });
+    out.push({ name: `${pn} azimuth (3D)`, off: PAN_AZ_A + p });
+  }
   return out;
 }
 const modTargetName = off => {
@@ -1097,7 +1111,8 @@ function loadSpliceSample(si) {
 // free-licensed; the status names the file so its licence page is findable).
 // Commons is the big library with documented anonymous browser CORS
 // (origin=*); archive.org now bot-blocks cross-origin fetches.
-async function digSample(kind, idx) {
+async function digSample(kind, idx, from) {
+  if (from === 'ia') return digArchive(kind, idx);
   setStatus('digging Wikimedia Commons for free audio…');
   try {
     const terms = ['78 rpm record', 'phonograph cylinder', 'gramophone record',
@@ -1138,6 +1153,43 @@ async function digSample(kind, idx) {
       : 'crate dig failed (network blocked or nothing decodable) — tap again, or load a local file');
   }
 }
+// Internet Archive 78rpm dig (public domain 1900-1922). The IA fronts
+// aggressive bot protection, so this may be blocked for some networks /
+// browsers - the wiki dig is the dependable one; this one is the treat.
+async function digArchive(kind, idx) {
+  setStatus('digging the archive for a public-domain 78…');
+  try {
+    const q = 'collection:georgeblood AND mediatype:audio AND year:[1900 TO 1922]';
+    let ids = [];
+    try {   // preferred: the scrape API
+      const s = await (await fetch('https://archive.org/services/search/v1/scrape?q='
+        + encodeURIComponent(q) + '&fields=identifier&count=100')).json();
+      ids = (s.items || []).map(it => it.identifier);
+    } catch (e) { /* fall through */ }
+    if (!ids.length) {   // fallback: classic advancedsearch
+      const page = 1 + Math.floor(Math.random() * 100);
+      const s = await (await fetch('https://archive.org/advancedsearch.php?q='
+        + encodeURIComponent(q) + '&fl[]=identifier&rows=20&page=' + page + '&output=json')).json();
+      ids = ((s.response && s.response.docs) || []).map(d => d.identifier);
+    }
+    if (!ids.length) throw new Error('search blocked');
+    const id = ids[Math.floor(Math.random() * ids.length)];
+    const md = await (await fetch('https://archive.org/metadata/' + id)).json();
+    const f = (md.files || []).find(ff => /\.mp3$/i.test(ff.name));
+    if (!f) throw new Error('no mp3 in the item');
+    const title = (md.metadata && md.metadata.title) || id;
+    setStatus(`fetching “${title}”…`);
+    const ab = await (await fetch('https://archive.org/download/' + id + '/'
+      + encodeURIComponent(f.name))).arrayBuffer();
+    if (!audioReady) await initAudio();
+    const buf = await actx.decodeAudioData(ab);
+    applyDug(kind, idx, buf, title);
+    setStatus(`dug: “${title}” (78rpm, 1900–1922, public domain)`);
+  } catch (e) {
+    setStatus('78s dig failed (' + ((e && e.message) || 'network') + ') — the archive blocks some networks; try WIKI or a local file');
+  }
+}
+
 // slice a workable chunk out of a dug recording and land it on the target
 function applyDug(kind, idx, buf, title) {
   const sr = buf.sampleRate;
@@ -1292,7 +1344,7 @@ const xEuc = xSolo + 22, xMode = xEuc + 36, xGrid = xMode + 30;
 const cellw = 16, cellh = 28, rollrh = 8;
 function yBtn() { return laneTop + numLanes * rowh + 2; }
 function ys(si) { return yBtn() + 28 + si * 188; }
-const fxH = 196;                        // demarcated FX box at the bottom
+const fxH = 232;                        // demarcated FX box at the bottom
 function fxY() { return ys(2) + 184; }
 function yStat() { return fxY() + fxH + 2; }
 function totalH() { return yStat() + 22; }
@@ -1335,6 +1387,7 @@ function fxFmt(kind, v) {
     : kind === 'st' ? (v > 0 ? '+' : '') + Math.round(v)
     : kind === 'beats' ? fmtG(v)
     : kind === 'shp' ? ['SIN', 'TRI', 'SW\u2193', 'S&H', 'SW\u2191'][Math.round(v)] || 'SIN'
+    : kind === 'deg' ? Math.round(v) + '\u00b0'
     : String(Math.round(v));
 }
 function fxCells() {
@@ -1366,7 +1419,7 @@ function fxCells() {
   val(x, y, 46, 'BEATS', BPM_WRT, 4, 256, 4, 'raw'); x += 56;
   lbl(x, y + 9, 'each fx row has its own DR/BS/ML/CH sends');
   y = fy + 60; x = 12;
-  lbl(x, y + 9, 'DELAY'); x += 52;
+  lbl(x, y + 9, 'DUB DLY'); x += 52;
   tog(x, y, 34, '', DLY_ON); x += 40;
   val(x, y, 46, 'TIME', DLY_TIME, 0.0625, 2, 0.0625, 'beats'); x += 50;
   val(x, y, 40, 'FB', DLY_FB, 0, 100, 5, 'pct'); x += 44;
@@ -1384,7 +1437,7 @@ function fxCells() {
   val(x, y, 42, 'MIX', AVO_MIX, 0, 100, 5, 'pct'); x += 50;
   sends(x, y, 1);
   y = fy + 132; x = 12;
-  lbl(x, y + 9, 'CLOUDS'); x += 52;
+  lbl(x, y + 9, 'GRAIN'); x += 52;
   tog(x, y, 34, '', CLD_ON); x += 40;
   val(x, y, 44, 'SIZE', CLD_SIZE, 0, 100, 5, 'pct'); x += 48;
   val(x, y, 44, 'DENS', CLD_DENS, 0, 100, 5, 'pct'); x += 48;
@@ -1394,6 +1447,16 @@ function fxCells() {
   val(x, y, 44, 'TAIL', CLD_REVERB, 0, 100, 5, 'pct'); x += 48;
   val(x, y, 42, 'MIX', CLD_MIX, 0, 100, 5, 'pct'); x += 46;
   sends(x, y, 2);
+  // 3D space: per-part azimuth (degrees round the head) + audio force
+  y = fy + 204; x = 12;
+  lbl(x, y + 9, 'SPACE'); x += 46;
+  const PARTN = ['DR', 'BS', 'ML', 'CH'];
+  for (let p = 0; p < 4; p++) {
+    val(x, y, 44, PARTN[p] + '·AZ', PAN_AZ_A + p, -180, 180, 5, 'deg'); x += 48;
+    val(x, y, 40, 'FRC', PAN_FRC_A + p, 0, 100, 5, 'pct'); x += 46;
+  }
+  lbl(x + 6, y + 9, 'AZ = angle · FRC = the sound shoves itself around');
+
   // mod LFOs: L1 / L2 rate + depth + shape (the ARM buttons are drawn apart)
   y = fy + 168; x = 100;
   val(x, y, 46, 'RATE', MLFO_A, 0.25, 64, 0.25, 'beats'); x += 50;
@@ -1541,13 +1604,12 @@ function onDown(x, y, right) {
       setStatus(`generated bass + melody + chords in ${STYLE_NAMES[m[GEN_STYLE] || 0]} / ${SCALE_NAMES[m[GKEY_SCALE]]}`);
       touchState();
     }
-    else if (x >= 808 && x < 892) {
-      // DIG a public-domain 78 into a drum lane: the first USR lane, or turn
-      // the last lane into one. Every tap fetches a fresh find.
+    else if ((x >= 756 && x < 822) || (x >= 826 && x < 892)) {
+      // dig into a drum lane: the first USR lane, or turn the last into one
       let tl = -1;
       for (let l = 0; l < numLanes; l++) if (smpA[l] === SMP_USR) { tl = l; break; }
       if (tl < 0) { tl = numLanes - 1; smpA[tl] = SMP_USR; }
-      digSample('lane', tl);
+      digSample('lane', tl, x < 822 ? 'wiki' : 'ia');
     }
     else {
       for (let i = 0; i < NSYN; i++) {
@@ -1620,7 +1682,9 @@ function onDown(x, y, right) {
         dragY = y; dragSynth = gsi; dragV = sget(gsi, r2map(dragF));
         dragMode = 10;
       } else if (m[ENG_A + gsi] === 3 && x >= 516 && x < 556) {
-        digSample('splice', gsi);   // each tap swaps in a fresh archive find
+        digSample('splice', gsi, 'wiki');   // each tap = a fresh find
+      } else if (m[ENG_A + gsi] === 3 && x >= 560 && x < 600) {
+        digSample('splice', gsi, 'ia');
       } else if (x >= xEuc && x < xEuc + 32) {
         m[ENG_A + gsi] = (m[ENG_A + gsi] + 1) % 4;
         if (m[ENG_A + gsi] === 3 && !splSmp[gsi])
@@ -1661,6 +1725,15 @@ function onDown(x, y, right) {
   if (ml >= 0 && ml < numLanes && y >= laneTop) {
     if (x >= xFields && x < xFields + 17 * fieldw) {
       const uiF = Math.floor((x - xFields) / fieldw);
+      // USR lanes: the LPT slot becomes CRP (sample start %, LFO-able)
+      if (smpA[ml] === SMP_USR && uiF === 13) {
+        if (armLfo) { tryModAssign(DCRP_A + ml); return; }
+        dragLane = ml; dragY = y;
+        dragFx = DCRP_A + ml;
+        dragV = m[dragFx];
+        dragMode = 43;
+        return;
+      }
       // SYN lanes reclaim the LFO slots for the drum voice: NSE/SWP/SUB/CLK
       if (smpA[ml] === SMP_SYN && uiF >= 10 && uiF <= 13) {
         const doff = [DNSE_A, DSWP_A, DSUB_A, DCLK_A][uiF - 10] + ml;
@@ -2018,20 +2091,24 @@ function draw() {
       || (smpA[gl] === SMP_USR && userSmp[gl]);
     if (laneReady) { set(0.35, 0.8, 0.4); rect(2, ry + 4, 4, 32); }
 
-    // SYN lanes reclaim the LFO slots for the drum voice: NSE/SWP/SUB/CLK
+    // SYN lanes reclaim the LFO slots for the drum voice: NSE/SWP/SUB/CLK;
+    // USR lanes turn LPT into CRP (sample start)
     const isSyn = smpA[gl] === SMP_SYN;
+    const isUsr = smpA[gl] === SMP_USR;
     for (let gf = 0; gf < 17; gf++) {
       const fx = xFields + gf * fieldw;
       const synF = isSyn && gf >= 10 && gf <= 13;
-      synF ? set(0.24, 0.21, 0.3) : set(0.19, 0.19, 0.21);
+      const usrF = isUsr && gf === 13;
+      (synF || usrF) ? set(0.24, 0.21, 0.3) : set(0.19, 0.19, 0.21);
       rect(fx, ry + 4, fieldw - 4, 32);
       set(0.45, 0.45, 0.5);
-      textC(synF ? ['NSE', 'SWP', 'SUB', 'CLK'][gf - 10] : DFIELDS[gf][0],
+      textC(synF ? ['NSE', 'SWP', 'SUB', 'CLK'][gf - 10] : usrF ? 'CRP' : DFIELDS[gf][0],
         fx, fx + fieldw - 4, ry + 5, F10);
       set(0.85, 0.85, 0.85);
       const f = DFIELDS[gf][1];
       let v;
       if (synF) v = String(m[[DNSE_A, DSWP_A, DSUB_A, DCLK_A][gf - 10] + gl]);
+      else if (usrF) v = m[DCRP_A + gl] + '%';
       else if (f === 'smp') v = SAMPLE_DEFS[smpA[gl]].label;
       else if (f === 3) v = fmtG(m[SPAN_A + gl]);
       else if (f === 7) v = m[GATE_A + gl] + '%';
@@ -2041,6 +2118,7 @@ function draw() {
       else v = String(getParam(gl, f));
       textC(v, fx, fx + fieldw - 4, ry + 18, F13);
       if (synF) modTick([DNSE_A, DSWP_A, DSUB_A, DCLK_A][gf - 10] + gl, fx, fieldw - 4, ry + 4);
+      else if (usrF) modTick(DCRP_A + gl, fx, fieldw - 4, ry + 4);
       else if (typeof f === 'number') modTick(PARAM_OFF[f] + gl, fx, fieldw - 4, ry + 4);
     }
 
@@ -2122,8 +2200,10 @@ function draw() {
   rect(GENKEY_X, yb, GENKEY_W, 18);
   set(0.85, 0.95, 0.88);
   textC('GEN KEY ▸', GENKEY_X, GENKEY_X + GENKEY_W, yb + 3, F11);
-  set(0.3, 0.26, 0.2); rect(808, yb, 84, 18);
-  set(0.9, 0.8, 0.55); textC('DIG ▸ DRUM', 808, 892, yb + 3, F10);
+  set(0.3, 0.26, 0.2); rect(756, yb, 66, 18);
+  set(0.9, 0.8, 0.55); textC('WIKI ▸ DR', 756, 822, yb + 3, F10);
+  set(0.26, 0.22, 0.3); rect(826, yb, 66, 18);
+  set(0.85, 0.75, 0.95); textC('78s ▸ DR', 826, 892, yb + 3, F10);
 
   // ---- synth sections ----
   for (let gsi = 0; gsi < NSYN; gsi++) {
@@ -2215,9 +2295,11 @@ function draw() {
     if (splSmp[gsi]) { set(0.4, 0.85, 0.45); rect(xEuc + 26, ysv + rowh + 6, 4, 4); }
     set(0.9, 0.92, 0.95);
     textC(['OSC', 'STR', 'GLS', 'SPL'][eng], xEuc, xEuc + 32, ysv + rowh + 12, F12);
-    if (eng === 3) {   // splice: crate-dig button (every tap = a fresh find)
+    if (eng === 3) {   // crate digs: every tap swaps in a fresh find
       set(0.3, 0.26, 0.2); rect(516, ysv + rowh + 4, 40, 32);
-      set(0.9, 0.8, 0.55); textC('DIG', 516, 556, ysv + rowh + 12, F12);
+      set(0.9, 0.8, 0.55); textC('WIKI', 516, 556, ysv + rowh + 12, F12);
+      set(0.26, 0.22, 0.3); rect(560, ysv + rowh + 4, 40, 32);
+      set(0.85, 0.75, 0.95); textC('78s', 560, 600, ysv + rowh + 12, F12);
     }
 
     if (gsi === 2) {
@@ -2457,7 +2539,7 @@ window.gnome = {
     FX_FEED, AVO_ON, AVO_AMT, AVO_RATE, AVO_CRUSH, AVO_MIX, SEND_A,
     DLY_PITCH, DLY_REV, GLC_A, CLD_ON, CLD_MIX, CLD_SIZE, CLD_DENS,
     CLD_PITCH, CLD_SPREAD, CLD_REVERB, CLD_REVG, GEN_STYLE,
-    SND_MTX, MUTE_SYN, SOLO_LANE, SOLO_SYN, SND_PRE,
+    SND_MTX, MUTE_SYN, SOLO_LANE, SOLO_SYN, SND_PRE, DCRP_A, PAN_AZ_A, PAN_FRC_A,
     SPL_ST_A, SPL_EN_A, SPL_MODE_A, SPL_TUNE_A,
     DNSE_A, DSWP_A, DSUB_A, DCLK_A, SMP_SYN, SMP_USR, BPM_WOB, BPM_WRT,
     MLFO_A, MOD_TGT_A, MOD_MSK_A, MOD_SLOTS,

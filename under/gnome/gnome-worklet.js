@@ -22,7 +22,7 @@ const PAT = 0, STEPS_A = 272, SPAN_A = 280, PUL_A = 288,
   GKEY_SPD = 719, LOCK_A = 720, HML_A = 724;
 
 // ---- web-only region (>= 728; extends the JSFX block, kept in gnome.js) ----
-const MEM = 896;
+const MEM = 928;
 // per-synth engine: 0 classic osc, 1 plucked string, 2 blown glass (3 slots)
 const ENG_A = 728;
 // FX rack (delay -> avocado glitch -> clouds) fed by the full mix + sends
@@ -49,6 +49,8 @@ const DNSE_A = 812, DSWP_A = 820, DSUB_A = 828, DCLK_A = 836;
 const BPM_WOB = 844, BPM_WRT = 845;
 // two assignable mod LFOs + 16 assignment slots (target offset, mask 1|2|3)
 const MLFO_A = 846, MOD_TGT_A = 852, MOD_MSK_A = 868, MOD_SLOTS = 16;
+// per-lane sample start % + per-part 3D space (azimuth deg, audio force)
+const DCRP_A = 884, PAN_AZ_A = 896, PAN_FRC_A = 900;
 
 // ---- scale / progression tables (mirror of the JSFX; keep in sync) ----
 const SCL = [
@@ -136,6 +138,8 @@ function modRange(off) {
   if (off === DLY_PITCH || off === CLD_PITCH) return [-24, 24];
   if (within(SND_MTX, 12) || within(GLC_A, 3)) return [0, 100];
   if (off === BPM_WOB) return [0, 100];
+  if (within(DCRP_A, 8) || within(PAN_FRC_A, 4)) return [0, 100];
+  if (within(PAN_AZ_A, 4)) return [-180, 180];
   return null;
 }
 
@@ -176,6 +180,12 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     this.spl = [null, null, null];
     this.spPos = F(8);
     this.modSaves = [];   // [off, baseValue, ...] restored after each block
+    // 3D space per part: back-of-head lowpass state, force physics
+    // (angular velocity + accumulated offset), energy follower
+    this.pmTmp = F(4); this.pLp = F(4);
+    this.azVel = F(4); this.azOff = F(4);
+    this.pEner = F(4); this.pEnerPrev = F(4);
+    this.panGL = F(4); this.panGR = F(4); this.panK = F(4); this.panBack = F(4);
     this.spSt = F(NSYN); this.spEnWin = F(NSYN);
     this.spFix = F(NSYN); this.spTrk = F(NSYN);
     this.fltLo = F(LANES_CAP); this.fltBp = F(LANES_CAP);
@@ -574,6 +584,31 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
       }
     }
 
+    // ---- 3D space coefficients (per part: drums, bass, melody, chords) ----
+    // azimuth -> equal-power L/R plus a back-of-head lowpass; FRC lets the
+    // part's own energy (last block) shove its angle around with damping
+    for (let p = 0; p < 4; p++) {
+      const frc = m[PAN_FRC_A + p] / 100;
+      if (frc > 0) {
+        const e = Math.min(1, this.pEnerPrev[p] / nframes * 3);
+        this.azVel[p] = sane(this.azVel[p]) * 0.92 + (Math.random() * 2 - 1) * frc * e * 6;
+        this.azOff[p] = sane(this.azOff[p]) + this.azVel[p];
+        if (this.azOff[p] > 180) this.azOff[p] -= 360;
+        if (this.azOff[p] < -180) this.azOff[p] += 360;
+      } else { this.azVel[p] = 0; this.azOff[p] *= 0.98; }
+      this.pEnerPrev[p] = this.pEner[p]; this.pEner[p] = 0;
+      const az = (m[PAN_AZ_A + p] + this.azOff[p]) * Math.PI / 180;
+      const pan = Math.sin(az);
+      const back = (1 - Math.cos(az)) / 2;
+      const bg = 1 - 0.18 * back;
+      this.panGL[p] = Math.cos((pan + 1) * Math.PI / 4) * bg;
+      this.panGR[p] = Math.sin((pan + 1) * Math.PI / 4) * bg;
+      const fc = 16000 - back * 13000;
+      this.panK[p] = 1 - Math.exp(-2 * Math.PI * fc / srate);
+      this.panBack[p] = back * 0.85;
+      this.pLp[p] = sane(this.pLp[p]);
+    }
+
     if (this.playing) {
       // ---- drum lanes ----
       for (let l = 0; l < this.numLanes; l++) {
@@ -596,6 +631,8 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
               if (this.samples[l]) {
                 this.vDel[l] = ofs;
                 this.vPos[l] = 0;
+                if (!this.samples[l].synth && this.samples[l].len)
+                  this.vPos[l] = Math.floor(m[DCRP_A + l] / 100 * this.samples[l].len * 0.95);
                 this.vOn[l] = 1;
                 this.vGain[l] = hvel / 127;
                 this.fenv[l] = 1;
@@ -768,6 +805,8 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
 
     for (let f = 0; f < nframes; f++) {
       let spl0 = 0, spl1 = 0, dIn = 0, aIn = 0, cIn = 0;
+      const pm = this.pmTmp;
+      pm[0] = 0; pm[1] = 0; pm[2] = 0; pm[3] = 0;
 
       // drum voices (samples, or the synthesized drum when a lane is SYN)
       for (let c = 0; c < this.numLanes; c++) {
@@ -830,8 +869,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
             smix2 = this.fltLo2[c];
           }
           const la = laneAud[c];
-          spl0 += smix * gD * la;
-          spl1 += smix2 * gD * la;
+          pm[0] += (smix + smix2) * 0.5 * gD * la;
           const dc = (smix + smix2) * 0.5 * (sndPre ? PRE_G : gD) * la;
           dIn += dc * mtx[0][0]; aIn += dc * mtx[0][1]; cIn += dc * mtx[0][2];
         }
@@ -948,14 +986,23 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
           so = this.svLo[si2];
         }
         const ps = so * gS[si2] * synAud[si2];
-        spl0 += ps;
-        spl1 += ps;
+        pm[1 + si2] += ps;
         const pt = si2 + 1;
         const px = so * (sndPre ? PRE_G : gS[si2]) * synAud[si2];
         dIn += px * mtx[pt][0]; aIn += px * mtx[pt][1]; cIn += px * mtx[pt][2];
       }
 
-      // ---- FX rack: floaty delay -> avocado glitch -> clouds ----
+      // ---- 3D space: position each part, then sum into the master pair ----
+      for (let p = 0; p < 4; p++) {
+        let s = pm[p];
+        this.pLp[p] += this.panK[p] * (s - this.pLp[p]);
+        s = s + (this.pLp[p] - s) * this.panBack[p];
+        spl0 += s * this.panGL[p];
+        spl1 += s * this.panGR[p];
+        this.pEner[p] += s < 0 ? -s : s;
+      }
+
+      // ---- FX rack: dub delay -> glitch -> granulator ----
       // Each part routes to a stage's input (dIn/aIn/cIn); FEED taps the whole
       // mix into the head of the chain. Injections happen at each stage so an
       // instrument sent to CLOUDS only enters the granulator, etc.

@@ -131,10 +131,25 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
 
   **3D space** (`PAN_AZ_A`, `PAN_FRC_A`): each part (drums/bass/melody/
   chords) has an azimuth — equal-power L/R plus a back-of-head lowpass so
-  180° genuinely sounds behind you — on the FX box's SPACE row / the pocket's
+  180° genuinely sounds behind you — on the SPACE cells / the pocket's
   "3D space" group. Azimuth is an LFO target (a saw orbits the part around
   your head); FRC uses the part's own energy as a physics force that shoves
-  its angle around with damping, so loud hits send it wandering.
+  its angle around with damping, so loud hits send it wandering. Parts also
+  **repel each other** when their angles crowd (scaled by the pair's FRC).
+
+  **Two-column desktop canvas**: each synth section stacks its control rows
+  with the piano roll directly beneath (left column), and the right column
+  carries the captions plus a visual per section — an **XY oscilloscope** for
+  the bass (the waveform plotted against a delayed copy of itself: sines make
+  ellipses, saws make angular figures; fed by a worklet tap in the tick
+  message), a paintable **Game of Life** for the melody (HighLife B36/S23 on
+  a torus, evolving one generation per beat; the melody seeds cells as it
+  plays, CLR clears, and the GROW toggle lets the colony occasionally rewrite
+  melody notes — undoably), and the **harmonic pitch wheel** for the chords.
+  The FX band's right side holds the **3D dome** (top-down head view, one
+  ball per part at its live azimuth, sized by energy, draggable to re-place a
+  part) beside the SENDS mini-knob matrix and the SPACE / MOD cells. The
+  header volume knobs stay where they were.
 
   **Mod LFOs** (`MLFO_A`, `MOD_TGT_A`/`MOD_MSK_A`): two global assignable
   LFOs with rate / depth / shape each. Canvas: ARM L1 or L2 on the FX box's

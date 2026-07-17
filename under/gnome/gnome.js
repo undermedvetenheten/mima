@@ -9,7 +9,7 @@
 
 // bump on every release: cache-busts the worklet module so a stale cached
 // DSP can never run against fresh UI code
-const APP_V = '11';
+const APP_V = '12';
 
 
 const LANES_CAP = 8, MAX_STEPS = 32, EUC_N = 21, NROWS = 12, NSCALES = 14,
@@ -944,6 +944,7 @@ function recallPresetState(p, label) {
 // ---- audio ----
 let actx = null, node = null, audioReady = false, audioStarting = false;
 let dispBeat = 0, gsndB = -1, gsndM = -1, gsndC = [0, 0, 0, 0], gsndCn = 0;
+let azv = [0, 0, 0, 0], enerArr = [0, 0, 0, 0], scopeArr = null;
 
 function pushState() {
   if (node) node.port.postMessage({ type: 'state', mem: m, numLanes });
@@ -1243,6 +1244,9 @@ async function initAudio() {
     if (d.type === 'tick') {
       dispBeat = d.beat;
       gsndB = d.gsndB; gsndM = d.gsndM; gsndC = d.gsndC; gsndCn = d.gsndCn;
+      if (d.azv) azv = d.azv;
+      if (d.ener) enerArr = d.ener;
+      if (d.scope) scopeArr = d.scope;
     } else if (d.type === 'rec') {
       recChunks.push(d); recFrames += d.l.length;
     } else if (d.type === 'recdone') {
@@ -1343,8 +1347,10 @@ const xSolo = xMute + 22;                  // perform solo sits beside mute
 const xEuc = xSolo + 22, xMode = xEuc + 36, xGrid = xMode + 30;
 const cellw = 16, cellh = 28, rollrh = 8;
 function yBtn() { return laneTop + numLanes * rowh + 2; }
-function ys(si) { return yBtn() + 28 + si * 188; }
-const fxH = 232;                        // demarcated FX box at the bottom
+function ys(si) { return yBtn() + 28 + si * 208; }
+const fxH = 300;                        // demarcated FX box at the bottom
+const ROLL_X = 8, ROLL_Y = 88;          // rolls sit UNDER the control rows
+const RC_X = 744;                       // right-hand column (text + visuals)
 function fxY() { return ys(2) + 184; }
 function yStat() { return fxY() + fxH + 2; }
 function totalH() { return yStat() + 22; }
@@ -1396,15 +1402,6 @@ function fxCells() {
     c.push({ t: 'val', x, y, w, label, off, min, max, step, fmt });
   const tog = (x, y, w, label, off) => c.push({ t: 'tog', x, y, w, label, off });
   const lbl = (x, y, text) => c.push({ t: 'lbl', x, y, text });
-  // per-fx routing sends: DRM/BAS/MEL/CHD into this fx stage (fxi 0/1/2)
-  const sends = (x, y, fxi) => {
-    lbl(x, y + 9, '◂'); x += 12;
-    val(x, y, 32, 'DR', SND_MTX + 0 * 3 + fxi, 0, 100, 5, 'pct'); x += 35;
-    val(x, y, 32, 'BS', SND_MTX + 1 * 3 + fxi, 0, 100, 5, 'pct'); x += 35;
-    val(x, y, 32, 'ML', SND_MTX + 2 * 3 + fxi, 0, 100, 5, 'pct'); x += 35;
-    val(x, y, 32, 'CH', SND_MTX + 3 * 3 + fxi, 0, 100, 5, 'pct'); x += 35;
-    return x;
-  };
   let x, y;
   y = fy + 24; x = 12;
   tog(x, y, 34, 'FX', FX_ON); x += 40;
@@ -1416,8 +1413,7 @@ function fxCells() {
   val(x, y, 38, 'CHD', GLC_A + 2, 0, 100, 5, 'pct'); x += 54;
   lbl(x, y + 9, 'TEMPO WOBBLE'); x += 96;
   val(x, y, 42, 'AMT', BPM_WOB, 0, 100, 5, 'pct'); x += 46;
-  val(x, y, 46, 'BEATS', BPM_WRT, 4, 256, 4, 'raw'); x += 56;
-  lbl(x, y + 9, 'each fx row has its own DR/BS/ML/CH sends');
+  val(x, y, 46, 'BEATS', BPM_WRT, 4, 256, 4, 'raw');
   y = fy + 60; x = 12;
   lbl(x, y + 9, 'DUB DLY'); x += 52;
   tog(x, y, 34, '', DLY_ON); x += 40;
@@ -1426,16 +1422,14 @@ function fxCells() {
   val(x, y, 40, 'PIT', DLY_PITCH, -24, 24, 1, 'st'); x += 44;
   tog(x, y, 42, 'REV', DLY_REV); x += 48;
   val(x, y, 42, 'TONE', DLY_TONE, 0, 100, 5, 'pct'); x += 46;
-  val(x, y, 42, 'WOW', DLY_WOW, 0, 100, 5, 'pct'); x += 50;
-  sends(x, y, 0);
+  val(x, y, 42, 'WOW', DLY_WOW, 0, 100, 5, 'pct');
   y = fy + 96; x = 12;
   lbl(x, y + 9, 'GLITCH'); x += 52;
   tog(x, y, 34, '', AVO_ON); x += 40;
   val(x, y, 44, 'AMT', AVO_AMT, 0, 100, 5, 'pct'); x += 48;
   val(x, y, 46, 'RATE', AVO_RATE, 0.0625, 2, 0.0625, 'beats'); x += 50;
   val(x, y, 44, 'CRSH', AVO_CRUSH, 0, 100, 5, 'pct'); x += 48;
-  val(x, y, 42, 'MIX', AVO_MIX, 0, 100, 5, 'pct'); x += 50;
-  sends(x, y, 1);
+  val(x, y, 42, 'MIX', AVO_MIX, 0, 100, 5, 'pct');
   y = fy + 132; x = 12;
   lbl(x, y + 9, 'GRAIN'); x += 52;
   tog(x, y, 34, '', CLD_ON); x += 40;
@@ -1445,30 +1439,40 @@ function fxCells() {
   tog(x, y, 48, 'REVG', CLD_REVG); x += 52;
   val(x, y, 44, 'SPRD', CLD_SPREAD, 0, 100, 5, 'pct'); x += 48;
   val(x, y, 44, 'TAIL', CLD_REVERB, 0, 100, 5, 'pct'); x += 48;
-  val(x, y, 42, 'MIX', CLD_MIX, 0, 100, 5, 'pct'); x += 46;
-  sends(x, y, 2);
-  // 3D space: per-part azimuth (degrees round the head) + audio force
-  y = fy + 204; x = 12;
-  lbl(x, y + 9, 'SPACE'); x += 46;
-  const PARTN = ['DR', 'BS', 'ML', 'CH'];
-  for (let p = 0; p < 4; p++) {
-    val(x, y, 44, PARTN[p] + '·AZ', PAN_AZ_A + p, -180, 180, 5, 'deg'); x += 48;
-    val(x, y, 40, 'FRC', PAN_FRC_A + p, 0, 100, 5, 'pct'); x += 46;
-  }
-  lbl(x + 6, y + 9, 'AZ = angle · FRC = the sound shoves itself around');
+  val(x, y, 42, 'MIX', CLD_MIX, 0, 100, 5, 'pct');
+  // 3D SPACE (right column, under the SENDS box): azimuth + audio force
+  y = fy + 140; x = 1000;
+  val(x, y, 44, 'DR·AZ', PAN_AZ_A, -180, 180, 5, 'deg'); x += 48;
+  val(x, y, 40, 'FRC', PAN_FRC_A, 0, 100, 5, 'pct'); x += 46;
+  val(x, y, 44, 'BS·AZ', PAN_AZ_A + 1, -180, 180, 5, 'deg'); x += 48;
+  val(x, y, 40, 'FRC', PAN_FRC_A + 1, 0, 100, 5, 'pct'); x += 46;
+  lbl(x + 4, y + 9, 'SPACE');
+  y = fy + 176; x = 1000;
+  val(x, y, 44, 'ML·AZ', PAN_AZ_A + 2, -180, 180, 5, 'deg'); x += 48;
+  val(x, y, 40, 'FRC', PAN_FRC_A + 2, 0, 100, 5, 'pct'); x += 46;
+  val(x, y, 44, 'CH·AZ', PAN_AZ_A + 3, -180, 180, 5, 'deg'); x += 48;
+  val(x, y, 40, 'FRC', PAN_FRC_A + 3, 0, 100, 5, 'pct');
 
-  // mod LFOs: L1 / L2 rate + depth + shape (the ARM buttons are drawn apart)
-  y = fy + 168; x = 100;
+  // mod LFOs (right column): L1 / L2 rate + depth + shape; ARM drawn apart
+  y = fy + 214; x = 1046;
   val(x, y, 46, 'RATE', MLFO_A, 0.25, 64, 0.25, 'beats'); x += 50;
   val(x, y, 42, 'DEP', MLFO_A + 1, 0, 100, 5, 'pct'); x += 46;
-  val(x, y, 40, 'SHP', MLFO_A + 2, 0, 4, 1, 'shp'); x += 78;
-  x = 360;
+  val(x, y, 40, 'SHP', MLFO_A + 2, 0, 4, 1, 'shp'); x += 44;
+  lbl(x + 4, y + 9, 'arm, then');
+  y = fy + 250; x = 1046;
   val(x, y, 46, 'RATE', MLFO_A + 3, 0.25, 64, 0.25, 'beats'); x += 50;
   val(x, y, 42, 'DEP', MLFO_A + 4, 0, 100, 5, 'pct'); x += 46;
   val(x, y, 40, 'SHP', MLFO_A + 5, 0, 4, 1, 'shp'); x += 44;
-  lbl(x + 26, y + 9, 'ARM an LFO, then tap fields to assign it (tap again to remove)');
+  lbl(x + 4, y + 9, 'tap fields');
   return c;
 }
+
+// SENDS matrix mini-knob centers (part 0..3 x fx 0..2), inside the FX band
+function sndKnobXY(part, fxi) {
+  return [1050 + fxi * 42, fxY() + 36 + part * 26];
+}
+// ARM button rects for the two mod LFOs (draw + hit share these)
+function armRect(n) { return [1000, fxY() + (n === 1 ? 214 : 250), 40, 30]; }
 
 // drum lane fields: label, jsfx param index ('smp' = sample picker)
 const DFIELDS = [
@@ -1502,6 +1506,60 @@ let dragMode = 0, dragF = 0, dragLane = 0, dragSynth = 0, dragY = 0, dragV = 0,
   dragMoved = false, rotApplied = 0, paint = 0, dragKnob = 0, dragFx = null;
 // mod-LFO assignment mode: 0 = off, 1/2 = tapping fields assigns that LFO
 let armLfo = 0;
+
+// ---- Game of Life (melody band): HighLife B36/S23 on a torus. The melody
+// seeds cells as it plays; GROW lets the colony rewrite notes now and then.
+const GOL_W = 30, GOL_H = 16;
+const golGrid = new Uint8Array(GOL_W * GOL_H);
+let golGrow = false, golPaintV = 1, golLastBeat = -1, golLastStep = -1, golGen = 0;
+function golStep() {
+  const nx = new Uint8Array(GOL_W * GOL_H);
+  for (let r = 0; r < GOL_H; r++) for (let c = 0; c < GOL_W; c++) {
+    let n = 0;
+    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+      if (!dr && !dc) continue;
+      n += golGrid[((r + dr + GOL_H) % GOL_H) * GOL_W + ((c + dc + GOL_W) % GOL_W)];
+    }
+    const alive = golGrid[r * GOL_W + c];
+    nx[r * GOL_W + c] = alive ? (n === 2 || n === 3 ? 1 : 0) : (n === 3 || n === 6 ? 1 : 0);
+  }
+  golGrid.set(nx);
+  golGen++;
+  if (golGrow && golGen % 4 === 0) {
+    const steps = Math.max(1, Math.round(sget(1, 2)));
+    const alive = [];
+    for (let r = 0; r < GOL_H; r++) for (let c = 0; c < Math.min(steps, GOL_W); c++)
+      if (golGrid[r * GOL_W + c]) alive.push([c, r]);
+    if (alive.length) {
+      const [c, r] = alive[Math.floor(Math.random() * alive.length)];
+      const deg = Math.max(0, Math.min(NROWS - 1, Math.floor((GOL_H - 1 - r) * NROWS / GOL_H)));
+      const ron = ronOff(1), rdg = rdgOff(1);
+      if (m[ron + c] && m[rdg + c] === deg) m[ron + c] = 0;
+      else { m[ron + c] = 1; m[rdg + c] = deg; }
+      touchState();
+    }
+  }
+}
+function golFrame() {
+  if (!playing) return;
+  const b = Math.floor(dispBeat);
+  if (b !== golLastBeat) { golLastBeat = b; golStep(); }
+  const steps = Math.max(1, Math.round(sget(1, 2)));
+  const msd = (sget(1, 15) ? sget(1, 3) / 16 : sget(1, 3) / steps) * FEL_MULT[m[SFL_A + 1]];
+  const st = ((Math.floor(dispBeat / msd) % steps) + steps) % steps;
+  if (st !== golLastStep) {
+    golLastStep = st;
+    if (m[ronOff(1) + st]) {
+      const r = Math.max(0, Math.min(GOL_H - 1,
+        GOL_H - 1 - Math.floor(m[rdgOff(1) + st] * GOL_H / NROWS)));
+      const cc = st % GOL_W;
+      // an L-tromino, not a lone cell — lone cells die before the next beat
+      golGrid[r * GOL_W + cc] = 1;
+      golGrid[r * GOL_W + ((cc + 1) % GOL_W)] = 1;
+      golGrid[((r + 1) % GOL_H) * GOL_W + cc] = 1;
+    }
+  }
+}
 function tryModAssign(off) {
   if (!armLfo) return false;
   setStatus(`${modToggle(armLfo, off)} — ${modTargetName(off)}`);
@@ -1560,17 +1618,40 @@ function onDown(x, y, right) {
 
   // FX box at the bottom
   if (y >= fxY() && y < fxY() + fxH) {
-    const my = fxY() + 168;
-    if (y >= my && y < my + 30) {
-      if (x >= 46 && x < 92) {
-        armLfo = armLfo === 1 ? 0 : 1;
-        setStatus(armLfo ? 'L1 armed — tap any value field to assign / remove it' : 'L1 disarmed');
+    for (const n of [1, 2]) {
+      if (inRect(x, y, armRect(n))) {
+        armLfo = armLfo === n ? 0 : n;
+        setStatus(armLfo ? `L${n} armed — tap any value field to assign / remove it` : `L${n} disarmed`);
         return;
       }
-      if (x >= 306 && x < 352) {
-        armLfo = armLfo === 2 ? 0 : 2;
-        setStatus(armLfo ? 'L2 armed — tap any value field to assign / remove it' : 'L2 disarmed');
+    }
+    // SENDS matrix mini-knobs (vertical drag; armed tap assigns)
+    for (let p = 0; p < 4; p++) for (let f = 0; f < 3; f++) {
+      const [kx, ky] = sndKnobXY(p, f);
+      if ((x - kx) * (x - kx) + (y - ky) * (y - ky) <= 144) {
+        const off = SND_MTX + p * 3 + f;
+        if (tryModAssign(off)) return;
+        dragMode = 44; dragFx = off; dragY = y; dragV = m[off];
         return;
+      }
+    }
+    // 3D dome: grab the nearest part ball and drag it around the head
+    {
+      const cx = 868, cy = fxY() + 150;
+      const dx = x - cx, dy = y - cy;
+      if (dx * dx + dy * dy <= 115 * 115) {
+        let best = -1, bd = 1e9;
+        for (let p = 0; p < 4; p++) {
+          const a = (azv[p] || 0) * Math.PI / 180;
+          const bx = cx + Math.sin(a) * 78, by = cy - Math.cos(a) * 78;
+          const dd = (x - bx) * (x - bx) + (y - by) * (y - by);
+          if (dd < bd) { bd = dd; best = p; }
+        }
+        if (best >= 0 && bd <= 26 * 26) {
+          if (tryModAssign(PAN_AZ_A + best)) return;
+          dragMode = 51; dragLane = best;
+          return;
+        }
       }
     }
     for (const cell of fxCells()) {
@@ -1631,6 +1712,23 @@ function onDown(x, y, right) {
   // synth sections
   for (let gsi = 0; gsi < NSYN; gsi++) {
     const ysv = ys(gsi);
+    // Game of Life painting (melody band, right column)
+    if (gsi === 1 && x >= 1000 && x < 1000 + GOL_W * 8 && y >= ysv + 4 && y < ysv + 4 + GOL_H * 8) {
+      const gc = Math.floor((x - 1000) / 8), gr2 = Math.floor((y - (ysv + 4)) / 8);
+      golPaintV = golGrid[gr2 * GOL_W + gc] ? 0 : 1;
+      golGrid[gr2 * GOL_W + gc] = golPaintV;
+      dragMode = 50;
+      return;
+    }
+    if (gsi === 1 && y >= ysv + 4 + GOL_H * 8 + 4 && y < ysv + 4 + GOL_H * 8 + 24) {
+      if (x >= 1000 && x < 1044) { golGrid.fill(0); setStatus('life cleared'); return; }
+      if (x >= 1048 && x < 1108) {
+        golGrow = !golGrow;
+        setStatus(golGrow ? 'GROW on: the colony occasionally rewrites melody notes (undo works)'
+          : 'GROW off: the colony just watches the melody');
+        return;
+      }
+    }
     if (y >= ysv && y < ysv + rowh) {
       if (x >= xFields && x < xFields + 10 * fieldw) {
         dragF = Math.floor((x - xFields) / fieldw);
@@ -1699,9 +1797,10 @@ function onDown(x, y, right) {
       }
       return;
     }
-    if (y >= ysv + 2 * rowh && y < ysv + 2 * rowh + NROWS * rollrh && x >= xGrid) {
-      const mcol = Math.floor((x - xGrid) / cellw);
-      const mrow = NROWS - 1 - Math.floor((y - (ysv + 2 * rowh)) / rollrh);
+    if (y >= ysv + ROLL_Y && y < ysv + ROLL_Y + NROWS * rollrh
+        && x >= ROLL_X && x < ROLL_X + MAX_STEPS * cellw) {
+      const mcol = Math.floor((x - ROLL_X) / cellw);
+      const mrow = NROWS - 1 - Math.floor((y - (ysv + ROLL_Y)) / rollrh);
       const ron = ronOff(gsi), rdg = rdgOff(gsi);
       if (mcol >= 0 && mcol < sget(gsi, 2)) {
         if (m[ron + mcol] && m[rdg + mcol] === mrow) {
@@ -1805,9 +1904,18 @@ function onRClick(x, y) {
   // rolls: cycle normal -> orange every-2nd-cycle -> off; empty = erase drag
   for (let gsi = 0; gsi < NSYN; gsi++) {
     const ysv = ys(gsi);
-    if (y >= ysv + 2 * rowh && y < ysv + 2 * rowh + NROWS * rollrh && x >= xGrid) {
-      const mcol = Math.floor((x - xGrid) / cellw);
-      const mrow = NROWS - 1 - Math.floor((y - (ysv + 2 * rowh)) / rollrh);
+    // right-drag inside the Game of Life = erase cells
+    if (gsi === 1 && x >= 1000 && x < 1000 + GOL_W * 8 && y >= ysv + 4 && y < ysv + 4 + GOL_H * 8) {
+      const gc = Math.floor((x - 1000) / 8), gr2 = Math.floor((y - (ysv + 4)) / 8);
+      golGrid[gr2 * GOL_W + gc] = 0;
+      golPaintV = 0;
+      dragMode = 50;
+      return;
+    }
+    if (y >= ysv + ROLL_Y && y < ysv + ROLL_Y + NROWS * rollrh
+        && x >= ROLL_X && x < ROLL_X + MAX_STEPS * cellw) {
+      const mcol = Math.floor((x - ROLL_X) / cellw);
+      const mrow = NROWS - 1 - Math.floor((y - (ysv + ROLL_Y)) / rollrh);
       const ron = ronOff(gsi), rdg = rdgOff(gsi);
       if (mcol >= 0 && mcol < sget(gsi, 2)) {
         if (m[ron + mcol] && m[rdg + mcol] === mrow) {
@@ -1876,15 +1984,15 @@ function onMove(x, y) {
     if (mi >= 0 && mi < m[STEPS_A + dragLane]) m[PAT + dragLane * MAX_STEPS + mi] = paint;
   } else if (dragMode === 6) {
     const ysv = ys(dragSynth);
-    const mcol = Math.floor((x - xGrid) / cellw);
-    const mrow = NROWS - 1 - Math.floor((y - (ysv + 2 * rowh)) / rollrh);
+    const mcol = Math.floor((x - ROLL_X) / cellw);
+    const mrow = NROWS - 1 - Math.floor((y - (ysv + ROLL_Y)) / rollrh);
     if (mcol >= 0 && mcol < sget(dragSynth, 2) && mrow >= 0 && mrow < NROWS) {
       m[ronOff(dragSynth) + mcol] = 1;
       m[rdgOff(dragSynth) + mcol] = mrow;
       setStatus(rollLabel(dragSynth, mrow));
     }
   } else if (dragMode === 7) {
-    const mcol = Math.floor((x - xGrid) / cellw);
+    const mcol = Math.floor((x - ROLL_X) / cellw);
     if (mcol >= 0 && mcol < sget(dragSynth, 2)) m[ronOff(dragSynth) + mcol] = 0;
   } else if (dragMode === 30) {
     const c = dragFx;
@@ -1899,6 +2007,23 @@ function onMove(x, y) {
   } else if (dragMode === 43) {
     // synth-drum voice fields (NSE/SWP/SUB/CLK), 0..100
     m[dragFx] = Math.max(0, Math.min(100, dragV + d));
+  } else if (dragMode === 44) {
+    // SENDS matrix mini-knob (vertical drag, 0..100)
+    m[dragFx] = Math.max(0, Math.min(100, dragV + d * 2));
+  } else if (dragMode === 50) {
+    // paint the Game of Life
+    const ysv = ys(1);
+    if (x >= 1000 && x < 1000 + GOL_W * 8 && y >= ysv + 4 && y < ysv + 4 + GOL_H * 8) {
+      const gc = Math.floor((x - 1000) / 8), gr2 = Math.floor((y - (ysv + 4)) / 8);
+      golGrid[gr2 * GOL_W + gc] = golPaintV;
+    }
+    return;
+  } else if (dragMode === 51) {
+    // drag a dome ball: pointer angle around the head -> azimuth
+    const cx = 868, cy = fxY() + 150;
+    let deg = Math.atan2(x - cx, -(y - cy)) * 180 / Math.PI;
+    deg = Math.max(-180, Math.min(180, Math.round(deg / 5) * 5));
+    m[PAN_AZ_A + dragLane] = deg;
   } else if (dragMode === 20) {
     vols[KNOBS[dragKnob].id] = Math.max(0, Math.min(100, dragV + Math.floor((dragY - y) / 2)));
     pushGains();
@@ -2007,6 +2132,7 @@ const F10 = '10px Arial', F11 = '11px Arial', F12 = '12px Arial',
 function fmtG(v) { return String(Math.round(v * 100) / 100); }
 
 function draw() {
+  golFrame();   // evolve + seed the melody's life colony
   sizeCanvas();
   const dpr = window.devicePixelRatio || 1;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -2310,8 +2436,10 @@ function draw() {
     }
 
     // info panel: chords get the pitch wheel, others get text
+    // ---- right column: caption text + a visual per section ----
+    const rys = ysv + 4;
     if (gsi === 2) {
-      const wcx = 64, wcy = ysv + 2 * rowh + 48, wr = 42;
+      const wcx = 1140, wcy = ysv + 96, wr = 56;
       set(0.3, 0.3, 0.34); circle(wcx, wcy, wr, false);
       const gcnt = Math.max(1, SCL[effScale(2)][0]);
       for (let gd = 0; gd < gcnt; gd++) {
@@ -2322,38 +2450,83 @@ function draw() {
       if (gsndB >= 0) {
         const wang = gsndB / 1200 * 2 * Math.PI - Math.PI / 2;
         set(0.85, 0.6, 0.2);
-        circle(wcx + Math.cos(wang) * (wr - 8), wcy + Math.sin(wang) * (wr - 8), 4, true);
+        circle(wcx + Math.cos(wang) * (wr - 10), wcy + Math.sin(wang) * (wr - 10), 5, true);
       }
       if (gsndM >= 0) {
         const wang = gsndM / 1200 * 2 * Math.PI - Math.PI / 2;
         set(0.25, 0.75, 0.7);
-        circle(wcx + Math.cos(wang) * (wr - 16), wcy + Math.sin(wang) * (wr - 16), 4, true);
+        circle(wcx + Math.cos(wang) * (wr - 20), wcy + Math.sin(wang) * (wr - 20), 5, true);
       }
       for (let gd = 0; gd < gsndCn; gd++) {
         const wang = gsndC[gd] / 1200 * 2 * Math.PI - Math.PI / 2;
         set(0.6, 0.45, 0.85);
-        circle(wcx + Math.cos(wang) * (wr - 24), wcy + Math.sin(wang) * (wr - 24), 3, true);
+        circle(wcx + Math.cos(wang) * (wr - 30), wcy + Math.sin(wang) * (wr - 30), 4, true);
       }
-      set(0.45, 0.45, 0.5); text('pitch wheel', 118, ysv + 2 * rowh + 8, F10);
-      set(0.85, 0.6, 0.2); text('bass', 118, ysv + 2 * rowh + 22, F10);
-      set(0.25, 0.75, 0.7); text('melody', 146, ysv + 2 * rowh + 22, F10);
-      set(0.6, 0.45, 0.85); text('chords', 186, ysv + 2 * rowh + 22, F10);
+      set(0.45, 0.45, 0.5); text('pitch wheel', RC_X, rys, F10);
+      set(0.85, 0.6, 0.2); text('bass', RC_X, rys + 16, F10);
+      set(0.25, 0.75, 0.7); text('melody', RC_X + 34, rys + 16, F10);
+      set(0.6, 0.45, 0.85); text('chords', RC_X + 80, rys + 16, F10);
       set(0.45, 0.45, 0.5);
-      text('roll = chord ROOT degree', 118, ysv + 2 * rowh + 40, F11);
-      text('right-click / ALT-tap note:', 118, ysv + 2 * rowh + 54, F11);
-      text('orange = every 2nd cycle', 118, ysv + 2 * rowh + 68, F11);
+      text('roll = chord ROOT degree', RC_X, rys + 40, F11);
+      text('right-click / ALT-tap note:', RC_X, rys + 56, F11);
+      text('orange = every 2nd cycle', RC_X, rys + 72, F11);
+      set(0.55, 0.6, 0.6);
+      text(`scale: ${SCALE_NAMES[effScale(2)]}${glk ? ' (key)' : ''}`, RC_X, rys + 96, F11);
     } else {
       set(0.55, 0.6, 0.6);
-      text(`scale: ${SCALE_NAMES[effScale(gsi)]}${glk ? ' (key)' : ''}`, 8, ysv + 2 * rowh + 4, F11);
+      text(`scale: ${SCALE_NAMES[effScale(gsi)]}${glk ? ' (key)' : ''}`, RC_X, rys, F11);
       set(0.45, 0.45, 0.5);
-      text('click place / re-click clear', 8, ysv + 2 * rowh + 20, F11);
-      text('right-click / ALT-tap note:', 8, ysv + 2 * rowh + 36, F11);
-      text('plays every 2nd cycle', 8, ysv + 2 * rowh + 52, F11);
-      text('rows = degrees, bottom = BASE', 8, ysv + 2 * rowh + 68, F11);
+      text('click place / re-click clear', RC_X, rys + 18, F11);
+      text('right-click / ALT-tap note:', RC_X, rys + 34, F11);
+      text('plays every 2nd cycle', RC_X, rys + 50, F11);
+      text('rows = degrees, bottom = BASE', RC_X, rys + 66, F11);
     }
-
-    // roll
-    const gyr = ysv + 2 * rowh;
+    if (gsi === 0) {
+      // XY oscilloscope: the bass waveform against a delayed copy of itself
+      // (sines trace ellipses; saws and squares trace angular figures)
+      set(0.14, 0.15, 0.17); rect(1000, rys, 248, 180);
+      set(0.3, 0.32, 0.36);
+      rect(1000, rys, 248, 1); rect(1000, rys + 179, 248, 1);
+      rect(1000, rys, 1, 180); rect(1247, rys, 1, 180);
+      set(0.45, 0.45, 0.5); text('XY scope', 1006, rys + 4, F10);
+      if (scopeArr && scopeArr.length >= 240) {
+        const cx = 1124, cy = rys + 92;
+        let pk = 0.02;
+        for (let i = 0; i < 240; i++) { const a = Math.abs(scopeArr[i]); if (a > pk) pk = a; }
+        const sc = 78 / pk;
+        ctx.strokeStyle = 'rgba(80,220,210,0.9)';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        for (let i = 0; i < 200; i++) {
+          const px = cx + Math.max(-118, Math.min(118, scopeArr[i] * sc));
+          const py = cy + Math.max(-84, Math.min(84, scopeArr[i + 40] * sc));
+          i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+        }
+        ctx.stroke();
+      }
+    } else if (gsi === 1) {
+      // Game of Life colony (HighLife): paint it, or let the melody seed it
+      set(0.14, 0.15, 0.17); rect(1000, rys, GOL_W * 8, GOL_H * 8);
+      for (let r = 0; r < GOL_H; r++) for (let c = 0; c < GOL_W; c++) {
+        if (golGrid[r * GOL_W + c]) {
+          set(0.35, 0.8, 0.5);
+          rect(1000 + c * 8 + 1, rys + r * 8 + 1, 6, 6);
+        }
+      }
+      set(0.3, 0.32, 0.36);
+      rect(1000, rys, GOL_W * 8, 1); rect(1000, rys + GOL_H * 8 - 1, GOL_W * 8, 1);
+      rect(1000, rys, 1, GOL_H * 8); rect(1000 + GOL_W * 8 - 1, rys, 1, GOL_H * 8);
+      const by2 = rys + GOL_H * 8 + 4;
+      set(0.3, 0.24, 0.24); rect(1000, by2, 44, 18);
+      set(0.9, 0.8, 0.8); textC('CLR', 1000, 1044, by2 + 3, F10);
+      golGrow ? set(0.35, 0.55, 0.3) : set(0.22, 0.28, 0.24);
+      rect(1048, by2, 60, 18);
+      set(0.85, 0.95, 0.85); textC('GROW', 1048, 1108, by2 + 3, F10);
+      set(0.45, 0.45, 0.5);
+      text('paint it · the melody seeds it · GROW writes notes', 1000, by2 + 24, F10);
+    }
+    // roll (under the control rows)
+    const gyr = ysv + ROLL_Y;
     const nst = m[sp + 2];
     const msd = (m[sp + 15] ? m[sp + 3] / 16 : m[sp + 3] / nst) * FEL_MULT[m[SFL_A + gsi]];
     const mplay = playing ? ((Math.floor(dispBeat / msd) % nst) + nst) % nst : -1;
@@ -2362,7 +2535,7 @@ function draw() {
     const mbt = (Math.abs(mspb - Math.floor(mspb + 0.5)) < 1e-6 && mspb >= 1)
       ? Math.floor(mspb + 0.5) : 0;
     for (let gi = 0; gi < nst; gi++) {
-      const cx = xGrid + gi * cellw;
+      const cx = ROLL_X + gi * cellw;
       for (let gr = 0; gr < NROWS; gr++) {
         const cy = gyr + (NROWS - 1 - gr) * rollrh;
         if (m[ron + gi] && m[rdg + gi] === gr) {
@@ -2394,7 +2567,7 @@ function draw() {
   fxLit ? set(0.6, 0.85, 0.85) : set(0.5, 0.52, 0.56);
   text('FX RACK', 12, fy + 6, F12);
   set(0.4, 0.42, 0.46);
-  text('each fx has its own DR/BS/ML/CH sends · PRE = sends ignore the faders · FEED taps the whole mix', 78, fy + 7, F10);
+  text('PRE = sends ignore the faders · FEED taps the whole mix · SENDS + SPACE + MOD live on the right', 78, fy + 7, F10);
   for (const cell of fxCells()) {
     if (cell.t === 'lbl') {
       set(0.5, 0.52, 0.56); text(cell.text, cell.x, cell.y, F10);
@@ -2421,25 +2594,79 @@ function draw() {
     textC(fxFmt(cell.fmt, m[cell.off]), cell.x, cell.x + cell.w, cell.y + 15, F12);
     modTick(cell.off, cell.x, cell.w, cell.y);
   }
-  // MOD row chrome: label + the two ARM buttons (glow while armed)
+  // ---- FX right column: ARM buttons, SENDS matrix, 3D dome ----
   {
-    const my = fy + 168;
-    set(0.5, 0.52, 0.56); text('MOD', 12, my + 9, F10);
+    const a1 = armRect(1), a2 = armRect(2);
     armLfo === 1 ? set(0.95, 0.72, 0.25) : set(0.32, 0.28, 0.2);
-    rect(46, my, 46, 30);
+    rect(...a1);
     armLfo === 1 ? set(0.15, 0.1, 0.02) : set(0.95, 0.85, 0.6);
-    textC(armLfo === 1 ? 'L1 ⦿' : 'L1', 46, 92, my + 8, F11);
+    textC(armLfo === 1 ? 'L1⦿' : 'L1', a1[0], a1[0] + a1[2], a1[1] + 8, F11);
     armLfo === 2 ? set(0.3, 0.85, 0.85) : set(0.2, 0.3, 0.32);
-    rect(306, my, 46, 30);
+    rect(...a2);
     armLfo === 2 ? set(0.02, 0.14, 0.15) : set(0.7, 0.95, 0.95);
-    textC(armLfo === 2 ? 'L2 ⦿' : 'L2', 306, 352, my + 8, F11);
+    textC(armLfo === 2 ? 'L2⦿' : 'L2', a2[0], a2[0] + a2[2], a2[1] + 8, F11);
+
+    // SENDS matrix: mini circular faders, part rows x fx columns
+    set(0.5, 0.52, 0.56); text('SENDS', 1000, fy + 6, F10);
+    const FXCOL = ['DLY', 'GLI', 'GRN'], PROW = ['DR', 'BS', 'ML', 'CH'];
+    for (let f = 0; f < 3; f++) {
+      set(0.45, 0.46, 0.5);
+      textC(FXCOL[f], 1050 + f * 42 - 16, 1050 + f * 42 + 16, fy + 6, F10);
+    }
+    for (let p = 0; p < 4; p++) {
+      set(0.45, 0.46, 0.5); text(PROW[p], 1004, fy + 30 + p * 26, F10);
+      for (let f = 0; f < 3; f++) {
+        const [kx, ky] = sndKnobXY(p, f);
+        const off = SND_MTX + p * 3 + f, v = m[off] / 100;
+        v > 0 ? set(0.16, 0.34, 0.36) : set(0.2, 0.21, 0.24);
+        circle(kx, ky, 9, true);
+        set(0.32, 0.34, 0.38); circle(kx, ky, 9, false);
+        if (v > 0) {
+          ctx.strokeStyle = 'rgba(120,230,225,0.95)';
+          ctx.lineWidth = 2.4;
+          ctx.beginPath();
+          ctx.arc(kx, ky, 9, Math.PI * 0.75, Math.PI * 0.75 + v * Math.PI * 1.5);
+          ctx.stroke();
+        }
+        const mk = modMaskFor(off);
+        if (mk & 1) { set(0.95, 0.72, 0.25); rect(kx + 7, ky - 12, 4, 4); }
+        if (mk & 2) { set(0.3, 0.85, 0.85); rect(kx + 7, ky - 6, 4, 4); }
+      }
+    }
+    set(0.45, 0.45, 0.5); text('drag ↕', 1186, fy + 56, F10);
+
+    // 3D dome: top-down head, one ball per part at its live azimuth. Balls
+    // pulse with energy, FRC physics shoves them, and they repel each other.
+    const cx = 868, cy = fy + 150;
+    set(0.26, 0.28, 0.32); circle(cx, cy, 105, false);
+    set(0.2, 0.21, 0.24); circle(cx, cy, 78, false);
+    set(0.3, 0.32, 0.36);
+    rect(cx - 105, cy, 210, 1); rect(cx, cy - 105, 1, 210);
+    set(0.5, 0.52, 0.56);
+    textC('FRONT', cx - 24, cx + 24, cy - 122, F10);
+    set(0.35, 0.37, 0.4); circle(cx, cy, 10, true);   // the head
+    const BCOL = [[1, 0.65, 0.3], [0.3, 0.85, 0.85], [0.35, 0.8, 0.45], [0.85, 0.55, 0.85]];
+    const BLBL = ['DR', 'BS', 'ML', 'CH'];
+    for (let p = 0; p < 4; p++) {
+      const a = (azv[p] || 0) * Math.PI / 180;
+      const bx = cx + Math.sin(a) * 78, by = cy - Math.cos(a) * 78;
+      const br = 8 + (enerArr[p] || 0) * 10;
+      set(BCOL[p][0] * 0.4, BCOL[p][1] * 0.4, BCOL[p][2] * 0.4);
+      circle(bx, by, br + 3, true);
+      set(...BCOL[p]);
+      circle(bx, by, br, true);
+      set(0.05, 0.05, 0.08);
+      textC(BLBL[p], bx - 12, bx + 12, by - 5, F10);
+    }
+    set(0.45, 0.45, 0.5);
+    text('drag a ball to place it · FRC makes sound shove it', 748, fy + 272, F10);
   }
 
   // status / hint line (bottom)
   if (haveStatus) { set(0.7, 0.85, 0.7); text(statusText, 8, yStat(), F11); }
   else {
     set(0.45, 0.45, 0.5);
-    text('drag fields · tap ENG to pick classic/string/glass · right-click notes for 2nd-cycle · the FX box is the effects rack + sends', 8, yStat(), F11);
+    text('drag fields · tap ENG to pick classic/string/glass · right-click notes for 2nd-cycle · sends / space / mod + the dome live right of the FX rack', 8, yStat(), F11);
   }
 
   // wake overlay until the first gesture creates the AudioContext
@@ -2508,6 +2735,10 @@ window.gnome = {
   loadUserSample, loadSpliceSample, setUserSample, setSpliceSample, digSample,
   modToggle, modTargets, modMaskFor, modTargetName,
   get userSmp() { return userSmp; }, get splSmp() { return splSmp; },
+  get scopeArr() { return scopeArr; }, get azv() { return azv; },
+  get enerArr() { return enerArr; },
+  get golGrid() { return golGrid; }, get golGrow() { return golGrow; },
+  golStepOnce: golStep,
   initAudio, togglePlay,
   undo, redo,
   get canUndo() { return undoStack.length > 0; },

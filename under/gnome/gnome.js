@@ -9,7 +9,7 @@
 
 // bump on every release: cache-busts the worklet module so a stale cached
 // DSP can never run against fresh UI code
-const APP_V = '12';
+const APP_V = '13';
 
 
 const LANES_CAP = 8, MAX_STEPS = 32, EUC_N = 21, NROWS = 12, NSCALES = 14,
@@ -61,6 +61,12 @@ const DCRP_A = 884;
 // 3D space per part (drums,bass,melody,chords): azimuth in degrees and an
 // audio-force amount - the part's own energy shoves it around the head
 const PAN_AZ_A = 896, PAN_FRC_A = 900;
+// dome ball bounciness: how elastically crowded parts trade momentum
+const PAN_BNC = 904;
+// XY-scope waveshaper on the bass: drive folds it, skew biases it asymmetric
+const XY_DRV = 905, XY_SKW = 906;
+// harmonic wheel spin: 0 off, 1/2/3 = root walks the wheel every 4/2/1 beats
+const WHL_SPIN = 907;
 
 const m = new Float64Array(MEM);
 let numLanes = 3;
@@ -626,6 +632,7 @@ function seedNewRegions(arr) {
   for (let k = 0; k < MOD_SLOTS; k++) { a[MOD_TGT_A + k] = 0; a[MOD_MSK_A + k] = 0; }
   for (let l = 0; l < LANES_CAP; l++) a[DCRP_A + l] = 0;
   for (let p = 0; p < 4; p++) { a[PAN_AZ_A + p] = 0; a[PAN_FRC_A + p] = 0; }
+  a[PAN_BNC] = 40; a[XY_DRV] = 0; a[XY_SKW] = 0; a[WHL_SPIN] = 0;
 }
 // bring a stored mem block (768 / 800 / 864) up to the current layout;
 // returns a MEM-length plain array, or null for an unknown length
@@ -787,6 +794,8 @@ function modRange(off) {
   if (off === BPM_WOB) return [0, 100];
   if (within(DCRP_A, 8) || within(PAN_FRC_A, 4)) return [0, 100];
   if (within(PAN_AZ_A, 4)) return [-180, 180];
+  if (off === PAN_BNC || off === XY_DRV) return [0, 100];
+  if (off === XY_SKW) return [-50, 50];
   return null;
 }
 // mask of LFOs assigned to an offset (bit 1 = L1, bit 2 = L2)
@@ -850,6 +859,9 @@ function modTargets() {
         off: SND_MTX + p * 3 + f });
     out.push({ name: `${pn} azimuth (3D)`, off: PAN_AZ_A + p });
   }
+  out.push({ name: 'bass shape drive (XY scope)', off: XY_DRV },
+    { name: 'bass shape skew (XY scope)', off: XY_SKW },
+    { name: 'dome bounciness', off: PAN_BNC });
   return out;
 }
 const modTargetName = off => {
@@ -1451,7 +1463,8 @@ function fxCells() {
   val(x, y, 44, 'ML·AZ', PAN_AZ_A + 2, -180, 180, 5, 'deg'); x += 48;
   val(x, y, 40, 'FRC', PAN_FRC_A + 2, 0, 100, 5, 'pct'); x += 46;
   val(x, y, 44, 'CH·AZ', PAN_AZ_A + 3, -180, 180, 5, 'deg'); x += 48;
-  val(x, y, 40, 'FRC', PAN_FRC_A + 3, 0, 100, 5, 'pct');
+  val(x, y, 40, 'FRC', PAN_FRC_A + 3, 0, 100, 5, 'pct'); x += 46;
+  val(x, y, 42, 'BNC', PAN_BNC, 0, 100, 5, 'pct');
 
   // mod LFOs (right column): L1 / L2 rate + depth + shape; ARM drawn apart
   y = fy + 214; x = 1046;
@@ -1503,7 +1516,8 @@ function setStatus(s) { statusText = s; haveStatus = true; }
 
 // ---- interaction state (port of the JSFX drag machinery) ----
 let dragMode = 0, dragF = 0, dragLane = 0, dragSynth = 0, dragY = 0, dragV = 0,
-  dragMoved = false, rotApplied = 0, paint = 0, dragKnob = 0, dragFx = null;
+  dragMoved = false, rotApplied = 0, paint = 0, dragKnob = 0, dragFx = null,
+  dragX = 0, dragV2 = 0;
 // mod-LFO assignment mode: 0 = off, 1/2 = tapping fields assigns that LFO
 let armLfo = 0;
 
@@ -1511,7 +1525,10 @@ let armLfo = 0;
 // seeds cells as it plays; GROW lets the colony rewrite notes now and then.
 const GOL_W = 30, GOL_H = 16;
 const golGrid = new Uint8Array(GOL_W * GOL_H);
-let golGrow = false, golPaintV = 1, golLastBeat = -1, golLastStep = -1, golGen = 0;
+const GOL_RATES = [0.25, 0.5, 1, 2, 4];   // generations per beat
+const GOL_RATE_LBL = ['¼×', '½×', '1×', '2×', '4×'];
+let golGrow = false, golPaintV = 1, golLastBeat = -1, golLastStep = -1, golGen = 0,
+  golRate = 2;
 function golStep() {
   const nx = new Uint8Array(GOL_W * GOL_H);
   for (let r = 0; r < GOL_H; r++) for (let c = 0; c < GOL_W; c++) {
@@ -1542,7 +1559,7 @@ function golStep() {
 }
 function golFrame() {
   if (!playing) return;
-  const b = Math.floor(dispBeat);
+  const b = Math.floor(dispBeat * GOL_RATES[golRate]);
   if (b !== golLastBeat) { golLastBeat = b; golStep(); }
   const steps = Math.max(1, Math.round(sget(1, 2)));
   const msd = (sget(1, 15) ? sget(1, 3) / 16 : sget(1, 3) / steps) * FEL_MULT[m[SFL_A + 1]];
@@ -1728,6 +1745,29 @@ function onDown(x, y, right) {
           : 'GROW off: the colony just watches the melody');
         return;
       }
+      if (x >= 1112 && x < 1164) {
+        golRate = (golRate + 1) % GOL_RATES.length;
+        setStatus(`life speed: ${GOL_RATE_LBL[golRate]} — ${GOL_RATES[golRate]} generation${GOL_RATES[golRate] === 1 ? '' : 's'} per beat`);
+        return;
+      }
+    }
+    // XY scope (bass band): grab the figure to shape the bass -
+    // vertical = drive (tanh fold), horizontal = skew (asymmetric bias)
+    if (gsi === 0 && x >= 1000 && x < 1248 && y >= ysv + 4 && y < ysv + 184) {
+      if (armLfo) { tryModAssign(x < 1124 ? XY_DRV : XY_SKW); return; }
+      dragMode = 52; dragY = y; dragX = x;
+      dragV = m[XY_DRV]; dragV2 = m[XY_SKW];
+      return;
+    }
+    // harmonic wheel SPIN button (chords band, under the wheel)
+    if (gsi === 2 && x >= 1096 && x < 1184 && y >= ysv + 160 && y < ysv + 178) {
+      m[WHL_SPIN] = ((m[WHL_SPIN] || 0) + 1) % 4;
+      setStatus(['spin off — chords play as written',
+        'SPIN: the chord root walks the wheel every 4 beats',
+        'SPIN: the chord root walks the wheel every 2 beats',
+        'SPIN: the chord root walks the wheel every beat'][m[WHL_SPIN]]);
+      touchState();
+      return;
     }
     if (y >= ysv && y < ysv + rowh) {
       if (x >= xFields && x < xFields + 10 * fieldw) {
@@ -1904,6 +1944,13 @@ function onRClick(x, y) {
   // rolls: cycle normal -> orange every-2nd-cycle -> off; empty = erase drag
   for (let gsi = 0; gsi < NSYN; gsi++) {
     const ysv = ys(gsi);
+    // right-click the XY scope = reset the bass shaper to clean
+    if (gsi === 0 && x >= 1000 && x < 1248 && y >= ysv + 4 && y < ysv + 184) {
+      m[XY_DRV] = 0; m[XY_SKW] = 0;
+      touchState();
+      setStatus('bass shape reset — clean waveform');
+      return;
+    }
     // right-drag inside the Game of Life = erase cells
     if (gsi === 1 && x >= 1000 && x < 1000 + GOL_W * 8 && y >= ysv + 4 && y < ysv + 4 + GOL_H * 8) {
       const gc = Math.floor((x - 1000) / 8), gr2 = Math.floor((y - (ysv + 4)) / 8);
@@ -2018,6 +2065,10 @@ function onMove(x, y) {
       golGrid[gr2 * GOL_W + gc] = golPaintV;
     }
     return;
+  } else if (dragMode === 52) {
+    // tweeze the bass on the XY scope: up = more drive, right = more skew
+    m[XY_DRV] = Math.max(0, Math.min(100, dragV + (dragY - y) * 0.75));
+    m[XY_SKW] = Math.max(-50, Math.min(50, dragV2 + (x - dragX) * 0.5));
   } else if (dragMode === 51) {
     // drag a dome ball: pointer angle around the head -> azimuth
     const cx = 868, cy = fxY() + 150;
@@ -2462,6 +2513,11 @@ function draw() {
         set(0.6, 0.45, 0.85);
         circle(wcx + Math.cos(wang) * (wr - 30), wcy + Math.sin(wang) * (wr - 30), 4, true);
       }
+      const spv = m[WHL_SPIN] || 0;
+      spv ? set(0.4, 0.32, 0.5) : set(0.24, 0.24, 0.27);
+      rect(1096, ysv + 160, 88, 18);
+      set(0.88, 0.82, 0.95);
+      textC('SPIN ' + ['OFF', '4B', '2B', '1B'][spv], 1096, 1184, ysv + 163, F10);
       set(0.45, 0.45, 0.5); text('pitch wheel', RC_X, rys, F10);
       set(0.85, 0.6, 0.2); text('bass', RC_X, rys + 16, F10);
       set(0.25, 0.75, 0.7); text('melody', RC_X + 34, rys + 16, F10);
@@ -2472,6 +2528,9 @@ function draw() {
       text('orange = every 2nd cycle', RC_X, rys + 72, F11);
       set(0.55, 0.6, 0.6);
       text(`scale: ${SCALE_NAMES[effScale(2)]}${glk ? ' (key)' : ''}`, RC_X, rys + 96, F11);
+      set(0.45, 0.45, 0.5);
+      text('SPIN walks the chord root', RC_X, rys + 120, F11);
+      text('around the wheel as it plays', RC_X, rys + 136, F11);
     } else {
       set(0.55, 0.6, 0.6);
       text(`scale: ${SCALE_NAMES[effScale(gsi)]}${glk ? ' (key)' : ''}`, RC_X, rys, F11);
@@ -2480,6 +2539,12 @@ function draw() {
       text('right-click / ALT-tap note:', RC_X, rys + 34, F11);
       text('plays every 2nd cycle', RC_X, rys + 50, F11);
       text('rows = degrees, bottom = BASE', RC_X, rys + 66, F11);
+      if (gsi === 0) {
+        set(0.55, 0.6, 0.6);
+        text('the scope IS a pedal: drag it', RC_X, rys + 92, F11);
+        text('up = drive · right = skew', RC_X, rys + 108, F11);
+        text('right-click resets clean', RC_X, rys + 124, F11);
+      }
     }
     if (gsi === 0) {
       // XY oscilloscope: the bass waveform against a delayed copy of itself
@@ -2489,6 +2554,12 @@ function draw() {
       rect(1000, rys, 248, 1); rect(1000, rys + 179, 248, 1);
       rect(1000, rys, 1, 180); rect(1247, rys, 1, 180);
       set(0.45, 0.45, 0.5); text('XY scope', 1006, rys + 4, F10);
+      modTick(XY_DRV, 1000, 124, rys); modTick(XY_SKW, 1124, 124, rys);
+      const xdrv = Math.round(m[XY_DRV]), xskw = Math.round(m[XY_SKW]);
+      if (xdrv || xskw) {
+        set(0.85, 0.7, 0.3);
+        text(`drv ${xdrv} · skw ${xskw > 0 ? '+' : ''}${xskw}`, 1006, rys + 164, F10);
+      }
       if (scopeArr && scopeArr.length >= 240) {
         const cx = 1124, cy = rys + 92;
         let pk = 0.02;
@@ -2522,8 +2593,10 @@ function draw() {
       golGrow ? set(0.35, 0.55, 0.3) : set(0.22, 0.28, 0.24);
       rect(1048, by2, 60, 18);
       set(0.85, 0.95, 0.85); textC('GROW', 1048, 1108, by2 + 3, F10);
+      set(0.24, 0.27, 0.32); rect(1112, by2, 52, 18);
+      set(0.85, 0.9, 0.95); textC(GOL_RATE_LBL[golRate], 1112, 1164, by2 + 3, F10);
       set(0.45, 0.45, 0.5);
-      text('paint it · the melody seeds it · GROW writes notes', 1000, by2 + 24, F10);
+      text('paint it · melody seeds it · GROW writes notes · ×N speed', 1000, by2 + 24, F10);
     }
     // roll (under the control rows)
     const gyr = ysv + ROLL_Y;
@@ -2659,7 +2732,7 @@ function draw() {
       textC(BLBL[p], bx - 12, bx + 12, by - 5, F10);
     }
     set(0.45, 0.45, 0.5);
-    text('drag a ball to place it · FRC makes sound shove it', 748, fy + 272, F10);
+    text('drag a ball to place it · FRC shoves it · BNC = bounce', 748, fy + 272, F10);
   }
 
   // status / hint line (bottom)
@@ -2738,6 +2811,7 @@ window.gnome = {
   get scopeArr() { return scopeArr; }, get azv() { return azv; },
   get enerArr() { return enerArr; },
   get golGrid() { return golGrid; }, get golGrow() { return golGrow; },
+  get golRate() { return GOL_RATES[golRate]; },
   golStepOnce: golStep,
   initAudio, togglePlay,
   undo, redo,
@@ -2774,6 +2848,7 @@ window.gnome = {
     SPL_ST_A, SPL_EN_A, SPL_MODE_A, SPL_TUNE_A,
     DNSE_A, DSWP_A, DSUB_A, DCLK_A, SMP_SYN, SMP_USR, BPM_WOB, BPM_WRT,
     MLFO_A, MOD_TGT_A, MOD_MSK_A, MOD_SLOTS,
+    PAN_BNC, XY_DRV, XY_SKW, WHL_SPIN,
   },
   tables: { SCALE_NAMES, PROG_NAMES, SHAPE_NAMES, SYN_NAMES, FEEL_NAMES, SCL, STYLE_NAMES },
   SAMPLE_DEFS,

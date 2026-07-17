@@ -135,7 +135,10 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
   "3D space" group. Azimuth is an LFO target (a saw orbits the part around
   your head); FRC uses the part's own energy as a physics force that shoves
   its angle around with damping, so loud hits send it wandering. Parts also
-  **repel each other** when their angles crowd (scaled by the pair's FRC).
+  **repel each other** when their angles crowd (scaled by the pair's FRC),
+  and **BNC (bounciness)** sets how elastically a crowding pair trades
+  momentum — 0 clumps, 100 is a full billiard bounce with less drag, so
+  shoves carry the balls further around the head.
 
   **Two-column desktop canvas**: each synth section stacks its control rows
   with the piano roll directly beneath (left column), and the right column
@@ -143,9 +146,18 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
   the bass (the waveform plotted against a delayed copy of itself: sines make
   ellipses, saws make angular figures; fed by a worklet tap in the tick
   message), a paintable **Game of Life** for the melody (HighLife B36/S23 on
-  a torus, evolving one generation per beat; the melody seeds cells as it
-  plays, CLR clears, and the GROW toggle lets the colony occasionally rewrite
-  melody notes — undoably), and the **harmonic pitch wheel** for the chords.
+  a torus; the melody seeds cells as it plays, CLR clears, the ×N button sets
+  the speed from ¼ to 4 generations per beat, and the GROW toggle lets the
+  colony occasionally rewrite melody notes — undoably), and the **harmonic
+  pitch wheel** for the chords. The scope is also **an instrument**: dragging
+  the figure drives a tanh waveshaper on the bass (up = drive/fold, right =
+  skew/asymmetric bias — even harmonics), right-click resets it clean, and
+  because the worklet shapes the signal before the scope tap, the figure on
+  screen is exactly the waveform you hear (drive and skew are LFO targets;
+  the pocket exposes them as Shape drive / Shape skew on the bass). The wheel
+  gets a **SPIN** button (off / 4 / 2 / every beat): the chord root walks the
+  wheel one scale degree at a time as it plays, with voice leading smoothing
+  the inversions (pocket: "Wheel spin" on the chords tab).
   The FX band's right side holds the **3D dome** (top-down head view, one
   ball per part at its live azimuth, sized by energy, draggable to re-place a
   part) beside the SENDS mini-knob matrix and the SPACE / MOD cells. The

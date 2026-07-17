@@ -51,6 +51,8 @@ const BPM_WOB = 844, BPM_WRT = 845;
 const MLFO_A = 846, MOD_TGT_A = 852, MOD_MSK_A = 868, MOD_SLOTS = 16;
 // per-lane sample start % + per-part 3D space (azimuth deg, audio force)
 const DCRP_A = 884, PAN_AZ_A = 896, PAN_FRC_A = 900;
+// dome bounciness, XY-scope bass waveshaper (drive / skew), wheel spin
+const PAN_BNC = 904, XY_DRV = 905, XY_SKW = 906, WHL_SPIN = 907;
 
 // ---- scale / progression tables (mirror of the JSFX; keep in sync) ----
 const SCL = [
@@ -140,6 +142,8 @@ function modRange(off) {
   if (off === BPM_WOB) return [0, 100];
   if (within(DCRP_A, 8) || within(PAN_FRC_A, 4)) return [0, 100];
   if (within(PAN_AZ_A, 4)) return [-180, 180];
+  if (off === PAN_BNC || off === XY_DRV) return [0, 100];
+  if (off === XY_SKW) return [-50, 50];
   return null;
 }
 
@@ -592,6 +596,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     // part's own energy (last block) shove its angle around with damping
     // pairwise repulsion: crowded parts shove each other apart (the balls in
     // the dome interact) - strength follows the larger FRC of the pair
+    const bnc = Math.max(0, Math.min(1, m[PAN_BNC] / 100));
     for (let p = 0; p < 4; p++) this.azE[p] = m[PAN_AZ_A + p] + this.azOff[p];
     for (let p = 0; p < 4; p++) for (let q = p + 1; q < 4; q++) {
       let dd = this.azE[p] - this.azE[q];
@@ -601,16 +606,24 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
         const push = near * 0.015 * Math.max(m[PAN_FRC_A + p], m[PAN_FRC_A + q]) / 100;
         const sg = dd >= 0 ? 1 : -1;
         this.azVel[p] += sg * push; this.azVel[q] -= sg * push;
+        // collision: when the pair is closing, trade momentum. BNC sets how
+        // elastic the swap is (0 = they clump, 100 = a full billiard bounce)
+        const rel = sane(this.azVel[p]) - sane(this.azVel[q]);
+        if (rel * sg < 0) {
+          const j = -(1 + bnc) * rel / 2;
+          this.azVel[p] += j; this.azVel[q] -= j;
+        }
       }
     }
     for (let p = 0; p < 4; p++) {
       const frc = m[PAN_FRC_A + p] / 100;
+      // BNC also eases the drag so bounced momentum carries further
       if (frc > 0) {
         const e = Math.min(1, this.pEnerPrev[p] / nframes * 3);
-        this.azVel[p] = sane(this.azVel[p]) * 0.92 + (Math.random() * 2 - 1) * frc * e * 6;
+        this.azVel[p] = sane(this.azVel[p]) * (0.92 + bnc * 0.04) + (Math.random() * 2 - 1) * frc * e * 6;
       } else {
         // still damped + decaying, so repulsion shoves stay visible
-        this.azVel[p] = sane(this.azVel[p]) * 0.9;
+        this.azVel[p] = sane(this.azVel[p]) * (0.9 + bnc * 0.06);
         this.azOff[p] *= 0.995;
       }
       this.azOff[p] = sane(this.azOff[p]) + this.azVel[p];
@@ -714,9 +727,17 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
                                   m[sp + 20] === 2 ? -1 : 0;
               } else {
                 // ---- chord (paraphonic): diatonic stack + voice leading ----
+                // SPIN walks the chord root around the wheel: the offset
+                // advances one scale degree every 4 / 2 / 1 beats
+                let spd2 = 0;
+                if (m[WHL_SPIN]) {
+                  const per = [0, 4, 2, 1][m[WHL_SPIN]] || 4;
+                  const gc = Math.max(1, SCL[escale][0]);
+                  spd2 = ((Math.floor(t / per) % gc) + gc) % gc;
+                }
                 const nv = m[sp + 24] ? 4 : 3;
                 for (let v = 0; v < nv; v++) {
-                  const rcv = degCents(m[rdg + stepidx] + dsh + v * 2, escale) + hcents;
+                  const rcv = degCents(m[rdg + stepidx] + dsh + spd2 + v * 2, escale) + hcents;
                   let tc = rcv;
                   if (this.vlHave) {
                     // nearest-octave pull = inversion; anchor within an octave
@@ -765,6 +786,13 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     const wowDepth = m[DLY_WOW] / 100 * 45;             // samples of pitch drift
     const wowInc = TAU * 0.27 / srate;
     const feed = m[FX_FEED] / 100;
+    // XY-scope waveshaper on the bass: drive folds the sum into a tanh curve,
+    // skew biases it asymmetric (even harmonics). Applied before the scope
+    // tap, so the figure on screen is the shaped waveform you hear.
+    const xyDrv = m[XY_DRV] / 100, xySkw = m[XY_SKW] / 50;
+    const xyOn = xyDrv > 0.004 || Math.abs(xySkw) > 0.01;
+    const xyG = 1 + xyDrv * 6, xyB = xySkw * 1.1;
+    const xyTb = Math.tanh(xyB), xyN = 1 / Math.max(0.35, Math.tanh(xyG));
     // routing matrix as fractions: mtx[part][fx] (part 0 drums..3 chords)
     const mtx = [];
     for (let p = 0; p < 4; p++)
@@ -1013,6 +1041,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
         dIn += px * mtx[pt][0]; aIn += px * mtx[pt][1]; cIn += px * mtx[pt][2];
       }
 
+      if (xyOn) pm[1] = (Math.tanh(xyG * pm[1] + xyB) - xyTb) * xyN;
       this.scopeBuf[this.scopeW] = pm[1];   // bass tap for the XY scope
       this.scopeW = (this.scopeW + 1) & 511;
 

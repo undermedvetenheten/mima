@@ -186,6 +186,9 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     this.azVel = F(4); this.azOff = F(4);
     this.pEner = F(4); this.pEnerPrev = F(4);
     this.panGL = F(4); this.panGR = F(4); this.panK = F(4); this.panBack = F(4);
+    this.azE = F(4);                       // effective azimuths (for the dome)
+    this.scopeBuf = new Float32Array(512); // bass waveform tap for the XY scope
+    this.scopeW = 0;
     this.spSt = F(NSYN); this.spEnWin = F(NSYN);
     this.spFix = F(NSYN); this.spTrk = F(NSYN);
     this.fltLo = F(LANES_CAP); this.fltBp = F(LANES_CAP);
@@ -587,17 +590,35 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     // ---- 3D space coefficients (per part: drums, bass, melody, chords) ----
     // azimuth -> equal-power L/R plus a back-of-head lowpass; FRC lets the
     // part's own energy (last block) shove its angle around with damping
+    // pairwise repulsion: crowded parts shove each other apart (the balls in
+    // the dome interact) - strength follows the larger FRC of the pair
+    for (let p = 0; p < 4; p++) this.azE[p] = m[PAN_AZ_A + p] + this.azOff[p];
+    for (let p = 0; p < 4; p++) for (let q = p + 1; q < 4; q++) {
+      let dd = this.azE[p] - this.azE[q];
+      while (dd > 180) dd -= 360; while (dd < -180) dd += 360;
+      const near = 24 - Math.abs(dd);
+      if (near > 0) {
+        const push = near * 0.015 * Math.max(m[PAN_FRC_A + p], m[PAN_FRC_A + q]) / 100;
+        const sg = dd >= 0 ? 1 : -1;
+        this.azVel[p] += sg * push; this.azVel[q] -= sg * push;
+      }
+    }
     for (let p = 0; p < 4; p++) {
       const frc = m[PAN_FRC_A + p] / 100;
       if (frc > 0) {
         const e = Math.min(1, this.pEnerPrev[p] / nframes * 3);
         this.azVel[p] = sane(this.azVel[p]) * 0.92 + (Math.random() * 2 - 1) * frc * e * 6;
-        this.azOff[p] = sane(this.azOff[p]) + this.azVel[p];
-        if (this.azOff[p] > 180) this.azOff[p] -= 360;
-        if (this.azOff[p] < -180) this.azOff[p] += 360;
-      } else { this.azVel[p] = 0; this.azOff[p] *= 0.98; }
+      } else {
+        // still damped + decaying, so repulsion shoves stay visible
+        this.azVel[p] = sane(this.azVel[p]) * 0.9;
+        this.azOff[p] *= 0.995;
+      }
+      this.azOff[p] = sane(this.azOff[p]) + this.azVel[p];
+      if (this.azOff[p] > 180) this.azOff[p] -= 360;
+      if (this.azOff[p] < -180) this.azOff[p] += 360;
       this.pEnerPrev[p] = this.pEner[p]; this.pEner[p] = 0;
-      const az = (m[PAN_AZ_A + p] + this.azOff[p]) * Math.PI / 180;
+      this.azE[p] = m[PAN_AZ_A + p] + this.azOff[p];
+      const az = this.azE[p] * Math.PI / 180;
       const pan = Math.sin(az);
       const back = (1 - Math.cos(az)) / 2;
       const bg = 1 - 0.18 * back;
@@ -992,6 +1013,9 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
         dIn += px * mtx[pt][0]; aIn += px * mtx[pt][1]; cIn += px * mtx[pt][2];
       }
 
+      this.scopeBuf[this.scopeW] = pm[1];   // bass tap for the XY scope
+      this.scopeW = (this.scopeW + 1) & 511;
+
       // ---- 3D space: position each part, then sum into the master pair ----
       for (let p = 0; p < 4; p++) {
         let s = pm[p];
@@ -1142,10 +1166,15 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     // UI heartbeat: beat position + sounding pitch classes, ~every 8 blocks
     if (++this.tickN >= 8) {
       this.tickN = 0;
+      const sc = new Float32Array(256);
+      for (let i = 0; i < 256; i++) sc[i] = this.scopeBuf[(this.scopeW + 256 + i) & 511];
       this.port.postMessage({
         type: 'tick', beat: this.gBeat, playing: this.playing,
         gsndB: this.gsndB, gsndM: this.gsndM,
         gsndC: Array.from(this.gsndC), gsndCn: this.gsndCn,
+        azv: Array.from(this.azE),
+        ener: Array.from(this.pEnerPrev).map(e => Math.min(1, e / 128 * 3)),
+        scope: sc,
       });
     }
     return true;

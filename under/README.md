@@ -154,10 +154,22 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
   skew/asymmetric bias — even harmonics), right-click resets it clean, and
   because the worklet shapes the signal before the scope tap, the figure on
   screen is exactly the waveform you hear (drive and skew are LFO targets;
-  the pocket exposes them as Shape drive / Shape skew on the bass). The wheel
-  gets a **SPIN** button (off / 4 / 2 / every beat): the chord root walks the
-  wheel one scale degree at a time as it plays, with voice leading smoothing
-  the inversions (pocket: "Wheel spin" on the chords tab).
+  the pocket exposes them as Shape drive / Shape skew on the bass).
+
+  The chords band's right column is the **HARMONY panel** — the global key
+  controls (master KEY / SCALE / PROGRESSION / SPEED, the B/M/C key-lock +
+  harmony-speed toggles) live here, next to the wheel, instead of on the top
+  KEY row (which now just shows the current key and points down to the panel).
+  The wheel plots each part as a **draggable marble** — bass (outer), melody
+  (middle), chord root (inner): drag one to retune that part in semitone
+  steps. A key-locked part's marble drags the **master key** (everything
+  moves together); an independent part's marble moves just that part's base
+  note. **SPIN** (off / 4 / 2 / every beat) walks roots around the wheel as
+  the pattern plays, and the **B / M / C chips** beside it pick which parts
+  join the rotation (chords by default) — so you can orbit the bass and
+  melody through the scale too, with voice leading smoothing the chord
+  inversions (pocket: "Wheel spin" rate on the chords tab, a "Join wheel
+  spin" toggle on each part).
   The FX band's right side holds the **3D dome** (top-down head view, one
   ball per part at its live azimuth, sized by energy, draggable to re-place a
   part) beside the SENDS mini-knob matrix and the SPACE / MOD cells. The

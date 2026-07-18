@@ -9,7 +9,7 @@
 
 // bump on every release: cache-busts the worklet module so a stale cached
 // DSP can never run against fresh UI code
-const APP_V = '13';
+const APP_V = '14';
 
 
 const LANES_CAP = 8, MAX_STEPS = 32, EUC_N = 21, NROWS = 12, NSCALES = 14,
@@ -67,6 +67,8 @@ const PAN_BNC = 904;
 const XY_DRV = 905, XY_SKW = 906;
 // harmonic wheel spin: 0 off, 1/2/3 = root walks the wheel every 4/2/1 beats
 const WHL_SPIN = 907;
+// which parts follow the spin (bass, melody, chords) — chords on by default
+const SPIN_P = 908;
 
 const m = new Float64Array(MEM);
 let numLanes = 3;
@@ -633,15 +635,20 @@ function seedNewRegions(arr) {
   for (let l = 0; l < LANES_CAP; l++) a[DCRP_A + l] = 0;
   for (let p = 0; p < 4; p++) { a[PAN_AZ_A + p] = 0; a[PAN_FRC_A + p] = 0; }
   a[PAN_BNC] = 40; a[XY_DRV] = 0; a[XY_SKW] = 0; a[WHL_SPIN] = 0;
+  a[SPIN_P] = 0; a[SPIN_P + 1] = 0; a[SPIN_P + 2] = 1;
 }
 // bring a stored mem block (768 / 800 / 864) up to the current layout;
 // returns a MEM-length plain array, or null for an unknown length
 function migrateMem(arr) {
   if (!arr || !arr.length) return null;
-  if (arr.length === MEM) return Array.from(arr);
+  // saves that predate the per-part spin flags read all-zero: keep the old
+  // behaviour (chords follow the spin) rather than silently disabling it
+  const spinFix = (o) => { if (!o[SPIN_P] && !o[SPIN_P + 1] && !o[SPIN_P + 2]) o[SPIN_P + 2] = 1; return o; };
+  if (arr.length === MEM) return spinFix(Array.from(arr));
   if (![768, 800, 864, 896].includes(arr.length)) return null;
   const out = Array.from(arr);
   while (out.length < MEM) out.push(0);
+  spinFix(out);
   if (arr.length === 768)   // pre-routing: old single-bus sends -> delay column
     for (let p = 0; p < 4; p++) out[SND_MTX + p * 3] = arr[SEND_A + p] || 0;
   if (arr.length < 864) seedNewRegions(out);   // splice + drum-voice defaults
@@ -1363,6 +1370,7 @@ function ys(si) { return yBtn() + 28 + si * 208; }
 const fxH = 300;                        // demarcated FX box at the bottom
 const ROLL_X = 8, ROLL_Y = 88;          // rolls sit UNDER the control rows
 const RC_X = 744;                       // right-hand column (text + visuals)
+const HK_X = 744;                       // HARMONY panel (chords right column)
 function fxY() { return ys(2) + 184; }
 function yStat() { return fxY() + fxH + 2; }
 function totalH() { return yStat() + 22; }
@@ -1688,10 +1696,6 @@ function onDown(x, y, right) {
   if (y >= yb && y < yb + 18) {
     if (x >= 8 && x < 60) { numLanes = Math.min(LANES_CAP, numLanes + 1); touchState(); }
     else if (x >= 64 && x < 116) { numLanes = Math.max(1, numLanes - 1); touchState(); }
-    else if (x >= kxKey && x < kxKey + 44) { dragMode = 14; dragY = y; dragV = m[GKEY_NOTE]; }
-    else if (x >= kxScl && x < kxScl + 44) { dragMode = 15; dragY = y; dragV = m[GKEY_SCALE]; }
-    else if (x >= kxPrg && x < kxPrg + 42) { dragMode = 16; dragY = y; dragV = m[GKEY_PROG]; }
-    else if (x >= kxSpd && x < kxSpd + 36) { dragMode = 17; dragY = y; dragV = m[GKEY_SPD]; }
     else if (x >= STYLE_X && x < STYLE_X + STYLE_W) {
       setStyle((m[GEN_STYLE] || 0) + 1);
       setStatus(`style: ${STYLE_NAMES[m[GEN_STYLE]]}${STYLE_SCALE[m[GEN_STYLE]] >= 0 ? ' — scale set to ' + SCALE_NAMES[m[GKEY_SCALE]] + '; hit GEN KEY' : ''}`);
@@ -1708,20 +1712,6 @@ function onDown(x, y, right) {
       for (let l = 0; l < numLanes; l++) if (smpA[l] === SMP_USR) { tl = l; break; }
       if (tl < 0) { tl = numLanes - 1; smpA[tl] = SMP_USR; }
       digSample('lane', tl, x < 822 ? 'wiki' : 'ia');
-    }
-    else {
-      for (let i = 0; i < NSYN; i++) {
-        const gpx = [kxB, kxM, kxC][i];
-        if (x >= gpx && x < gpx + 18) {
-          m[LOCK_A + i] = m[LOCK_A + i] ? 0 : 1;
-          setStatus(`${SYN_NAMES[i]}: ${m[LOCK_A + i] ? 'LOCKED to master key' : 'independent (own BASE/SCAL/PRG/SPD)'}`);
-          touchState();
-        } else if (x >= gpx + 20 && x < gpx + 44) {
-          m[HML_A + i] = (m[HML_A + i] + 1) % 3;
-          setStatus(`${SYN_NAMES[i]} harmony speed: ${['half-time', 'x1', 'double-time'][m[HML_A + i]]}`);
-          touchState();
-        }
-      }
     }
     return;
   }
@@ -1759,15 +1749,74 @@ function onDown(x, y, right) {
       dragV = m[XY_DRV]; dragV2 = m[XY_SKW];
       return;
     }
-    // harmonic wheel SPIN button (chords band, under the wheel)
-    if (gsi === 2 && x >= 1096 && x < 1184 && y >= ysv + 160 && y < ysv + 178) {
-      m[WHL_SPIN] = ((m[WHL_SPIN] || 0) + 1) % 4;
-      setStatus(['spin off — chords play as written',
-        'SPIN: the chord root walks the wheel every 4 beats',
-        'SPIN: the chord root walks the wheel every 2 beats',
-        'SPIN: the chord root walks the wheel every beat'][m[WHL_SPIN]]);
-      touchState();
-      return;
+    // HARMONY panel (chords band, right column): the master key controls
+    if (gsi === 2 && y >= ysv + 16 && y < ysv + 34) {
+      if (x >= HK_X && x < HK_X + 44) { dragMode = 14; dragY = y; dragV = m[GKEY_NOTE]; return; }
+      if (x >= HK_X + 48 && x < HK_X + 92) { dragMode = 15; dragY = y; dragV = m[GKEY_SCALE]; return; }
+      if (x >= HK_X + 96 && x < HK_X + 138) { dragMode = 16; dragY = y; dragV = m[GKEY_PROG]; return; }
+      if (x >= HK_X + 142 && x < HK_X + 178) { dragMode = 17; dragY = y; dragV = m[GKEY_SPD]; return; }
+    }
+    if (gsi === 2 && y >= ysv + 42 && y < ysv + 60) {
+      for (let i = 0; i < NSYN; i++) {
+        const gpx = HK_X + i * 50;
+        if (x >= gpx && x < gpx + 18) {
+          m[LOCK_A + i] = m[LOCK_A + i] ? 0 : 1;
+          setStatus(`${SYN_NAMES[i]}: ${m[LOCK_A + i] ? 'LOCKED to master key' : 'independent (own BASE/SCAL/PRG/SPD)'}`);
+          touchState();
+          return;
+        }
+        if (x >= gpx + 20 && x < gpx + 44) {
+          m[HML_A + i] = (m[HML_A + i] + 1) % 3;
+          setStatus(`${SYN_NAMES[i]} harmony speed: ${['half-time', 'x1', 'double-time'][m[HML_A + i]]}`);
+          touchState();
+          return;
+        }
+      }
+    }
+    // spin part chips (B/M/C join the rotation) + the SPIN button itself
+    if (gsi === 2 && y >= ysv + 160 && y < ysv + 178) {
+      for (let i = 0; i < NSYN; i++) {
+        if (x >= 1000 + i * 32 && x < 1028 + i * 32) {
+          m[SPIN_P + i] = m[SPIN_P + i] ? 0 : 1;
+          setStatus(`${SYN_NAMES[i]} ${m[SPIN_P + i] ? 'joins the spin — its roots walk the wheel' : 'left the spin'}`);
+          touchState();
+          return;
+        }
+      }
+      if (x >= 1096 && x < 1184) {
+        m[WHL_SPIN] = ((m[WHL_SPIN] || 0) + 1) % 4;
+        setStatus(['spin off — parts play as written',
+          'SPIN: roots walk the wheel every 4 beats (B M C chips pick who)',
+          'SPIN: roots walk the wheel every 2 beats (B M C chips pick who)',
+          'SPIN: roots walk the wheel every beat (B M C chips pick who)'][m[WHL_SPIN]]);
+        touchState();
+        return;
+      }
+    }
+    // wheel marbles: drag a part's dot to retune it (locked = drags the key)
+    if (gsi === 2) {
+      const wcx = 1140, wcy = ysv + 96;
+      const dots = [[gsndB, 46, 0], [gsndM, 36, 1], [gsndCn > 0 ? gsndC[0] : -1, 26, 2]];
+      let best = -1, bd = 144;
+      for (const [pc, rr, si] of dots) {
+        if (pc < 0) continue;
+        const wang = pc / 1200 * 2 * Math.PI - Math.PI / 2;
+        const dxx = x - (wcx + Math.cos(wang) * rr), dyy = y - (wcy + Math.sin(wang) * rr);
+        const dd = dxx * dxx + dyy * dyy;
+        if (dd < bd) { bd = dd; best = si; }
+      }
+      if (best >= 0) {
+        dragMode = 53;
+        dragV2 = ((Math.atan2(y - wcy, x - wcx) + Math.PI / 2) / (2 * Math.PI) * 1200 + 1200) % 1200;
+        if (m[LOCK_A + best]) {
+          dragSynth = -1; dragV = m[GKEY_NOTE];
+          setStatus(`${SYN_NAMES[best]} is key-locked — dragging the MASTER key (everything moves)`);
+        } else {
+          dragSynth = best; dragV = sget(best, 0);
+          setStatus(`retuning ${SYN_NAMES[best]} — drag around the wheel (semitone steps)`);
+        }
+        return;
+      }
     }
     if (y >= ysv && y < ysv + rowh) {
       if (x >= xFields && x < xFields + 10 * fieldw) {
@@ -2069,6 +2118,16 @@ function onMove(x, y) {
     // tweeze the bass on the XY scope: up = more drive, right = more skew
     m[XY_DRV] = Math.max(0, Math.min(100, dragV + (dragY - y) * 0.75));
     m[XY_SKW] = Math.max(-50, Math.min(50, dragV2 + (x - dragX) * 0.5));
+  } else if (dragMode === 53) {
+    // wheel marble: pointer angle -> transpose in semitone steps from the
+    // grab point. dragSynth -1 = the master key, else that part's BASE
+    const wcy = ys(2) + 96;
+    const cents = ((Math.atan2(y - wcy, x - 1140) + Math.PI / 2) / (2 * Math.PI) * 1200 + 1200) % 1200;
+    let dlt = cents - dragV2;
+    while (dlt > 600) dlt -= 1200; while (dlt < -600) dlt += 1200;
+    const nv = Math.max(12, Math.min(108, dragV + Math.round(dlt / 100)));
+    if (dragSynth < 0) { m[GKEY_NOTE] = nv; setStatus(`master key: ${noteName(nv)}`); }
+    else { sset(dragSynth, 0, nv); setStatus(`${SYN_NAMES[dragSynth]} base: ${noteName(nv)}`); }
   } else if (dragMode === 51) {
     // drag a dome ball: pointer angle around the head -> azimuth
     const cx = 868, cy = fxY() + 150;
@@ -2177,7 +2236,7 @@ function circle(x, y, r, fill) {
   ctx.beginPath(); ctx.arc(x, y, r, 0, 2 * Math.PI);
   if (fill) ctx.fill(); else { ctx.strokeStyle = ctx.fillStyle; ctx.stroke(); }
 }
-const F10 = '10px Arial', F11 = '11px Arial', F12 = '12px Arial',
+const F9 = '9px Arial', F10 = '10px Arial', F11 = '11px Arial', F12 = '12px Arial',
   F13 = '13px Arial', F15 = 'bold 15px Arial';
 
 function fmtG(v) { return String(Math.round(v * 100) / 100); }
@@ -2342,29 +2401,9 @@ function draw() {
   textC('+ LANE', 8, 60, yb + 3, F11);
   textC('- LANE', 64, 116, yb + 3, F11);
 
-  set(0.7, 0.7, 0.5); text('KEY', 124, yb + 4, F11);
-  set(0.3, 0.28, 0.2); rect(kxKey, yb, 44, 18); rect(kxScl, yb, 44, 18);
-  m[GKEY_PROG] > 0 ? set(0.32, 0.28, 0.36) : set(0.22, 0.22, 0.25);
-  rect(kxPrg, yb, 42, 18);
-  set(0.24, 0.22, 0.28); rect(kxSpd, yb, 36, 18);
-  set(0.95, 0.9, 0.7);
-  textC(noteName(m[GKEY_NOTE]), kxKey, kxKey + 44, yb + 3, F12);
-  textC('S' + (m[GKEY_SCALE] + 1), kxScl, kxScl + 44, yb + 3, F12);
-  textC(m[GKEY_PROG] > 0 ? 'P' + m[GKEY_PROG] : 'off', kxPrg, kxPrg + 42, yb + 3, F12);
-  textC(fmtG(m[GKEY_SPD]), kxSpd, kxSpd + 36, yb + 3, F12);
-
-  for (let i = 0; i < NSYN; i++) {
-    const gpx = [kxB, kxM, kxC][i];
-    m[LOCK_A + i] ? set(0.3, 0.5, 0.32) : set(0.25, 0.25, 0.28);
-    rect(gpx, yb, 18, 18);
-    set(0.9, 0.9, 0.9); textC('BMC'[i], gpx, gpx + 18, yb + 3, F12);
-    set(0.22, 0.24, 0.26); rect(gpx + 20, yb, 24, 18);
-    set(0.7, 0.7, 0.75);
-    textC(['1/2', 'x1', 'x2'][m[HML_A + i]], gpx + 20, gpx + 44, yb + 3, F11);
-  }
   set(0.55, 0.55, 0.45);
-  text(`${SCALE_NAMES[m[GKEY_SCALE]]} / ${PROG_NAMES[m[GKEY_PROG]]}  |  B M C lock sections; box = harmony speed`,
-    500, yb + 4, F11);
+  text(`key: ${noteName(m[GKEY_NOTE]).replace(/-?\d+$/, '')} ${SCALE_NAMES[m[GKEY_SCALE]]} — the HARMONY panel lives beside the CHORDS wheel ↓`,
+    130, yb + 4, F11);
 
   // style selector + GEN KEY button. RND (per part) stays purely random;
   // GEN KEY writes musical parts that match the key + this style.
@@ -2490,6 +2529,40 @@ function draw() {
     // ---- right column: caption text + a visual per section ----
     const rys = ysv + 4;
     if (gsi === 2) {
+      // ---- HARMONY panel: the global key controls, moved here ----
+      set(0.6, 0.62, 0.5); text('HARMONY', HK_X, rys, F10);
+      // key / scale / prog / speed cells (row at ysv+16..34)
+      const hy = ysv + 16;
+      set(0.3, 0.28, 0.2); rect(HK_X, hy, 44, 18); rect(HK_X + 48, hy, 44, 18);
+      m[GKEY_PROG] > 0 ? set(0.32, 0.28, 0.36) : set(0.22, 0.22, 0.25);
+      rect(HK_X + 96, hy, 42, 18);
+      set(0.24, 0.22, 0.28); rect(HK_X + 142, hy, 36, 18);
+      set(0.95, 0.9, 0.7);
+      textC(noteName(m[GKEY_NOTE]), HK_X, HK_X + 44, hy + 3, F12);
+      textC('S' + (m[GKEY_SCALE] + 1), HK_X + 48, HK_X + 92, hy + 3, F12);
+      textC(m[GKEY_PROG] > 0 ? 'P' + m[GKEY_PROG] : 'off', HK_X + 96, HK_X + 138, hy + 3, F12);
+      textC(fmtG(m[GKEY_SPD]), HK_X + 142, HK_X + 178, hy + 3, F12);
+      set(0.4, 0.4, 0.44);
+      text('KEY', HK_X + 6, ysv + 36, F9); text('SCL', HK_X + 54, ysv + 36, F9);
+      text('PRG', HK_X + 102, ysv + 36, F9); text('SPD', HK_X + 146, ysv + 36, F9);
+      // lock + harmony-speed per part (row at ysv+42..60)
+      const ly = ysv + 42;
+      for (let i = 0; i < NSYN; i++) {
+        const gpx = HK_X + i * 50;
+        m[LOCK_A + i] ? set(0.3, 0.5, 0.32) : set(0.25, 0.25, 0.28);
+        rect(gpx, ly, 18, 18);
+        set(0.9, 0.9, 0.9); textC('BMC'[i], gpx, gpx + 18, ly + 3, F12);
+        set(0.22, 0.24, 0.26); rect(gpx + 20, ly, 24, 18);
+        set(0.7, 0.7, 0.75); textC(['½', '×1', '×2'][m[HML_A + i]], gpx + 20, gpx + 44, ly + 3, F11);
+      }
+      set(0.42, 0.44, 0.44);
+      text('lock to key · box = harmony speed', HK_X, ysv + 62, F9);
+      text(`${SCALE_NAMES[m[GKEY_SCALE]]} / ${PROG_NAMES[m[GKEY_PROG]]}`, HK_X, ysv + 78, F9);
+      set(0.4, 0.4, 0.44);
+      text('drag a marble to retune a part', HK_X, ysv + 100, F9);
+      text('(locked parts drag the master key)', HK_X, ysv + 114, F9);
+
+      // ---- the wheel: each part is a draggable marble ----
       const wcx = 1140, wcy = ysv + 96, wr = 56;
       set(0.3, 0.3, 0.34); circle(wcx, wcy, wr, false);
       const gcnt = Math.max(1, SCL[effScale(2)][0]);
@@ -2498,39 +2571,35 @@ function draw() {
         set(0.45, 0.45, 0.5);
         circle(wcx + Math.cos(wang) * wr, wcy + Math.sin(wang) * wr, 2, true);
       }
-      if (gsndB >= 0) {
-        const wang = gsndB / 1200 * 2 * Math.PI - Math.PI / 2;
-        set(0.85, 0.6, 0.2);
-        circle(wcx + Math.cos(wang) * (wr - 10), wcy + Math.sin(wang) * (wr - 10), 5, true);
-      }
-      if (gsndM >= 0) {
-        const wang = gsndM / 1200 * 2 * Math.PI - Math.PI / 2;
-        set(0.25, 0.75, 0.7);
-        circle(wcx + Math.cos(wang) * (wr - 20), wcy + Math.sin(wang) * (wr - 20), 5, true);
-      }
-      for (let gd = 0; gd < gsndCn; gd++) {
+      // marbles: bass r46, melody r36, chord root r26 (bigger = grabbable)
+      const marble = (pc, rad, r, g, bl) => {
+        if (pc < 0) return;
+        const wang = pc / 1200 * 2 * Math.PI - Math.PI / 2;
+        set(r, g, bl);
+        circle(wcx + Math.cos(wang) * rad, wcy + Math.sin(wang) * rad, 7, true);
+      };
+      marble(gsndB, 46, 0.85, 0.6, 0.2);
+      marble(gsndM, 36, 0.25, 0.75, 0.7);
+      marble(gsndCn > 0 ? gsndC[0] : -1, 26, 0.6, 0.45, 0.85);
+      // faint dots for the other chord voices
+      for (let gd = 1; gd < gsndCn; gd++) {
         const wang = gsndC[gd] / 1200 * 2 * Math.PI - Math.PI / 2;
-        set(0.6, 0.45, 0.85);
-        circle(wcx + Math.cos(wang) * (wr - 30), wcy + Math.sin(wang) * (wr - 30), 4, true);
+        set(0.45, 0.36, 0.6);
+        circle(wcx + Math.cos(wang) * 26, wcy + Math.sin(wang) * 26, 3, true);
       }
-      const spv = m[WHL_SPIN] || 0;
+      // ---- spin: B/M/C part chips + the rate button ----
+      const spv = m[WHL_SPIN] || 0, cy = ysv + 160;
+      const spinCol = [[0.5, 0.4, 0.2], [0.2, 0.45, 0.4], [0.4, 0.3, 0.55]];
+      for (let i = 0; i < NSYN; i++) {
+        m[SPIN_P + i] ? set(spinCol[i][0], spinCol[i][1], spinCol[i][2]) : set(0.22, 0.22, 0.25);
+        rect(1000 + i * 32, cy, 28, 18);
+        set(0.9, 0.9, 0.92); textC('BMC'[i], 1000 + i * 32, 1028 + i * 32, cy + 3, F11);
+      }
       spv ? set(0.4, 0.32, 0.5) : set(0.24, 0.24, 0.27);
-      rect(1096, ysv + 160, 88, 18);
+      rect(1096, cy, 88, 18);
       set(0.88, 0.82, 0.95);
-      textC('SPIN ' + ['OFF', '4B', '2B', '1B'][spv], 1096, 1184, ysv + 163, F10);
-      set(0.45, 0.45, 0.5); text('pitch wheel', RC_X, rys, F10);
-      set(0.85, 0.6, 0.2); text('bass', RC_X, rys + 16, F10);
-      set(0.25, 0.75, 0.7); text('melody', RC_X + 34, rys + 16, F10);
-      set(0.6, 0.45, 0.85); text('chords', RC_X + 80, rys + 16, F10);
-      set(0.45, 0.45, 0.5);
-      text('roll = chord ROOT degree', RC_X, rys + 40, F11);
-      text('right-click / ALT-tap note:', RC_X, rys + 56, F11);
-      text('orange = every 2nd cycle', RC_X, rys + 72, F11);
-      set(0.55, 0.6, 0.6);
-      text(`scale: ${SCALE_NAMES[effScale(2)]}${glk ? ' (key)' : ''}`, RC_X, rys + 96, F11);
-      set(0.45, 0.45, 0.5);
-      text('SPIN walks the chord root', RC_X, rys + 120, F11);
-      text('around the wheel as it plays', RC_X, rys + 136, F11);
+      textC('SPIN ' + ['OFF', '4B', '2B', '1B'][spv], 1096, 1184, cy + 3, F10);
+      set(0.4, 0.4, 0.44); text('spin: who + how fast', 1000, ysv + 180, F9);
     } else {
       set(0.55, 0.6, 0.6);
       text(`scale: ${SCALE_NAMES[effScale(gsi)]}${glk ? ' (key)' : ''}`, RC_X, rys, F11);
@@ -2848,7 +2917,7 @@ window.gnome = {
     SPL_ST_A, SPL_EN_A, SPL_MODE_A, SPL_TUNE_A,
     DNSE_A, DSWP_A, DSUB_A, DCLK_A, SMP_SYN, SMP_USR, BPM_WOB, BPM_WRT,
     MLFO_A, MOD_TGT_A, MOD_MSK_A, MOD_SLOTS,
-    PAN_BNC, XY_DRV, XY_SKW, WHL_SPIN,
+    PAN_BNC, XY_DRV, XY_SKW, WHL_SPIN, SPIN_P,
   },
   tables: { SCALE_NAMES, PROG_NAMES, SHAPE_NAMES, SYN_NAMES, FEEL_NAMES, SCL, STYLE_NAMES },
   SAMPLE_DEFS,

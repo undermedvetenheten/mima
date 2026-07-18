@@ -53,6 +53,8 @@ const MLFO_A = 846, MOD_TGT_A = 852, MOD_MSK_A = 868, MOD_SLOTS = 16;
 const DCRP_A = 884, PAN_AZ_A = 896, PAN_FRC_A = 900;
 // dome bounciness, XY-scope bass waveshaper (drive / skew), wheel spin
 const PAN_BNC = 904, XY_DRV = 905, XY_SKW = 906, WHL_SPIN = 907;
+// which parts follow the spin (bass, melody, chords)
+const SPIN_P = 908;
 
 // ---- scale / progression tables (mirror of the JSFX; keep in sync) ----
 const SCL = [
@@ -714,9 +716,18 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
                 const hc = harmRaw(t, epr, espd);
                 if (epr >= 12) hcents = hc; else dsh = centsToDegshift(hc, escale);
               }
+              // SPIN walks the part's root around the wheel: the offset
+              // advances one scale degree every 4 / 2 / 1 beats. Which parts
+              // follow is set by SPIN_P (bass, melody, chords).
+              let spd2 = 0;
+              if (m[WHL_SPIN] && m[SPIN_P + si]) {
+                const per = [0, 4, 2, 1][m[WHL_SPIN]] || 4;
+                const gc = Math.max(1, SCL[escale][0]);
+                spd2 = ((Math.floor(t / per) % gc) + gc) % gc;
+              }
               if (si < 2) {
                 // ---- mono voice (bass / melody) ----
-                const cents = degCents(m[rdg + stepidx] + dsh, escale) + hcents;
+                const cents = degCents(m[rdg + stepidx] + dsh + spd2, escale) + hcents;
                 const pc = ((ebase * 100 + cents) % 1200 + 1200) % 1200;
                 if (si === 0) this.gsndB = pc; else this.gsndM = pc;
                 this.svNfreq[si] = Math.max(8, Math.min(12000,
@@ -727,14 +738,6 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
                                   m[sp + 20] === 2 ? -1 : 0;
               } else {
                 // ---- chord (paraphonic): diatonic stack + voice leading ----
-                // SPIN walks the chord root around the wheel: the offset
-                // advances one scale degree every 4 / 2 / 1 beats
-                let spd2 = 0;
-                if (m[WHL_SPIN]) {
-                  const per = [0, 4, 2, 1][m[WHL_SPIN]] || 4;
-                  const gc = Math.max(1, SCL[escale][0]);
-                  spd2 = ((Math.floor(t / per) % gc) + gc) % gc;
-                }
                 const nv = m[sp + 24] ? 4 : 3;
                 for (let v = 0; v < nv; v++) {
                   const rcv = degCents(m[rdg + stepidx] + dsh + spd2 + v * 2, escale) + hcents;

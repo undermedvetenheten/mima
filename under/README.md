@@ -189,7 +189,10 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
   branches, from the occasional tail fill to dense fractal regrowth. Controls
   live in the CHORDS band's right column (on / L-system / depth / amount + DR
   BS ML CH part chips) with a live **level strip** — taller bars = bigger
-  fills, the lit bar = the current loop — reading the tree as it plays. The
+  fills, the lit bar = the current loop — and a small **rotating tree** beside
+  the chord wheel that turtle-draws the current L-system (one teal line per
+  branch, spun on its vertical axis, same look as the XY scope) so you can see
+  the algorithm that's shaping the fills. The
   fills are computed live in the worklet from the base pattern (no extra
   storage), so editing a part instantly reshapes its fills. Pocket: a "fractal
   fills" group on the FX tab.

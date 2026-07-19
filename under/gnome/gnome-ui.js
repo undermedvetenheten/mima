@@ -463,11 +463,21 @@ window.createGnomeUI = function (G) {
       stepper(nm + ' force', 0, 100, 5, () => m[C.PAN_FRC_A + p], v => m[C.PAN_FRC_A + p] = v, fmtPct,
         p === 0 ? 'the part’s own energy shoves it around the head' : null),
     ]).flat();
+    const fracParts = ['Drums', 'Bass', 'Melody', 'Chords'].map((nm, p) =>
+      seg(nm + ' fills', ['no', 'yes'], () => (m[C.FRC_PMASK] >> p) & 1,
+        i => { m[C.FRC_PMASK] = i ? (m[C.FRC_PMASK] | (1 << p)) : (m[C.FRC_PMASK] & ~(1 << p)); }));
     return [
       group('3D space', 'angle each part around your head — LFO the azimuth to orbit it',
         ...spaceRows,
         stepper('Bounciness', 0, 100, 5, () => m[C.PAN_BNC], v => m[C.PAN_BNC] = v, fmtPct,
           'how elastically crowded parts bounce off each other')),
+      group('fractal fills', 'a classic L-system arranges self-similar fills — the fill riffs on each part at a smaller time scale',
+        seg('Fractal fills', ['off', 'on'], () => m[C.FRC_ON], i => m[C.FRC_ON] = i),
+        selectRow('L-system', T.FRACTAL_NAMES, () => m[C.FRC_RULE], v => m[C.FRC_RULE] = v),
+        stepper('Depth', 1, 7, 1, () => m[C.FRC_DEPTH], v => m[C.FRC_DEPTH] = v),
+        stepper('Fractality', 0, 100, 5, () => m[C.FRC_AMT], v => m[C.FRC_AMT] = v, fmtPct,
+          'how much of each loop fills and how many branches'),
+        ...fracParts),
       ...lfoRows, modSection,
       group('effects rack', 'each fx has its own per-part sends, or feed the whole mix through',
         seg('Rack', ['off', 'on'], () => m[C.FX_ON], i => m[C.FX_ON] = i),

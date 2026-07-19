@@ -9,7 +9,7 @@
 
 // bump on every release: cache-busts the worklet module so a stale cached
 // DSP can never run against fresh UI code
-const APP_V = '14';
+const APP_V = '15';
 
 
 const LANES_CAP = 8, MAX_STEPS = 32, EUC_N = 21, NROWS = 12, NSCALES = 14,
@@ -69,6 +69,9 @@ const XY_DRV = 905, XY_SKW = 906;
 const WHL_SPIN = 907;
 // which parts follow the spin (bass, melody, chords) — chords on by default
 const SPIN_P = 908;
+// fractal fills: an L-system arrangement drives self-similar fills. on,
+// which classic ruleset, iteration depth, "fractality" amount, part bitmask
+const FRC_ON = 911, FRC_RULE = 912, FRC_DEPTH = 913, FRC_AMT = 914, FRC_PMASK = 915;
 
 const m = new Float64Array(MEM);
 let numLanes = 3;
@@ -406,6 +409,44 @@ function applySynEuclid(si) {
   }
 }
 
+// ---- fractal fills: classic L-systems drive a per-loop arrangement ----
+// Each rewrite step grows the string; we then read it as a sequence of fill
+// LEVELS (0 = play the base loop, 1..3 = increasingly fractal fills). The
+// bracketed PLANT reads branch-nesting depth as the level, so the tree's
+// deeper branches ask for bigger fills. Mirrored verbatim in the worklet.
+const FRACTAL_RULES = [
+  { name: 'ALGAE', axiom: 'A', rules: { A: 'AB', B: 'A' } },
+  { name: 'THUE', axiom: 'A', rules: { A: 'AB', B: 'BA' } },
+  { name: 'CANTOR', axiom: 'A', rules: { A: 'ABA', B: 'BBB' } },
+  { name: 'SIERP', axiom: 'A', rules: { A: 'BAB', B: 'ABA' } },
+  { name: 'PLANT', axiom: 'F', rules: { F: 'FF-[-F+F+F]+[+F-F-F]' }, bracket: true },
+];
+const FR_LEVMAX = 64;
+function fractalLevels(rule, depth) {
+  const R = FRACTAL_RULES[rule] || FRACTAL_RULES[0];
+  let s = R.axiom;
+  for (let i = 0; i < depth; i++) {
+    let o = '';
+    for (const c of s) o += (R.rules[c] !== undefined ? R.rules[c] : c);
+    s = o;
+    if (s.length > 6000) break;
+  }
+  const out = [];
+  if (R.bracket) {
+    let d = 0;
+    for (const c of s) {
+      if (c === '[') d++;
+      else if (c === ']') d = Math.max(0, d - 1);
+      else if (c === 'F') { out.push(Math.min(3, d)); if (out.length >= FR_LEVMAX) break; }
+    }
+  } else {
+    for (const c of s) { out.push(c === 'A' ? 0 : 1); if (out.length >= FR_LEVMAX) break; }
+  }
+  if (!out.length) out.push(0);
+  return out;
+}
+const FRACTAL_NAMES = FRACTAL_RULES.map(r => r.name);
+
 // scale degree nearest a target interval (cents) — for finding the fifth/third
 function degNear(scix, cents) {
   const s = SCL[scix], cnt = s[0];
@@ -636,6 +677,7 @@ function seedNewRegions(arr) {
   for (let p = 0; p < 4; p++) { a[PAN_AZ_A + p] = 0; a[PAN_FRC_A + p] = 0; }
   a[PAN_BNC] = 40; a[XY_DRV] = 0; a[XY_SKW] = 0; a[WHL_SPIN] = 0;
   a[SPIN_P] = 0; a[SPIN_P + 1] = 0; a[SPIN_P + 2] = 1;
+  a[FRC_ON] = 0; a[FRC_RULE] = 0; a[FRC_DEPTH] = 4; a[FRC_AMT] = 50; a[FRC_PMASK] = 3;
 }
 // bring a stored mem block (768 / 800 / 864) up to the current layout;
 // returns a MEM-length plain array, or null for an unknown length
@@ -643,7 +685,12 @@ function migrateMem(arr) {
   if (!arr || !arr.length) return null;
   // saves that predate the per-part spin flags read all-zero: keep the old
   // behaviour (chords follow the spin) rather than silently disabling it
-  const spinFix = (o) => { if (!o[SPIN_P] && !o[SPIN_P + 1] && !o[SPIN_P + 2]) o[SPIN_P + 2] = 1; return o; };
+  const spinFix = (o) => {
+    if (!o[SPIN_P] && !o[SPIN_P + 1] && !o[SPIN_P + 2]) o[SPIN_P + 2] = 1;
+    // fractal region predates some saves: give it usable defaults (stays off)
+    if (!o[FRC_DEPTH]) { o[FRC_DEPTH] = 4; o[FRC_AMT] = o[FRC_AMT] || 50; o[FRC_PMASK] = o[FRC_PMASK] || 3; }
+    return o;
+  };
   if (arr.length === MEM) return spinFix(Array.from(arr));
   if (![768, 800, 864, 896].includes(arr.length)) return null;
   const out = Array.from(arr);
@@ -803,6 +850,7 @@ function modRange(off) {
   if (within(PAN_AZ_A, 4)) return [-180, 180];
   if (off === PAN_BNC || off === XY_DRV) return [0, 100];
   if (off === XY_SKW) return [-50, 50];
+  if (off === FRC_AMT) return [0, 100];
   return null;
 }
 // mask of LFOs assigned to an offset (bit 1 = L1, bit 2 = L2)
@@ -868,7 +916,8 @@ function modTargets() {
   }
   out.push({ name: 'bass shape drive (XY scope)', off: XY_DRV },
     { name: 'bass shape skew (XY scope)', off: XY_SKW },
-    { name: 'dome bounciness', off: PAN_BNC });
+    { name: 'dome bounciness', off: PAN_BNC },
+    { name: 'fractal fill amount', off: FRC_AMT });
   return out;
 }
 const modTargetName = off => {
@@ -1773,6 +1822,35 @@ function onDown(x, y, right) {
         }
       }
     }
+    // FRACTAL FILLS panel (chords band): on / ruleset / depth / amount
+    if (gsi === 2 && y >= ysv + 98 && y < ysv + 116) {
+      if (x >= 744 && x < 778) {
+        m[FRC_ON] = m[FRC_ON] ? 0 : 1;
+        setStatus(m[FRC_ON] ? `fractal fills ON — ${FRACTAL_NAMES[m[FRC_RULE]]} arranges self-similar fills`
+          : 'fractal fills off');
+        touchState(); return;
+      }
+      if (x >= 782 && x < 836) {
+        m[FRC_RULE] = ((m[FRC_RULE] | 0) + 1) % FRACTAL_NAMES.length;
+        setStatus(`fractal L-system: ${FRACTAL_NAMES[m[FRC_RULE]]}`);
+        touchState(); return;
+      }
+      if (x >= 840 && x < 880) { dragMode = 54; dragFx = FRC_DEPTH; dragY = y; dragV = m[FRC_DEPTH]; return; }
+      if (x >= 884 && x < 926) {
+        if (armLfo) { tryModAssign(FRC_AMT); return; }
+        dragMode = 55; dragY = y; dragV = m[FRC_AMT]; return;
+      }
+    }
+    // FRACTAL part-enable chips: DR / BS / ML / CH
+    if (gsi === 2 && y >= ysv + 130 && y < ysv + 148) {
+      for (let i = 0; i < 4; i++) {
+        if (x >= 744 + i * 36 && x < 776 + i * 36) {
+          m[FRC_PMASK] = (m[FRC_PMASK] | 0) ^ (1 << i);
+          setStatus(`${['drums', 'bass', 'melody', 'chords'][i]} ${(m[FRC_PMASK] >> i) & 1 ? 'fills fractally' : 'no fills'}`);
+          touchState(); return;
+        }
+      }
+    }
     // spin part chips (B/M/C join the rotation) + the SPIN button itself
     if (gsi === 2 && y >= ysv + 160 && y < ysv + 178) {
       for (let i = 0; i < NSYN; i++) {
@@ -2118,6 +2196,10 @@ function onMove(x, y) {
     // tweeze the bass on the XY scope: up = more drive, right = more skew
     m[XY_DRV] = Math.max(0, Math.min(100, dragV + (dragY - y) * 0.75));
     m[XY_SKW] = Math.max(-50, Math.min(50, dragV2 + (x - dragX) * 0.5));
+  } else if (dragMode === 54) {
+    m[FRC_DEPTH] = Math.max(1, Math.min(7, dragV + d));
+  } else if (dragMode === 55) {
+    m[FRC_AMT] = Math.max(0, Math.min(100, dragV + d * 2));
   } else if (dragMode === 53) {
     // wheel marble: pointer angle -> transpose in semitone steps from the
     // grab point. dragSynth -1 = the master key, else that part's BASE
@@ -2556,11 +2638,55 @@ function draw() {
         set(0.7, 0.7, 0.75); textC(['½', '×1', '×2'][m[HML_A + i]], gpx + 20, gpx + 44, ly + 3, F11);
       }
       set(0.42, 0.44, 0.44);
-      text('lock to key · box = harmony speed', HK_X, ysv + 62, F9);
-      text(`${SCALE_NAMES[m[GKEY_SCALE]]} / ${PROG_NAMES[m[GKEY_PROG]]}`, HK_X, ysv + 78, F9);
-      set(0.4, 0.4, 0.44);
-      text('drag a marble to retune a part', HK_X, ysv + 100, F9);
-      text('(locked parts drag the master key)', HK_X, ysv + 114, F9);
+      text('lock to key · box = harmony speed · drag a marble to retune', HK_X, ysv + 62, F9);
+      text(`${SCALE_NAMES[m[GKEY_SCALE]]} / ${PROG_NAMES[m[GKEY_PROG]]}`, HK_X, ysv + 76, F9);
+
+      // ---- FRACTAL FILLS panel: L-system arrangement of self-similar fills ----
+      const frOn = m[FRC_ON];
+      frOn ? set(0.55, 0.5, 0.35) : set(0.4, 0.4, 0.44);
+      text('FRACTAL FILLS', HK_X, ysv + 88, F10);
+      const fry = ysv + 98;
+      frOn ? set(0.4, 0.5, 0.3) : set(0.24, 0.24, 0.27);
+      rect(744, fry, 34, 18);
+      set(0.9, 0.95, 0.9); textC(frOn ? 'ON' : 'OFF', 744, 778, fry + 3, F10);
+      set(0.28, 0.26, 0.32); rect(782, fry, 54, 18);
+      set(0.85, 0.82, 0.92); textC(FRACTAL_NAMES[m[FRC_RULE] | 0], 782, 836, fry + 3, F10);
+      set(0.24, 0.24, 0.28); rect(840, fry, 40, 18);
+      set(0.8, 0.85, 0.9); textC('d' + (m[FRC_DEPTH] | 0), 840, 880, fry + 3, F10);
+      set(0.24, 0.26, 0.3); rect(884, fry, 42, 18);
+      set(0.8, 0.9, 0.85); textC(Math.round(m[FRC_AMT]) + '%', 884, 926, fry + 3, F10);
+      modTick(FRC_AMT, 884, 42, fry);
+      set(0.38, 0.4, 0.42);
+      text('on · L-system · depth · amount', HK_X, ysv + 120, F9);
+      // part-enable chips
+      const frChip = [[0.5, 0.4, 0.2], [0.5, 0.42, 0.22], [0.2, 0.45, 0.4], [0.4, 0.3, 0.55]];
+      const pmask = m[FRC_PMASK] | 0;
+      for (let i = 0; i < 4; i++) {
+        (pmask >> i) & 1 ? set(frChip[i][0], frChip[i][1], frChip[i][2]) : set(0.22, 0.22, 0.25);
+        rect(744 + i * 36, ysv + 130, 32, 18);
+        set(0.9, 0.9, 0.92);
+        textC(['DR', 'BS', 'ML', 'CH'][i], 744 + i * 36, 776 + i * 36, ysv + 133, F10);
+      }
+      // level strip: the upcoming loops coloured by fill level, playhead lit
+      if (frOn) {
+        const lev = fractalLevels(m[FRC_RULE] | 0, Math.max(1, m[FRC_DEPTH] | 0));
+        // chords loop = one fractal cell (matches the worklet's per-part unit)
+        const nst2 = Math.max(1, sget(2, 2));
+        const sd2 = (m[CHD_P + 15] ? sget(2, 3) / 16 : sget(2, 3) / nst2) * FEL_MULT[m[SFL_A + 2]];
+        const loopB = Math.max(0.25, nst2 * sd2);
+        const cur = ((Math.floor(dispBeat / loopB) % lev.length) + lev.length) % lev.length;
+        const sx = HK_X, sw = 6;
+        for (let i = 0; i < Math.min(lev.length, 40); i++) {
+          const L = lev[i];
+          const g = 0.25 + L * 0.22;
+          i === cur ? set(0.9, 0.85, 0.4) : set(0.3, g, 0.35);
+          rect(sx + i * sw, ysv + 152, sw - 1, 4 + L * 3);
+        }
+        set(0.38, 0.4, 0.42); text('the tree: taller = bigger fill · lit = now', HK_X, ysv + 172, F9);
+      } else {
+        set(0.38, 0.4, 0.42);
+        text('parts that fill · the L-system arranges them', HK_X, ysv + 154, F9);
+      }
 
       // ---- the wheel: each part is a draggable marble ----
       const wcx = 1140, wcy = ysv + 96, wr = 56;
@@ -2918,8 +3044,10 @@ window.gnome = {
     DNSE_A, DSWP_A, DSUB_A, DCLK_A, SMP_SYN, SMP_USR, BPM_WOB, BPM_WRT,
     MLFO_A, MOD_TGT_A, MOD_MSK_A, MOD_SLOTS,
     PAN_BNC, XY_DRV, XY_SKW, WHL_SPIN, SPIN_P,
+    FRC_ON, FRC_RULE, FRC_DEPTH, FRC_AMT, FRC_PMASK,
   },
-  tables: { SCALE_NAMES, PROG_NAMES, SHAPE_NAMES, SYN_NAMES, FEEL_NAMES, SCL, STYLE_NAMES },
+  tables: { SCALE_NAMES, PROG_NAMES, SHAPE_NAMES, SYN_NAMES, FEEL_NAMES, SCL, STYLE_NAMES, FRACTAL_NAMES },
+  fractalLevels,
   SAMPLE_DEFS,
   noteName, rollLabel, getParam, setParam, sget, sset, ronOff, rdgOff, effScale, effBase,
   buildScoreModel, setStatus,

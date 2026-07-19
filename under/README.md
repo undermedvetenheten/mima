@@ -175,6 +175,25 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
   part) beside the SENDS mini-knob matrix and the SPACE / MOD cells. The
   header volume knobs stay where they were.
 
+  **Fractal fills** (`FRC_*`): a classic **L-system** drives an arrangement of
+  self-similar fills across any of the four parts. Pick a ruleset — ALGAE
+  (Lindenmayer's original A→AB, B→A), THUE (Thue–Morse, evenly-spread fills),
+  CANTOR (fills in bursts), SIERP, or PLANT (a bracketed tree whose branch
+  *depth* becomes the fill size) — and a depth; the string is read one symbol
+  per pattern loop as a fill **level** (0 = play the base loop, 1–3 = grow a
+  fill). A fill sprays the loop's own active hits, compressed into the tail of
+  the bar and repeated, each repeat transposed up a scale step for pitched
+  parts (the tree's branches) so it riffs on what's already there at a smaller
+  time scale — drums roll, bass/melody run, chords stutter. **Fractality**
+  (`FRC_AMT`, an LFO target) dials how much of each loop fills and how many
+  branches, from the occasional tail fill to dense fractal regrowth. Controls
+  live in the CHORDS band's right column (on / L-system / depth / amount + DR
+  BS ML CH part chips) with a live **level strip** — taller bars = bigger
+  fills, the lit bar = the current loop — reading the tree as it plays. The
+  fills are computed live in the worklet from the base pattern (no extra
+  storage), so editing a part instantly reshapes its fills. Pocket: a "fractal
+  fills" group on the FX tab.
+
   **Mod LFOs** (`MLFO_A`, `MOD_TGT_A`/`MOD_MSK_A`): two global assignable
   LFOs with rate / depth / shape each. Canvas: ARM L1 or L2 on the FX box's
   MOD row, then tap any value field to toggle it as a target (tap again to

@@ -9,7 +9,7 @@
 
 // bump on every release: cache-busts the worklet module so a stale cached
 // DSP can never run against fresh UI code
-const APP_V = '15';
+const APP_V = '16';
 
 
 const LANES_CAP = 8, MAX_STEPS = 32, EUC_N = 21, NROWS = 12, NSCALES = 14,
@@ -446,6 +446,55 @@ function fractalLevels(rule, depth) {
   return out;
 }
 const FRACTAL_NAMES = FRACTAL_RULES.map(r => r.name);
+
+// Turtle interpretation of the same L-system, for the rotating tree visual.
+// Each letter draws a forward branch; 'B' (a fill symbol) spawns a side twig,
+// brackets push/pop, +/- turn. Branches fan around the trunk at the golden
+// angle so the whole thing reads as a 3D tree when spun on its vertical axis.
+// Returns { segs:[{a:[x,y,z], b:[x,y,z], d}], maxR, minY, maxY } (unit space).
+let treeRule = -1, treeDepth = -1, treeCache = null;
+function buildFractalTree(rule, depth) {
+  const dCap = FRACTAL_RULES[rule] && FRACTAL_RULES[rule].bracket ? Math.min(depth, 3) : Math.min(depth, 6);
+  if (rule === treeRule && dCap === treeDepth && treeCache) return treeCache;
+  treeRule = rule; treeDepth = dCap;
+  const R = FRACTAL_RULES[rule] || FRACTAL_RULES[0];
+  let s = R.axiom;
+  for (let i = 0; i < dCap; i++) {
+    let o = '';
+    for (const c of s) o += (R.rules[c] !== undefined ? R.rules[c] : c);
+    s = o;
+    if (s.length > 5000) break;
+  }
+  const GOLD = 2.39996, ANG = R.bracket ? 0.40 : 0.34;
+  const segs = [];
+  let x = 0, y = 0, ang = 0, phi = 0, len = 1, dep = 0, twig = 0;
+  const stack = [];
+  let maxR = 0.01, minY = 0, maxY = 0;
+  const to3 = (lx, ly, ph) => [lx * Math.cos(ph), ly, lx * Math.sin(ph)];
+  const forward = (l) => {
+    const nx = x + Math.sin(ang) * l, ny = y + Math.cos(ang) * l;
+    segs.push({ a: to3(x, y, phi), b: to3(nx, ny, phi), d: dep });
+    x = nx; y = ny;
+    const r = Math.abs(x); if (r > maxR) maxR = r;
+    if (y > maxY) maxY = y; if (y < minY) minY = y;
+  };
+  for (const c of s) {
+    if (segs.length > 240) break;
+    if (c === '[') { stack.push([x, y, ang, phi, len, dep]); len *= 0.7; dep++; phi += GOLD; }
+    else if (c === ']') { const st = stack.pop(); if (st) [x, y, ang, phi, len, dep] = st; }
+    else if (c === '+') ang -= ANG;
+    else if (c === '-') ang += ANG;
+    else if (c === 'B' && !R.bracket) {
+      // a fill twig: branch off without advancing the trunk
+      const sx = x, sy = y, sa = ang, sph = phi, sd = dep;
+      phi += GOLD; ang += (twig++ & 1 ? -ANG : ANG) * 2.2; dep++;
+      forward(len * 0.82);
+      x = sx; y = sy; ang = sa; phi = sph; dep = sd;
+    } else forward(len);            // A / F / any other letter = trunk segment
+  }
+  treeCache = { segs, maxR, minY, maxY };
+  return treeCache;
+}
 
 // scale degree nearest a target interval (cents) — for finding the fifth/third
 function degNear(scix, cents) {
@@ -2676,16 +2725,47 @@ function draw() {
         const loopB = Math.max(0.25, nst2 * sd2);
         const cur = ((Math.floor(dispBeat / loopB) % lev.length) + lev.length) % lev.length;
         const sx = HK_X, sw = 6;
-        for (let i = 0; i < Math.min(lev.length, 40); i++) {
+        for (let i = 0; i < Math.min(lev.length, 32); i++) {
           const L = lev[i];
           const g = 0.25 + L * 0.22;
           i === cur ? set(0.9, 0.85, 0.4) : set(0.3, g, 0.35);
           rect(sx + i * sw, ysv + 152, sw - 1, 4 + L * 3);
         }
-        set(0.38, 0.4, 0.42); text('the tree: taller = bigger fill · lit = now', HK_X, ysv + 172, F9);
+        set(0.38, 0.4, 0.42); text('fill map: taller = bigger fill · lit = now', HK_X, ysv + 172, F9);
       } else {
         set(0.38, 0.4, 0.42);
         text('parts that fill · the L-system arranges them', HK_X, ysv + 154, F9);
+      }
+
+      // ---- rotating L-system tree: shows the algorithm driving the fills,
+      // drawn like the XY scope (one teal line per branch, spun on Y) ----
+      {
+        const TB = [944, ysv + 6, 134, 146];
+        set(0.13, 0.14, 0.16); rect(TB[0], TB[1], TB[2], TB[3]);
+        set(0.28, 0.3, 0.34);
+        rect(TB[0], TB[1], TB[2], 1); rect(TB[0], TB[1] + TB[3] - 1, TB[2], 1);
+        rect(TB[0], TB[1], 1, TB[3]); rect(TB[0] + TB[2] - 1, TB[1], 1, TB[3]);
+        set(0.45, 0.45, 0.5);
+        text('TREE · ' + FRACTAL_NAMES[m[FRC_RULE] | 0], TB[0] + 5, TB[1] + 3, F9);
+        const tr = buildFractalTree(m[FRC_RULE] | 0, Math.max(1, m[FRC_DEPTH] | 0));
+        const spin = Date.now() * 0.0005;
+        const cs = Math.cos(spin), sn = Math.sin(spin);
+        const cxT = TB[0] + TB[2] / 2, baseY = TB[1] + TB[3] - 12;
+        const spanY = Math.max(0.5, tr.maxY - tr.minY);
+        const sc = Math.min((TB[2] * 0.44) / tr.maxR, (TB[3] - 26) / spanY);
+        const frOn2 = m[FRC_ON];
+        ctx.lineWidth = 1.1;
+        for (const seg of tr.segs) {
+          const a = seg.a, b = seg.b;
+          const axr = a[0] * cs + a[2] * sn, azr = -a[0] * sn + a[2] * cs;
+          const bxr = b[0] * cs + b[2] * sn, bzr = -b[0] * sn + b[2] * cs;
+          const ax = cxT + axr * sc, ay = baseY - (a[1] - tr.minY) * sc;
+          const bx = cxT + bxr * sc, by = baseY - (b[1] - tr.minY) * sc;
+          const front = 0.5 + 0.5 * ((azr + bzr) * 0.5 / tr.maxR);
+          const al = frOn2 ? 0.5 + 0.42 * front : 0.16 + 0.14 * front;
+          ctx.strokeStyle = `rgba(80,220,210,${al.toFixed(2)})`;
+          ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+        }
       }
 
       // ---- the wheel: each part is a draggable marble ----
@@ -3047,7 +3127,7 @@ window.gnome = {
     FRC_ON, FRC_RULE, FRC_DEPTH, FRC_AMT, FRC_PMASK,
   },
   tables: { SCALE_NAMES, PROG_NAMES, SHAPE_NAMES, SYN_NAMES, FEEL_NAMES, SCL, STYLE_NAMES, FRACTAL_NAMES },
-  fractalLevels,
+  fractalLevels, buildFractalTree,
   SAMPLE_DEFS,
   noteName, rollLabel, getParam, setParam, sget, sset, ronOff, rdgOff, effScale, effBase,
   buildScoreModel, setStatus,

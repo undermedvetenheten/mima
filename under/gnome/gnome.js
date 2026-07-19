@@ -9,7 +9,7 @@
 
 // bump on every release: cache-busts the worklet module so a stale cached
 // DSP can never run against fresh UI code
-const APP_V = '16';
+const APP_V = '17';
 
 
 const LANES_CAP = 8, MAX_STEPS = 32, EUC_N = 21, NROWS = 12, NSCALES = 14,
@@ -70,8 +70,13 @@ const WHL_SPIN = 907;
 // which parts follow the spin (bass, melody, chords) — chords on by default
 const SPIN_P = 908;
 // fractal fills: an L-system arrangement drives self-similar fills. on,
-// which classic ruleset, iteration depth, "fractality" amount, part bitmask
+// which classic ruleset, iteration depth (legacy), amount, part bitmask (legacy)
 const FRC_ON = 911, FRC_RULE = 912, FRC_DEPTH = 913, FRC_AMT = 914, FRC_PMASK = 915;
+// per-part fill DENSITY, 0 (off) .. 7 (radical flurry): one per drum lane,
+// then bass / melody / chords. D1 = a tiny tail variation, D7 = full fractal.
+const DFILL_A = 916, SFILL_A = 924;
+// tree bend: curls the visual branches AND swings the fill timing
+const FRC_BEND = 927;
 
 const m = new Float64Array(MEM);
 let numLanes = 3;
@@ -452,12 +457,15 @@ const FRACTAL_NAMES = FRACTAL_RULES.map(r => r.name);
 // brackets push/pop, +/- turn. Branches fan around the trunk at the golden
 // angle so the whole thing reads as a 3D tree when spun on its vertical axis.
 // Returns { segs:[{a:[x,y,z], b:[x,y,z], d}], maxR, minY, maxY } (unit space).
-let treeRule = -1, treeDepth = -1, treeCache = null;
-function buildFractalTree(rule, depth) {
-  const dCap = FRACTAL_RULES[rule] && FRACTAL_RULES[rule].bracket ? Math.min(depth, 3) : Math.min(depth, 6);
-  if (rule === treeRule && dCap === treeDepth && treeCache) return treeCache;
-  treeRule = rule; treeDepth = dCap;
+let treeKey = '', treeCache = null;
+function buildFractalTree(rule, bend) {
   const R = FRACTAL_RULES[rule] || FRACTAL_RULES[0];
+  // every tree is depth-capped for readability (fills use the full expansion)
+  const dCap = R.bracket ? 3 : 4;
+  const bq = Math.round((bend || 0) / 5) * 5;   // cache in 5% buckets
+  const key = rule + ':' + bq;
+  if (key === treeKey && treeCache) return treeCache;
+  treeKey = key;
   let s = R.axiom;
   for (let i = 0; i < dCap; i++) {
     let o = '';
@@ -466,20 +474,28 @@ function buildFractalTree(rule, depth) {
     if (s.length > 5000) break;
   }
   const GOLD = 2.39996, ANG = R.bracket ? 0.40 : 0.34;
+  const curl = (bq / 100) * 0.16;   // per-sub-segment droop: bent trees weep
   const segs = [];
   let x = 0, y = 0, ang = 0, phi = 0, len = 1, dep = 0, twig = 0;
   const stack = [];
   let maxR = 0.01, minY = 0, maxY = 0;
   const to3 = (lx, ly, ph) => [lx * Math.cos(ph), ly, lx * Math.sin(ph)];
+  // draw a branch as 3 sub-segments, each curling a little further — the
+  // same bend that swings the fills bows the wood
   const forward = (l) => {
-    const nx = x + Math.sin(ang) * l, ny = y + Math.cos(ang) * l;
-    segs.push({ a: to3(x, y, phi), b: to3(nx, ny, phi), d: dep });
-    x = nx; y = ny;
-    const r = Math.abs(x); if (r > maxR) maxR = r;
-    if (y > maxY) maxY = y; if (y < minY) minY = y;
+    let a2 = ang;
+    for (let ss = 0; ss < 3; ss++) {
+      a2 += curl * (dep + 1) * (x >= 0 ? 1 : -1);
+      const nx = x + Math.sin(a2) * (l / 3), ny = y + Math.cos(a2) * (l / 3);
+      segs.push({ a: to3(x, y, phi), b: to3(nx, ny, phi), d: dep });
+      x = nx; y = ny;
+      const r = Math.abs(x); if (r > maxR) maxR = r;
+      if (y > maxY) maxY = y; if (y < minY) minY = y;
+    }
+    ang = a2;
   };
   for (const c of s) {
-    if (segs.length > 240) break;
+    if (segs.length > 260) break;
     if (c === '[') { stack.push([x, y, ang, phi, len, dep]); len *= 0.7; dep++; phi += GOLD; }
     else if (c === ']') { const st = stack.pop(); if (st) [x, y, ang, phi, len, dep] = st; }
     else if (c === '+') ang -= ANG;
@@ -494,6 +510,52 @@ function buildFractalTree(rule, depth) {
   }
   treeCache = { segs, maxR, minY, maxY };
   return treeCache;
+}
+// fills always expand the L-system this deep (the visual tree caps itself)
+const FR_DEPTH_FIXED = 5;
+
+// combined tree+wheel visualizer geometry (chords band, right column box):
+// the tree grows in the middle, the harmonic ring + part markers circle it
+const TW_CX = 1124, TW_CY = 84;            // center (y relative to ys(2))
+const TW_RB = 60, TW_RM = 48, TW_RC = 36;  // bass / melody / chord-root rings
+// project the tree's 3D segments to screen space at the current spin —
+// shared by the draw pass and the branch hit-test so clicks match pixels
+function treeScreenSegs(ysv) {
+  const tr = buildFractalTree(m[FRC_RULE] | 0, m[FRC_BEND]);
+  const spin = Date.now() * 0.0005;
+  const cs = Math.cos(spin), sn = Math.sin(spin);
+  const baseY = ysv + TW_CY + 32;
+  const spanY = Math.max(0.5, tr.maxY - tr.minY);
+  const sc = Math.min(27 / tr.maxR, 60 / spanY);
+  const out = [];
+  for (const seg of tr.segs) {
+    const a = seg.a, b = seg.b;
+    const axr = a[0] * cs + a[2] * sn, azr = -a[0] * sn + a[2] * cs;
+    const bxr = b[0] * cs + b[2] * sn, bzr = -b[0] * sn + b[2] * cs;
+    out.push({
+      ax: TW_CX + axr * sc, ay: baseY - (a[1] - tr.minY) * sc,
+      bx: TW_CX + bxr * sc, by: baseY - (b[1] - tr.minY) * sc,
+      d: seg.d, front: 0.5 + 0.5 * ((azr + bzr) * 0.5 / tr.maxR),
+    });
+  }
+  return out;
+}
+// which branch (fill level 1..3) is under the pointer, or 0 for none
+function treeBranchAt(x, y, ysv) {
+  let best = 0, bd = 49;   // within 7px of a branch line
+  for (const s of treeScreenSegs(ysv)) {
+    const vx = s.bx - s.ax, vy = s.by - s.ay;
+    const ll = vx * vx + vy * vy;
+    let t = ll > 0 ? ((x - s.ax) * vx + (y - s.ay) * vy) / ll : 0;
+    t = Math.max(0, Math.min(1, t));
+    const dx = x - (s.ax + vx * t), dy = y - (s.ay + vy * t);
+    const dd = dx * dx + dy * dy;
+    if (dd < bd) { bd = dd; best = Math.max(1, Math.min(3, s.d)); }
+  }
+  return best;
+}
+function sendFillNow(level) {
+  if (node) node.port.postMessage({ type: 'fillNow', level });
 }
 
 // scale degree nearest a target interval (cents) — for finding the fifth/third
@@ -727,6 +789,9 @@ function seedNewRegions(arr) {
   a[PAN_BNC] = 40; a[XY_DRV] = 0; a[XY_SKW] = 0; a[WHL_SPIN] = 0;
   a[SPIN_P] = 0; a[SPIN_P + 1] = 0; a[SPIN_P + 2] = 1;
   a[FRC_ON] = 0; a[FRC_RULE] = 0; a[FRC_DEPTH] = 4; a[FRC_AMT] = 50; a[FRC_PMASK] = 3;
+  for (let l = 0; l < LANES_CAP; l++) a[DFILL_A + l] = 2;
+  a[SFILL_A] = 2; a[SFILL_A + 1] = 2; a[SFILL_A + 2] = 1;
+  a[FRC_BEND] = 25;
 }
 // bring a stored mem block (768 / 800 / 864) up to the current layout;
 // returns a MEM-length plain array, or null for an unknown length
@@ -738,6 +803,19 @@ function migrateMem(arr) {
     if (!o[SPIN_P] && !o[SPIN_P + 1] && !o[SPIN_P + 2]) o[SPIN_P + 2] = 1;
     // fractal region predates some saves: give it usable defaults (stays off)
     if (!o[FRC_DEPTH]) { o[FRC_DEPTH] = 4; o[FRC_AMT] = o[FRC_AMT] || 50; o[FRC_PMASK] = o[FRC_PMASK] || 3; }
+    // densities predate some saves: derive from the legacy part bitmask so an
+    // already-enabled fill setup keeps making sound (moderate defaults)
+    let anyD = 0;
+    for (let i = 0; i < LANES_CAP; i++) anyD |= o[DFILL_A + i];
+    anyD |= o[SFILL_A] | o[SFILL_A + 1] | o[SFILL_A + 2];
+    if (!anyD) {
+      const pk = o[FRC_PMASK] | 0;
+      for (let i = 0; i < LANES_CAP; i++) o[DFILL_A + i] = (pk & 1) ? 2 : 0;
+      o[SFILL_A] = (pk & 2) ? 2 : 0;
+      o[SFILL_A + 1] = (pk & 4) ? 2 : 0;
+      o[SFILL_A + 2] = (pk & 8) ? 1 : 0;
+      o[FRC_BEND] = o[FRC_BEND] || 25;
+    }
     return o;
   };
   if (arr.length === MEM) return spinFix(Array.from(arr));
@@ -899,7 +977,7 @@ function modRange(off) {
   if (within(PAN_AZ_A, 4)) return [-180, 180];
   if (off === PAN_BNC || off === XY_DRV) return [0, 100];
   if (off === XY_SKW) return [-50, 50];
-  if (off === FRC_AMT) return [0, 100];
+  if (off === FRC_AMT || off === FRC_BEND) return [0, 100];
   return null;
 }
 // mask of LFOs assigned to an offset (bit 1 = L1, bit 2 = L2)
@@ -966,7 +1044,8 @@ function modTargets() {
   out.push({ name: 'bass shape drive (XY scope)', off: XY_DRV },
     { name: 'bass shape skew (XY scope)', off: XY_SKW },
     { name: 'dome bounciness', off: PAN_BNC },
-    { name: 'fractal fill amount', off: FRC_AMT });
+    { name: 'fractal fill amount', off: FRC_AMT },
+    { name: 'fractal bend (fill swing)', off: FRC_BEND });
   return out;
 }
 const modTargetName = off => {
@@ -1476,8 +1555,7 @@ function totalH() { return yStat() + 22; }
 // KEY row layout
 const kxKey = 156, kxScl = 204, kxPrg = 252, kxSpd = 298;
 const kxB = 348, kxM = 398, kxC = 448; // lock buttons; +20 = mult boxes
-const STYLE_X = 900, STYLE_W = 200;    // style selector (right of the KEY row)
-const GENKEY_X = 1108, GENKEY_W = 148; // "GEN KEY" — generate all parts in key
+// (STYLE + GEN KEY moved into the chords band's HARMONY panel)
 
 // header controls
 const PLAY_R = [130, 4, 44, 22], BPM_R = [180, 4, 52, 22],
@@ -1558,40 +1636,42 @@ function fxCells() {
   val(x, y, 44, 'SPRD', CLD_SPREAD, 0, 100, 5, 'pct'); x += 48;
   val(x, y, 44, 'TAIL', CLD_REVERB, 0, 100, 5, 'pct'); x += 48;
   val(x, y, 42, 'MIX', CLD_MIX, 0, 100, 5, 'pct');
-  // 3D SPACE (right column, under the SENDS box): azimuth + audio force
-  y = fy + 140; x = 1000;
+  // 3D SPACE (left of the dome): azimuth + audio force
+  y = fy + 140; x = 744;
   val(x, y, 44, 'DR·AZ', PAN_AZ_A, -180, 180, 5, 'deg'); x += 48;
   val(x, y, 40, 'FRC', PAN_FRC_A, 0, 100, 5, 'pct'); x += 46;
   val(x, y, 44, 'BS·AZ', PAN_AZ_A + 1, -180, 180, 5, 'deg'); x += 48;
   val(x, y, 40, 'FRC', PAN_FRC_A + 1, 0, 100, 5, 'pct'); x += 46;
   lbl(x + 4, y + 9, 'SPACE');
-  y = fy + 176; x = 1000;
+  y = fy + 176; x = 744;
   val(x, y, 44, 'ML·AZ', PAN_AZ_A + 2, -180, 180, 5, 'deg'); x += 48;
   val(x, y, 40, 'FRC', PAN_FRC_A + 2, 0, 100, 5, 'pct'); x += 46;
   val(x, y, 44, 'CH·AZ', PAN_AZ_A + 3, -180, 180, 5, 'deg'); x += 48;
   val(x, y, 40, 'FRC', PAN_FRC_A + 3, 0, 100, 5, 'pct'); x += 46;
   val(x, y, 42, 'BNC', PAN_BNC, 0, 100, 5, 'pct');
 
-  // mod LFOs (right column): L1 / L2 rate + depth + shape; ARM drawn apart
-  y = fy + 214; x = 1046;
+  // mod LFOs: L1 / L2 rate + depth + shape; ARM chips drawn apart
+  y = fy + 214; x = 790;
   val(x, y, 46, 'RATE', MLFO_A, 0.25, 64, 0.25, 'beats'); x += 50;
   val(x, y, 42, 'DEP', MLFO_A + 1, 0, 100, 5, 'pct'); x += 46;
   val(x, y, 40, 'SHP', MLFO_A + 2, 0, 4, 1, 'shp'); x += 44;
-  lbl(x + 4, y + 9, 'arm, then');
-  y = fy + 250; x = 1046;
+  lbl(x + 4, y + 9, 'drag ARM onto');
+  y = fy + 250; x = 790;
   val(x, y, 46, 'RATE', MLFO_A + 3, 0.25, 64, 0.25, 'beats'); x += 50;
   val(x, y, 42, 'DEP', MLFO_A + 4, 0, 100, 5, 'pct'); x += 46;
   val(x, y, 40, 'SHP', MLFO_A + 5, 0, 4, 1, 'shp'); x += 44;
-  lbl(x + 4, y + 9, 'tap fields');
+  lbl(x + 4, y + 9, 'a field (or tap)');
   return c;
 }
 
 // SENDS matrix mini-knob centers (part 0..3 x fx 0..2), inside the FX band
 function sndKnobXY(part, fxi) {
-  return [1050 + fxi * 42, fxY() + 36 + part * 26];
+  return [800 + fxi * 42, fxY() + 36 + part * 26];
 }
 // ARM button rects for the two mod LFOs (draw + hit share these)
-function armRect(n) { return [1000, fxY() + (n === 1 ? 214 : 250), 40, 30]; }
+function armRect(n) { return [744, fxY() + (n === 1 ? 214 : 250), 40, 30]; }
+// 3D dome center x (right-aligned with the other visualizers)
+const DOME_CX = 1124;
 
 // drum lane fields: label, jsfx param index ('smp' = sample picker)
 const DFIELDS = [
@@ -1623,7 +1703,7 @@ function setStatus(s) { statusText = s; haveStatus = true; }
 // ---- interaction state (port of the JSFX drag machinery) ----
 let dragMode = 0, dragF = 0, dragLane = 0, dragSynth = 0, dragY = 0, dragV = 0,
   dragMoved = false, rotApplied = 0, paint = 0, dragKnob = 0, dragFx = null,
-  dragX = 0, dragV2 = 0;
+  dragX = 0, dragV2 = 0, lastPX = 0, lastPY = 0;
 // mod-LFO assignment mode: 0 = off, 1/2 = tapping fields assigns that LFO
 let armLfo = 0;
 
@@ -1688,6 +1768,57 @@ function tryModAssign(off) {
   setStatus(`${modToggle(armLfo, off)} — ${modTargetName(off)}`);
   return true;
 }
+// which LFO-able mem offset sits under (x, y) — powers the ARM chip's
+// drag-and-drop assignment (mirrors the armed-tap hit zones)
+function findModTarget(x, y) {
+  const ml = Math.floor((y - laneTop) / rowh);
+  if (y >= laneTop && ml >= 0 && ml < numLanes && x >= xFields && x < xFields + 17 * fieldw) {
+    const uiF = Math.floor((x - xFields) / fieldw);
+    if (smpA[ml] === SMP_USR && uiF === 13) return DCRP_A + ml;
+    if (smpA[ml] === SMP_SYN && uiF >= 10 && uiF <= 13)
+      return [DNSE_A, DSWP_A, DSUB_A, DCLK_A][uiF - 10] + ml;
+    const pf = DFIELDS[uiF] && DFIELDS[uiF][1];
+    return typeof pf === 'number' ? PARAM_OFF[pf] + ml : null;
+  }
+  for (let gsi = 0; gsi < NSYN; gsi++) {
+    const ysv = ys(gsi);
+    if (gsi === 0 && x >= 1000 && x < 1248 && y >= ysv + 4 && y < ysv + 184)
+      return x < 1124 ? XY_DRV : XY_SKW;   // scope halves = drive / skew
+    if (gsi === 2 && y >= ysv + 88 && y < ysv + 106) {
+      if (x >= 836 && x < 878) return FRC_AMT;
+      if (x >= 882 && x < 924) return FRC_BEND;
+    }
+    if (y >= ysv && y < ysv + rowh && x >= xFields && x < xFields + 10 * fieldw)
+      return spOff(gsi) + Math.floor((x - xFields) / fieldw);
+    if (y >= ysv + rowh && y < ysv + 2 * rowh && x >= xFields && x < xFields + 14 * fieldw) {
+      const f = Math.floor((x - xFields) / fieldw);
+      if (m[ENG_A + gsi] === 3 && f >= 3 && f <= 6)
+        return f === 6 ? null : [SPL_ST_A, SPL_EN_A, SPL_TUNE_A][f - 3] + gsi;
+      return spOff(gsi) + r2map(f);
+    }
+  }
+  if (y >= fxY() && y < fxY() + fxH) {
+    for (let p = 0; p < 4; p++) for (let f = 0; f < 3; f++) {
+      const [kx, ky] = sndKnobXY(p, f);
+      if ((x - kx) * (x - kx) + (y - ky) * (y - ky) <= 144) return SND_MTX + p * 3 + f;
+    }
+    const cx = DOME_CX, cy = fxY() + 150;
+    if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= 115 * 115) {
+      let best = -1, bd = 26 * 26;
+      for (let p = 0; p < 4; p++) {
+        const a = (azv[p] || 0) * Math.PI / 180;
+        const bx = cx + Math.sin(a) * 78, by = cy - Math.cos(a) * 78;
+        const dd = (x - bx) * (x - bx) + (y - by) * (y - by);
+        if (dd < bd) { bd = dd; best = p; }
+      }
+      if (best >= 0) return PAN_AZ_A + best;
+    }
+    for (const cell of fxCells())
+      if (cell.t === 'val' && x >= cell.x && x < cell.x + cell.w && y >= cell.y && y < cell.y + 30)
+        return cell.off;
+  }
+  return null;
+}
 const FEL_MULT = [1, 2 / 3, 1.5];
 
 function canvasXY(e) {
@@ -1701,6 +1832,7 @@ function onDown(x, y, right) {
   if (!audioReady) { initAudio(); return; }
   if (right || altMode) { onRClick(x, y); return; }
   dragMode = 0; dragMoved = false; rotApplied = 0;
+  dragX = x; dragY = y;   // tap-vs-drag baseline for every mode
 
   // header
   if (y < 28) {
@@ -1743,8 +1875,8 @@ function onDown(x, y, right) {
   if (y >= fxY() && y < fxY() + fxH) {
     for (const n of [1, 2]) {
       if (inRect(x, y, armRect(n))) {
-        armLfo = armLfo === n ? 0 : n;
-        setStatus(armLfo ? `L${n} armed — tap any value field to assign / remove it` : `L${n} disarmed`);
+        // DRAG the chip onto a field to assign; a plain tap still arms
+        dragMode = 61; dragKnob = n;
         return;
       }
     }
@@ -1760,7 +1892,7 @@ function onDown(x, y, right) {
     }
     // 3D dome: grab the nearest part ball and drag it around the head
     {
-      const cx = 868, cy = fxY() + 150;
+      const cx = DOME_CX, cy = fxY() + 150;
       const dx = x - cx, dy = y - cy;
       if (dx * dx + dy * dy <= 115 * 115) {
         let best = -1, bd = 1e9;
@@ -1794,22 +1926,11 @@ function onDown(x, y, right) {
   if (y >= yb && y < yb + 18) {
     if (x >= 8 && x < 60) { numLanes = Math.min(LANES_CAP, numLanes + 1); touchState(); }
     else if (x >= 64 && x < 116) { numLanes = Math.max(1, numLanes - 1); touchState(); }
-    else if (x >= STYLE_X && x < STYLE_X + STYLE_W) {
-      setStyle((m[GEN_STYLE] || 0) + 1);
-      setStatus(`style: ${STYLE_NAMES[m[GEN_STYLE]]}${STYLE_SCALE[m[GEN_STYLE]] >= 0 ? ' — scale set to ' + SCALE_NAMES[m[GKEY_SCALE]] + '; hit GEN KEY' : ''}`);
-      touchState();
-    }
-    else if (x >= GENKEY_X && x < GENKEY_X + GENKEY_W) {
-      for (let si = 0; si < NSYN; si++) synKeyGen(si);
-      setStatus(`generated bass + melody + chords in ${STYLE_NAMES[m[GEN_STYLE] || 0]} / ${SCALE_NAMES[m[GKEY_SCALE]]}`);
-      touchState();
-    }
     else if ((x >= 756 && x < 822) || (x >= 826 && x < 892)) {
-      // dig into a drum lane: the first USR lane, or turn the last into one
-      let tl = -1;
-      for (let l = 0; l < numLanes; l++) if (smpA[l] === SMP_USR) { tl = l; break; }
-      if (tl < 0) { tl = numLanes - 1; smpA[tl] = SMP_USR; }
-      digSample('lane', tl, x < 822 ? 'wiki' : 'ia');
+      // dig chips: DRAG one onto a drum lane to dig into THAT lane;
+      // a plain tap keeps the old behaviour (first USR lane / the last lane)
+      dragMode = 62; dragFx = x < 822 ? 'wiki' : 'ia';
+      setStatus(`drag the ${dragFx === 'wiki' ? 'WIKI' : '78s'} chip onto a drum lane to dig into it (or just tap for the last lane)`);
     }
     return;
   }
@@ -1848,11 +1969,16 @@ function onDown(x, y, right) {
       return;
     }
     // HARMONY panel (chords band, right column): the master key controls
-    if (gsi === 2 && y >= ysv + 16 && y < ysv + 34) {
+    if (gsi === 2 && y >= ysv + 14 && y < ysv + 32) {
       if (x >= HK_X && x < HK_X + 44) { dragMode = 14; dragY = y; dragV = m[GKEY_NOTE]; return; }
       if (x >= HK_X + 48 && x < HK_X + 92) { dragMode = 15; dragY = y; dragV = m[GKEY_SCALE]; return; }
       if (x >= HK_X + 96 && x < HK_X + 138) { dragMode = 16; dragY = y; dragV = m[GKEY_PROG]; return; }
       if (x >= HK_X + 142 && x < HK_X + 178) { dragMode = 17; dragY = y; dragV = m[GKEY_SPD]; return; }
+      if (x >= 896 && x < 988) {   // STYLE chip: tap cycles the gen style
+        setStyle((m[GEN_STYLE] || 0) + 1);
+        setStatus(`style: ${STYLE_NAMES[m[GEN_STYLE]]}${STYLE_SCALE[m[GEN_STYLE]] >= 0 ? ' — scale set to ' + SCALE_NAMES[m[GKEY_SCALE]] + '; drag GEN onto a part' : ''}`);
+        touchState(); return;
+      }
     }
     if (gsi === 2 && y >= ysv + 42 && y < ysv + 60) {
       for (let i = 0; i < NSYN; i++) {
@@ -1870,47 +1996,63 @@ function onDown(x, y, right) {
           return;
         }
       }
+      if (x >= 896 && x < 988) {   // GEN KEY chip: DRAG onto a part to write it
+        dragMode = 60;
+        setStatus('drag GEN onto bass, melody or chords to write that part in key (drop anywhere else to cancel)');
+        return;
+      }
     }
-    // FRACTAL FILLS panel (chords band): on / ruleset / depth / amount
-    if (gsi === 2 && y >= ysv + 98 && y < ysv + 116) {
+    // FRACTAL FILLS panel: on / ruleset / amount / bend cells
+    if (gsi === 2 && y >= ysv + 88 && y < ysv + 106) {
       if (x >= 744 && x < 778) {
         m[FRC_ON] = m[FRC_ON] ? 0 : 1;
-        setStatus(m[FRC_ON] ? `fractal fills ON — ${FRACTAL_NAMES[m[FRC_RULE]]} arranges self-similar fills`
+        setStatus(m[FRC_ON] ? `fractal fills ON — ${FRACTAL_NAMES[m[FRC_RULE]]} arranges self-similar fills (D cells set each part's density)`
           : 'fractal fills off');
         touchState(); return;
       }
-      if (x >= 782 && x < 836) {
+      if (x >= 782 && x < 832) {
         m[FRC_RULE] = ((m[FRC_RULE] | 0) + 1) % FRACTAL_NAMES.length;
         setStatus(`fractal L-system: ${FRACTAL_NAMES[m[FRC_RULE]]}`);
         touchState(); return;
       }
-      if (x >= 840 && x < 880) { dragMode = 54; dragFx = FRC_DEPTH; dragY = y; dragV = m[FRC_DEPTH]; return; }
-      if (x >= 884 && x < 926) {
+      if (x >= 836 && x < 878) {
         if (armLfo) { tryModAssign(FRC_AMT); return; }
-        dragMode = 55; dragY = y; dragV = m[FRC_AMT]; return;
+        dragMode = 55; dragFx = FRC_AMT; dragY = y; dragV = m[FRC_AMT]; return;
+      }
+      if (x >= 882 && x < 924) {
+        if (armLfo) { tryModAssign(FRC_BEND); return; }
+        dragMode = 55; dragFx = FRC_BEND; dragY = y; dragV = m[FRC_BEND]; return;
       }
     }
-    // FRACTAL part-enable chips: DR / BS / ML / CH
-    if (gsi === 2 && y >= ysv + 130 && y < ysv + 148) {
-      for (let i = 0; i < 4; i++) {
-        if (x >= 744 + i * 36 && x < 776 + i * 36) {
-          m[FRC_PMASK] = (m[FRC_PMASK] | 0) ^ (1 << i);
-          setStatus(`${['drums', 'bass', 'melody', 'chords'][i]} ${(m[FRC_PMASK] >> i) & 1 ? 'fills fractally' : 'no fills'}`);
-          touchState(); return;
+    // fill DENSITY cells: one per drum lane, then bass / melody / chords.
+    // D0 = no fills, D1 = a tiny tail variation, D7 = radical flurry
+    if (gsi === 2 && y >= ysv + 118 && y < ysv + 134) {
+      for (let i = 0; i < numLanes; i++) {
+        if (x >= 744 + i * 27 && x < 770 + i * 27) {
+          dragMode = 56; dragFx = DFILL_A + i; dragY = y; dragV = m[dragFx];
+          return;
         }
       }
     }
-    // spin part chips (B/M/C join the rotation) + the SPIN button itself
-    if (gsi === 2 && y >= ysv + 160 && y < ysv + 178) {
+    if (gsi === 2 && y >= ysv + 136 && y < ysv + 152) {
       for (let i = 0; i < NSYN; i++) {
-        if (x >= 1000 + i * 32 && x < 1028 + i * 32) {
+        if (x >= 744 + i * 44 && x < 784 + i * 44) {
+          dragMode = 56; dragFx = SFILL_A + i; dragY = y; dragV = m[dragFx];
+          return;
+        }
+      }
+    }
+    // spin part chips + SPIN button (bottom strip of the visualizer box)
+    if (gsi === 2 && y >= ysv + 164 && y < ysv + 180) {
+      for (let i = 0; i < NSYN; i++) {
+        if (x >= 1006 + i * 32 && x < 1034 + i * 32) {
           m[SPIN_P + i] = m[SPIN_P + i] ? 0 : 1;
           setStatus(`${SYN_NAMES[i]} ${m[SPIN_P + i] ? 'joins the spin — its roots walk the wheel' : 'left the spin'}`);
           touchState();
           return;
         }
       }
-      if (x >= 1096 && x < 1184) {
+      if (x >= 1102 && x < 1190) {
         m[WHL_SPIN] = ((m[WHL_SPIN] || 0) + 1) % 4;
         setStatus(['spin off — parts play as written',
           'SPIN: roots walk the wheel every 4 beats (B M C chips pick who)',
@@ -1920,10 +2062,10 @@ function onDown(x, y, right) {
         return;
       }
     }
-    // wheel marbles: drag a part's dot to retune it (locked = drags the key)
-    if (gsi === 2) {
-      const wcx = 1140, wcy = ysv + 96;
-      const dots = [[gsndB, 46, 0], [gsndM, 36, 1], [gsndCn > 0 ? gsndC[0] : -1, 26, 2]];
+    // combined tree+wheel visualizer: marbles retune parts, branches fire fills
+    if (gsi === 2 && x >= 1000 && x < 1248 && y >= ysv + 4 && y < ysv + 184) {
+      const wcx = TW_CX, wcy = ysv + TW_CY;
+      const dots = [[gsndB, TW_RB, 0], [gsndM, TW_RM, 1], [gsndCn > 0 ? gsndC[0] : -1, TW_RC, 2]];
       let best = -1, bd = 144;
       for (const [pc, rr, si] of dots) {
         if (pc < 0) continue;
@@ -1944,6 +2086,14 @@ function onDown(x, y, right) {
         }
         return;
       }
+      // tree branch click: play that branch's fill level on the next bars
+      const hitLev = treeBranchAt(x, y, ysv);
+      if (hitLev > 0) {
+        sendFillNow(hitLev);
+        setStatus(`branch fill: level ${hitLev} plays over the next bars`);
+        return;
+      }
+      return;
     }
     if (y >= ysv && y < ysv + rowh) {
       if (x >= xFields && x < xFields + 10 * fieldw) {
@@ -2166,7 +2316,7 @@ function onRClick(x, y) {
 
 function onMove(x, y) {
   if (!dragMode) return;
-  if (Math.abs(y - dragY) >= 4) dragMoved = true;
+  if (Math.abs(y - dragY) >= 4 || Math.abs(x - dragX) >= 6) dragMoved = true;
   const d = Math.floor((dragY - y) / 4);
   if (dragMode === 1) {
     if (dragF !== 'smp') {
@@ -2245,10 +2395,15 @@ function onMove(x, y) {
     // tweeze the bass on the XY scope: up = more drive, right = more skew
     m[XY_DRV] = Math.max(0, Math.min(100, dragV + (dragY - y) * 0.75));
     m[XY_SKW] = Math.max(-50, Math.min(50, dragV2 + (x - dragX) * 0.5));
-  } else if (dragMode === 54) {
-    m[FRC_DEPTH] = Math.max(1, Math.min(7, dragV + d));
   } else if (dragMode === 55) {
-    m[FRC_AMT] = Math.max(0, Math.min(100, dragV + d * 2));
+    // fractal amount / bend cells (dragFx = mem offset)
+    m[dragFx] = Math.max(0, Math.min(100, dragV + d * 2));
+  } else if (dragMode === 56) {
+    // per-part fill density D0..D7
+    m[dragFx] = Math.max(0, Math.min(7, dragV + Math.floor(d / 2)));
+  } else if (dragMode === 60 || dragMode === 61 || dragMode === 62) {
+    // chip drags (GEN KEY / LFO arm / dig): just track the ghost
+    return;
   } else if (dragMode === 53) {
     // wheel marble: pointer angle -> transpose in semitone steps from the
     // grab point. dragSynth -1 = the master key, else that part's BASE
@@ -2261,7 +2416,7 @@ function onMove(x, y) {
     else { sset(dragSynth, 0, nv); setStatus(`${SYN_NAMES[dragSynth]} base: ${noteName(nv)}`); }
   } else if (dragMode === 51) {
     // drag a dome ball: pointer angle around the head -> azimuth
-    const cx = 868, cy = fxY() + 150;
+    const cx = DOME_CX, cy = fxY() + 150;
     let deg = Math.atan2(x - cx, -(y - cy)) * 180 / Math.PI;
     deg = Math.max(-180, Math.min(180, Math.round(deg / 5) * 5));
     m[PAN_AZ_A + dragLane] = deg;
@@ -2281,6 +2436,52 @@ function onMove(x, y) {
 function saveLater() { clearTimeout(saveTimer); saveTimer = setTimeout(saveState, 400); }
 
 function onUp() {
+  // chip drops (drag-and-drop): GEN KEY -> part, ARM -> field, dig -> lane
+  if (dragMode === 60) {
+    dragMode = 0;
+    if (!dragMoved) { setStatus('drag GEN onto bass, melody or chords to write that part'); return; }
+    for (let si = 0; si < NSYN; si++) {
+      const ysv = ys(si);
+      if (lastPY >= ysv - 14 && lastPY < ysv + 208 && lastPX < 990) {
+        synKeyGen(si);
+        setStatus(`generated ${SYN_NAMES[si]} in ${STYLE_NAMES[m[GEN_STYLE] || 0]} / ${SCALE_NAMES[m[GKEY_SCALE]]}`);
+        touchState();
+        return;
+      }
+    }
+    setStatus('GEN cancelled (dropped outside the parts)');
+    return;
+  }
+  if (dragMode === 61) {
+    const n = dragKnob;
+    dragMode = 0;
+    if (!dragMoved) {   // plain tap still arms/disarms
+      armLfo = armLfo === n ? 0 : n;
+      setStatus(armLfo ? `L${n} armed — tap a field to assign (or drag this chip onto one)` : `L${n} disarmed`);
+      return;
+    }
+    const off = findModTarget(lastPX, lastPY);
+    if (off != null) setStatus(`${modToggle(n, off)} — ${modTargetName(off)}`);
+    else setStatus(`L${n}: dropped on nothing assignable`);
+    return;
+  }
+  if (dragMode === 62) {
+    const kind = dragFx;
+    dragMode = 0; dragFx = null;
+    const ml = Math.floor((lastPY - laneTop) / rowh);
+    if (dragMoved && lastPY >= laneTop && ml >= 0 && ml < numLanes) {
+      smpA[ml] = SMP_USR;
+      digSample('lane', ml, kind);
+      return;
+    }
+    if (!dragMoved) {   // tap = old behaviour: first USR lane or the last one
+      let tl = -1;
+      for (let l = 0; l < numLanes; l++) if (smpA[l] === SMP_USR) { tl = l; break; }
+      if (tl < 0) { tl = numLanes - 1; smpA[tl] = SMP_USR; }
+      digSample('lane', tl, kind);
+    }
+    return;
+  }
   if (dragMode && !dragMoved) {
     // taps on cycling fields (port of the JSFX release block)
     if (dragMode === 31) {
@@ -2340,11 +2541,13 @@ canvas.addEventListener('pointerdown', e => {
   e.preventDefault();
   canvas.setPointerCapture(e.pointerId);
   const [x, y] = canvasXY(e);
+  lastPX = x; lastPY = y;
   onDown(x, y, e.button === 2);
 });
 canvas.addEventListener('pointermove', e => {
   if (e.buttons === 0) return;
   const [x, y] = canvasXY(e);
+  lastPX = x; lastPY = y;
   onMove(x, y);
 });
 canvas.addEventListener('pointerup', () => onUp());
@@ -2533,24 +2736,14 @@ function draw() {
   textC('- LANE', 64, 116, yb + 3, F11);
 
   set(0.55, 0.55, 0.45);
-  text(`key: ${noteName(m[GKEY_NOTE]).replace(/-?\d+$/, '')} ${SCALE_NAMES[m[GKEY_SCALE]]} — the HARMONY panel lives beside the CHORDS wheel ↓`,
+  text(`key: ${noteName(m[GKEY_NOTE]).replace(/-?\d+$/, '')} ${SCALE_NAMES[m[GKEY_SCALE]]} — harmony, style + GEN live beside the CHORDS wheel ↓`,
     130, yb + 4, F11);
-
-  // style selector + GEN KEY button. RND (per part) stays purely random;
-  // GEN KEY writes musical parts that match the key + this style.
-  const stName = STYLE_NAMES[m[GEN_STYLE] || 0];
-  set(0.26, 0.26, 0.3);
-  rect(STYLE_X, yb, STYLE_W, 18);
-  set(0.8, 0.8, 0.9);
-  textC('STYLE: ' + stName, STYLE_X, STYLE_X + STYLE_W, yb + 3, F11);
-  set(0.3, 0.42, 0.34);
-  rect(GENKEY_X, yb, GENKEY_W, 18);
-  set(0.85, 0.95, 0.88);
-  textC('GEN KEY ▸', GENKEY_X, GENKEY_X + GENKEY_W, yb + 3, F11);
+  // dig chips: draggable onto a lane (tap = old first-USR behaviour)
   set(0.3, 0.26, 0.2); rect(756, yb, 66, 18);
   set(0.9, 0.8, 0.55); textC('WIKI ▸ DR', 756, 822, yb + 3, F10);
   set(0.26, 0.22, 0.3); rect(826, yb, 66, 18);
   set(0.85, 0.75, 0.95); textC('78s ▸ DR', 826, 892, yb + 3, F10);
+  set(0.45, 0.45, 0.4); text('⇠ drag a dig chip onto a lane', 900, yb + 4, F10);
 
   // ---- synth sections ----
   for (let gsi = 0; gsi < NSYN; gsi++) {
@@ -2663,7 +2856,7 @@ function draw() {
       // ---- HARMONY panel: the global key controls, moved here ----
       set(0.6, 0.62, 0.5); text('HARMONY', HK_X, rys, F10);
       // key / scale / prog / speed cells (row at ysv+16..34)
-      const hy = ysv + 16;
+      const hy = ysv + 14;
       set(0.3, 0.28, 0.2); rect(HK_X, hy, 44, 18); rect(HK_X + 48, hy, 44, 18);
       m[GKEY_PROG] > 0 ? set(0.32, 0.28, 0.36) : set(0.22, 0.22, 0.25);
       rect(HK_X + 96, hy, 42, 18);
@@ -2673,10 +2866,15 @@ function draw() {
       textC('S' + (m[GKEY_SCALE] + 1), HK_X + 48, HK_X + 92, hy + 3, F12);
       textC(m[GKEY_PROG] > 0 ? 'P' + m[GKEY_PROG] : 'off', HK_X + 96, HK_X + 138, hy + 3, F12);
       textC(fmtG(m[GKEY_SPD]), HK_X + 142, HK_X + 178, hy + 3, F12);
+      // STYLE chip (tap cycles) beside the cells
+      set(0.28, 0.28, 0.34); rect(896, hy, 92, 18);
+      set(0.82, 0.82, 0.92);
+      textC(STYLE_NAMES[m[GEN_STYLE] || 0].slice(0, 12), 896, 988, hy + 3, F10);
       set(0.4, 0.4, 0.44);
-      text('KEY', HK_X + 6, ysv + 36, F9); text('SCL', HK_X + 54, ysv + 36, F9);
-      text('PRG', HK_X + 102, ysv + 36, F9); text('SPD', HK_X + 146, ysv + 36, F9);
-      // lock + harmony-speed per part (row at ysv+42..60)
+      text('KEY', HK_X + 6, ysv + 34, F9); text('SCL', HK_X + 54, ysv + 34, F9);
+      text('PRG', HK_X + 102, ysv + 34, F9); text('SPD', HK_X + 146, ysv + 34, F9);
+      text('STYLE', 930, ysv + 34, F9);
+      // lock + harmony-speed per part + the draggable GEN chip
       const ly = ysv + 42;
       for (let i = 0; i < NSYN; i++) {
         const gpx = HK_X + i * 50;
@@ -2686,126 +2884,144 @@ function draw() {
         set(0.22, 0.24, 0.26); rect(gpx + 20, ly, 24, 18);
         set(0.7, 0.7, 0.75); textC(['½', '×1', '×2'][m[HML_A + i]], gpx + 20, gpx + 44, ly + 3, F11);
       }
+      set(0.3, 0.42, 0.34); rect(896, ly, 92, 18);
+      set(0.85, 0.95, 0.88); textC('GEN ▸ drag', 896, 988, ly + 3, F10);
       set(0.42, 0.44, 0.44);
-      text('lock to key · box = harmony speed · drag a marble to retune', HK_X, ysv + 62, F9);
-      text(`${SCALE_NAMES[m[GKEY_SCALE]]} / ${PROG_NAMES[m[GKEY_PROG]]}`, HK_X, ysv + 76, F9);
+      text('lock to key · box = harmony speed · drag GEN onto a part', HK_X, ysv + 64, F9);
 
-      // ---- FRACTAL FILLS panel: L-system arrangement of self-similar fills ----
+      // ---- FRACTAL FILLS: on / L-system / amount / bend + per-part density ----
       const frOn = m[FRC_ON];
       frOn ? set(0.55, 0.5, 0.35) : set(0.4, 0.4, 0.44);
-      text('FRACTAL FILLS', HK_X, ysv + 88, F10);
-      const fry = ysv + 98;
+      text('FRACTAL FILLS', HK_X, ysv + 78, F10);
+      const fry = ysv + 88;
       frOn ? set(0.4, 0.5, 0.3) : set(0.24, 0.24, 0.27);
       rect(744, fry, 34, 18);
       set(0.9, 0.95, 0.9); textC(frOn ? 'ON' : 'OFF', 744, 778, fry + 3, F10);
-      set(0.28, 0.26, 0.32); rect(782, fry, 54, 18);
-      set(0.85, 0.82, 0.92); textC(FRACTAL_NAMES[m[FRC_RULE] | 0], 782, 836, fry + 3, F10);
-      set(0.24, 0.24, 0.28); rect(840, fry, 40, 18);
-      set(0.8, 0.85, 0.9); textC('d' + (m[FRC_DEPTH] | 0), 840, 880, fry + 3, F10);
-      set(0.24, 0.26, 0.3); rect(884, fry, 42, 18);
-      set(0.8, 0.9, 0.85); textC(Math.round(m[FRC_AMT]) + '%', 884, 926, fry + 3, F10);
-      modTick(FRC_AMT, 884, 42, fry);
+      set(0.28, 0.26, 0.32); rect(782, fry, 50, 18);
+      set(0.85, 0.82, 0.92); textC(FRACTAL_NAMES[m[FRC_RULE] | 0], 782, 832, fry + 3, F10);
+      set(0.24, 0.26, 0.3); rect(836, fry, 42, 18);
+      set(0.8, 0.9, 0.85); textC(Math.round(m[FRC_AMT]) + '%', 836, 878, fry + 3, F10);
+      modTick(FRC_AMT, 836, 42, fry);
+      set(0.24, 0.24, 0.3); rect(882, fry, 42, 18);
+      set(0.85, 0.85, 0.9); textC('↝' + Math.round(m[FRC_BEND]), 882, 924, fry + 3, F10);
+      modTick(FRC_BEND, 882, 42, fry);
       set(0.38, 0.4, 0.42);
-      text('on · L-system · depth · amount', HK_X, ysv + 120, F9);
-      // part-enable chips
-      const frChip = [[0.5, 0.4, 0.2], [0.5, 0.42, 0.22], [0.2, 0.45, 0.4], [0.4, 0.3, 0.55]];
-      const pmask = m[FRC_PMASK] | 0;
-      for (let i = 0; i < 4; i++) {
-        (pmask >> i) & 1 ? set(frChip[i][0], frChip[i][1], frChip[i][2]) : set(0.22, 0.22, 0.25);
-        rect(744 + i * 36, ysv + 130, 32, 18);
+      text('on · L-system · amount · bend = swing', HK_X, ysv + 108, F9);
+      // per-part fill DENSITY cells: D0 off .. D7 radical flurry
+      for (let i = 0; i < numLanes; i++) {
+        const dv = m[DFILL_A + i] | 0;
+        dv && frOn ? set(0.34, 0.3 + dv * 0.03, 0.24) : set(0.2, 0.2, 0.23);
+        rect(744 + i * 27, ysv + 118, 26, 16);
+        set(0.88, 0.9, 0.85);
+        textC(dv ? 'D' + dv : '·', 744 + i * 27, 770 + i * 27, ysv + 120, F10);
+      }
+      set(0.4, 0.4, 0.44);
+      text('drum lanes 1-' + numLanes, 744 + numLanes * 27 + 6, ysv + 120, F9);
+      const sfCol = [[0.5, 0.42, 0.22], [0.2, 0.45, 0.4], [0.4, 0.3, 0.55]];
+      for (let i = 0; i < NSYN; i++) {
+        const dv = m[SFILL_A + i] | 0;
+        dv && frOn ? set(sfCol[i][0], sfCol[i][1], sfCol[i][2]) : set(0.2, 0.2, 0.23);
+        rect(744 + i * 44, ysv + 136, 40, 16);
         set(0.9, 0.9, 0.92);
-        textC(['DR', 'BS', 'ML', 'CH'][i], 744 + i * 36, 776 + i * 36, ysv + 133, F10);
+        textC(['BS', 'ML', 'CH'][i] + (dv ? ' D' + dv : ' ·'), 744 + i * 44, 784 + i * 44, ysv + 138, F10);
       }
-      // level strip: the upcoming loops coloured by fill level, playhead lit
-      if (frOn) {
-        const lev = fractalLevels(m[FRC_RULE] | 0, Math.max(1, m[FRC_DEPTH] | 0));
-        // chords loop = one fractal cell (matches the worklet's per-part unit)
-        const nst2 = Math.max(1, sget(2, 2));
-        const sd2 = (m[CHD_P + 15] ? sget(2, 3) / 16 : sget(2, 3) / nst2) * FEL_MULT[m[SFL_A + 2]];
-        const loopB = Math.max(0.25, nst2 * sd2);
-        const cur = ((Math.floor(dispBeat / loopB) % lev.length) + lev.length) % lev.length;
-        const sx = HK_X, sw = 6;
-        for (let i = 0; i < Math.min(lev.length, 32); i++) {
-          const L = lev[i];
-          const g = 0.25 + L * 0.22;
-          i === cur ? set(0.9, 0.85, 0.4) : set(0.3, g, 0.35);
-          rect(sx + i * sw, ysv + 152, sw - 1, 4 + L * 3);
-        }
-        set(0.38, 0.4, 0.42); text('fill map: taller = bigger fill · lit = now', HK_X, ysv + 172, F9);
-      } else {
-        set(0.38, 0.4, 0.42);
-        text('parts that fill · the L-system arranges them', HK_X, ysv + 154, F9);
-      }
+      set(0.38, 0.4, 0.42);
+      text('density per part: D1 tiny tail change · D7 radical flurry', HK_X, ysv + 156, F9);
+      text('drag cells · tree picks WHEN · density picks HOW MUCH', HK_X, ysv + 170, F9);
 
-      // ---- rotating L-system tree: shows the algorithm driving the fills,
-      // drawn like the XY scope (one teal line per branch, spun on Y) ----
+      // ---- combined visualizer: the L-system tree grows inside the
+      // harmonic wheel (scope-style: thin teal strokes, everything breathes) ----
       {
-        const TB = [944, ysv + 6, 134, 146];
-        set(0.13, 0.14, 0.16); rect(TB[0], TB[1], TB[2], TB[3]);
+        const bx0 = 1000, by0 = ysv + 4;
+        set(0.13, 0.14, 0.16); rect(bx0, by0, 248, 180);
         set(0.28, 0.3, 0.34);
-        rect(TB[0], TB[1], TB[2], 1); rect(TB[0], TB[1] + TB[3] - 1, TB[2], 1);
-        rect(TB[0], TB[1], 1, TB[3]); rect(TB[0] + TB[2] - 1, TB[1], 1, TB[3]);
+        rect(bx0, by0, 248, 1); rect(bx0, by0 + 179, 248, 1);
+        rect(bx0, by0, 1, 180); rect(bx0 + 247, by0, 1, 180);
         set(0.45, 0.45, 0.5);
-        text('TREE · ' + FRACTAL_NAMES[m[FRC_RULE] | 0], TB[0] + 5, TB[1] + 3, F9);
-        const tr = buildFractalTree(m[FRC_RULE] | 0, Math.max(1, m[FRC_DEPTH] | 0));
-        const spin = Date.now() * 0.0005;
-        const cs = Math.cos(spin), sn = Math.sin(spin);
-        const cxT = TB[0] + TB[2] / 2, baseY = TB[1] + TB[3] - 12;
-        const spanY = Math.max(0.5, tr.maxY - tr.minY);
-        const sc = Math.min((TB[2] * 0.44) / tr.maxR, (TB[3] - 26) / spanY);
+        text('TREE · ' + FRACTAL_NAMES[m[FRC_RULE] | 0] + ' · click a branch = fill', bx0 + 6, by0 + 3, F9);
+        const wcx = TW_CX, wcy = ysv + TW_CY;
+        const tnow = Date.now() * 0.002;
+        // harmonic ring: a sine-driven circle (not a hard line)
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(80,200,210,0.35)';
+        ctx.beginPath();
+        for (let i = 0; i <= 72; i++) {
+          const a = i / 72 * 2 * Math.PI;
+          const rr = 72 + Math.sin(a * 6 + tnow) * 2.2;
+          const px = wcx + Math.cos(a) * rr, py = wcy + Math.sin(a) * rr;
+          i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+        }
+        ctx.stroke();
+        // scale-degree landmarks: small breathing scope-circles on the ring
+        const gcnt = Math.max(1, SCL[effScale(2)][0]);
+        for (let gd = 0; gd < gcnt; gd++) {
+          const wang = SCL[effScale(2)][1 + gd] / 1200 * 2 * Math.PI - Math.PI / 2;
+          const lx = wcx + Math.cos(wang) * 72, lyy = wcy + Math.sin(wang) * 72;
+          const lr = 3.4 + Math.sin(tnow * 1.7 + gd) * 1.1;
+          ctx.strokeStyle = 'rgba(110,225,215,0.75)';
+          ctx.beginPath(); ctx.arc(lx, lyy, lr, 0, 2 * Math.PI); ctx.stroke();
+        }
+        // the tree grows in the middle (shared projection with the hit-test)
         const frOn2 = m[FRC_ON];
         ctx.lineWidth = 1.1;
-        for (const seg of tr.segs) {
-          const a = seg.a, b = seg.b;
-          const axr = a[0] * cs + a[2] * sn, azr = -a[0] * sn + a[2] * cs;
-          const bxr = b[0] * cs + b[2] * sn, bzr = -b[0] * sn + b[2] * cs;
-          const ax = cxT + axr * sc, ay = baseY - (a[1] - tr.minY) * sc;
-          const bx = cxT + bxr * sc, by = baseY - (b[1] - tr.minY) * sc;
-          const front = 0.5 + 0.5 * ((azr + bzr) * 0.5 / tr.maxR);
-          const al = frOn2 ? 0.5 + 0.42 * front : 0.16 + 0.14 * front;
+        for (const s2 of treeScreenSegs(ysv)) {
+          const al = frOn2 ? 0.45 + 0.45 * s2.front : 0.15 + 0.15 * s2.front;
           ctx.strokeStyle = `rgba(80,220,210,${al.toFixed(2)})`;
-          ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(s2.ax, s2.ay); ctx.lineTo(s2.bx, s2.by); ctx.stroke();
         }
+        // part markers: wobbling stroked circles (drag to retune)
+        const marker = (pc, rad, col, ph) => {
+          if (pc < 0) return;
+          const wang = pc / 1200 * 2 * Math.PI - Math.PI / 2;
+          const mx = wcx + Math.cos(wang) * rad, my = wcy + Math.sin(wang) * rad;
+          ctx.strokeStyle = col;
+          ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          for (let i = 0; i <= 20; i++) {
+            const a = i / 20 * 2 * Math.PI;
+            const rr = 6.5 + Math.sin(a * 3 + tnow * 2 + ph) * 1.3;
+            const px = mx + Math.cos(a) * rr, py = my + Math.sin(a) * rr;
+            i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+          }
+          ctx.stroke();
+        };
+        marker(gsndB, TW_RB, 'rgba(230,170,70,0.95)', 0);
+        marker(gsndM, TW_RM, 'rgba(80,215,190,0.95)', 2);
+        marker(gsndCn > 0 ? gsndC[0] : -1, TW_RC, 'rgba(170,125,230,0.95)', 4);
+        ctx.lineWidth = 1;
+        for (let gd = 1; gd < gsndCn; gd++) {
+          const wang = gsndC[gd] / 1200 * 2 * Math.PI - Math.PI / 2;
+          ctx.strokeStyle = 'rgba(150,110,200,0.6)';
+          ctx.beginPath();
+          ctx.arc(wcx + Math.cos(wang) * TW_RC, wcy + Math.sin(wang) * TW_RC, 3, 0, 2 * Math.PI);
+          ctx.stroke();
+        }
+        // fill map: the L-system read per loop (taller = bigger fill)
+        if (frOn) {
+          const lev = fractalLevels(m[FRC_RULE] | 0, FR_DEPTH_FIXED);
+          const nst2 = Math.max(1, sget(2, 2));
+          const sd2 = (m[CHD_P + 15] ? sget(2, 3) / 16 : sget(2, 3) / nst2) * FEL_MULT[m[SFL_A + 2]];
+          const loopB = Math.max(0.25, nst2 * sd2);
+          const cur = ((Math.floor(dispBeat / loopB) % lev.length) + lev.length) % lev.length;
+          for (let i = 0; i < Math.min(lev.length, 40); i++) {
+            const L = lev[i];
+            i === cur ? set(0.9, 0.85, 0.4) : set(0.28, 0.35 + L * 0.14, 0.34);
+            rect(bx0 + 6 + i * 6, ysv + 160 - (3 + L * 3), 5, 3 + L * 3);
+          }
+        }
+        // spin strip inside the box bottom: B/M/C chips + the rate button
+        const spv = m[WHL_SPIN] || 0, cy2 = ysv + 164;
+        const spinCol = [[0.5, 0.4, 0.2], [0.2, 0.45, 0.4], [0.4, 0.3, 0.55]];
+        for (let i = 0; i < NSYN; i++) {
+          m[SPIN_P + i] ? set(spinCol[i][0], spinCol[i][1], spinCol[i][2]) : set(0.2, 0.2, 0.24);
+          rect(1006 + i * 32, cy2, 28, 16);
+          set(0.9, 0.9, 0.92); textC('BMC'[i], 1006 + i * 32, 1034 + i * 32, cy2 + 2, F11);
+        }
+        spv ? set(0.4, 0.32, 0.5) : set(0.22, 0.22, 0.26);
+        rect(1102, cy2, 88, 16);
+        set(0.88, 0.82, 0.95);
+        textC('SPIN ' + ['OFF', '4B', '2B', '1B'][spv], 1102, 1190, cy2 + 2, F10);
       }
-
-      // ---- the wheel: each part is a draggable marble ----
-      const wcx = 1140, wcy = ysv + 96, wr = 56;
-      set(0.3, 0.3, 0.34); circle(wcx, wcy, wr, false);
-      const gcnt = Math.max(1, SCL[effScale(2)][0]);
-      for (let gd = 0; gd < gcnt; gd++) {
-        const wang = SCL[effScale(2)][1 + gd] / 1200 * 2 * Math.PI - Math.PI / 2;
-        set(0.45, 0.45, 0.5);
-        circle(wcx + Math.cos(wang) * wr, wcy + Math.sin(wang) * wr, 2, true);
-      }
-      // marbles: bass r46, melody r36, chord root r26 (bigger = grabbable)
-      const marble = (pc, rad, r, g, bl) => {
-        if (pc < 0) return;
-        const wang = pc / 1200 * 2 * Math.PI - Math.PI / 2;
-        set(r, g, bl);
-        circle(wcx + Math.cos(wang) * rad, wcy + Math.sin(wang) * rad, 7, true);
-      };
-      marble(gsndB, 46, 0.85, 0.6, 0.2);
-      marble(gsndM, 36, 0.25, 0.75, 0.7);
-      marble(gsndCn > 0 ? gsndC[0] : -1, 26, 0.6, 0.45, 0.85);
-      // faint dots for the other chord voices
-      for (let gd = 1; gd < gsndCn; gd++) {
-        const wang = gsndC[gd] / 1200 * 2 * Math.PI - Math.PI / 2;
-        set(0.45, 0.36, 0.6);
-        circle(wcx + Math.cos(wang) * 26, wcy + Math.sin(wang) * 26, 3, true);
-      }
-      // ---- spin: B/M/C part chips + the rate button ----
-      const spv = m[WHL_SPIN] || 0, cy = ysv + 160;
-      const spinCol = [[0.5, 0.4, 0.2], [0.2, 0.45, 0.4], [0.4, 0.3, 0.55]];
-      for (let i = 0; i < NSYN; i++) {
-        m[SPIN_P + i] ? set(spinCol[i][0], spinCol[i][1], spinCol[i][2]) : set(0.22, 0.22, 0.25);
-        rect(1000 + i * 32, cy, 28, 18);
-        set(0.9, 0.9, 0.92); textC('BMC'[i], 1000 + i * 32, 1028 + i * 32, cy + 3, F11);
-      }
-      spv ? set(0.4, 0.32, 0.5) : set(0.24, 0.24, 0.27);
-      rect(1096, cy, 88, 18);
-      set(0.88, 0.82, 0.95);
-      textC('SPIN ' + ['OFF', '4B', '2B', '1B'][spv], 1096, 1184, cy + 3, F10);
-      set(0.4, 0.4, 0.44); text('spin: who + how fast', 1000, ysv + 180, F9);
     } else {
       set(0.55, 0.6, 0.6);
       text(`scale: ${SCALE_NAMES[effScale(gsi)]}${glk ? ' (key)' : ''}`, RC_X, rys, F11);
@@ -2915,7 +3131,7 @@ function draw() {
   fxLit ? set(0.6, 0.85, 0.85) : set(0.5, 0.52, 0.56);
   text('FX RACK', 12, fy + 6, F12);
   set(0.4, 0.42, 0.46);
-  text('PRE = sends ignore the faders · FEED taps the whole mix · SENDS + SPACE + MOD live on the right', 78, fy + 7, F10);
+  text('PRE = sends ignore the faders · FEED taps the whole mix · SENDS / SPACE / MOD mid · dome right', 78, fy + 7, F10);
   for (const cell of fxCells()) {
     if (cell.t === 'lbl') {
       set(0.5, 0.52, 0.56); text(cell.text, cell.x, cell.y, F10);
@@ -2955,14 +3171,14 @@ function draw() {
     textC(armLfo === 2 ? 'L2⦿' : 'L2', a2[0], a2[0] + a2[2], a2[1] + 8, F11);
 
     // SENDS matrix: mini circular faders, part rows x fx columns
-    set(0.5, 0.52, 0.56); text('SENDS', 1000, fy + 6, F10);
+    set(0.5, 0.52, 0.56); text('SENDS', 744, fy + 6, F10);
     const FXCOL = ['DLY', 'GLI', 'GRN'], PROW = ['DR', 'BS', 'ML', 'CH'];
     for (let f = 0; f < 3; f++) {
       set(0.45, 0.46, 0.5);
-      textC(FXCOL[f], 1050 + f * 42 - 16, 1050 + f * 42 + 16, fy + 6, F10);
+      textC(FXCOL[f], 800 + f * 42 - 16, 800 + f * 42 + 16, fy + 6, F10);
     }
     for (let p = 0; p < 4; p++) {
-      set(0.45, 0.46, 0.5); text(PROW[p], 1004, fy + 30 + p * 26, F10);
+      set(0.45, 0.46, 0.5); text(PROW[p], 754, fy + 30 + p * 26, F10);
       for (let f = 0; f < 3; f++) {
         const [kx, ky] = sndKnobXY(p, f);
         const off = SND_MTX + p * 3 + f, v = m[off] / 100;
@@ -2981,11 +3197,11 @@ function draw() {
         if (mk & 2) { set(0.3, 0.85, 0.85); rect(kx + 7, ky - 6, 4, 4); }
       }
     }
-    set(0.45, 0.45, 0.5); text('drag ↕', 1186, fy + 56, F10);
+    set(0.45, 0.45, 0.5); text('drag ↕', 936, fy + 56, F10);
 
     // 3D dome: top-down head, one ball per part at its live azimuth. Balls
     // pulse with energy, FRC physics shoves them, and they repel each other.
-    const cx = 868, cy = fy + 150;
+    const cx = DOME_CX, cy = fy + 150;
     set(0.26, 0.28, 0.32); circle(cx, cy, 105, false);
     set(0.2, 0.21, 0.24); circle(cx, cy, 78, false);
     set(0.3, 0.32, 0.36);
@@ -3007,7 +3223,22 @@ function draw() {
       textC(BLBL[p], bx - 12, bx + 12, by - 5, F10);
     }
     set(0.45, 0.45, 0.5);
-    text('drag a ball to place it · FRC shoves it · BNC = bounce', 748, fy + 272, F10);
+    text('drag a ball · FRC shoves it · BNC = bounce', DOME_CX - 105, fy + 268, F10);
+  }
+
+  // floating ghost while a chip is being dragged (GEN / L1 / L2 / digs)
+  if (dragMode === 60 || dragMode === 61 || dragMode === 62) {
+    const glbl = dragMode === 60 ? 'GEN ▸ drop on a part'
+      : dragMode === 61 ? `L${dragKnob} ▸ drop on a field`
+      : (dragFx === 'wiki' ? 'WIKI ▸ drop on a lane' : '78s ▸ drop on a lane');
+    const gw = 150;
+    set(0.12, 0.14, 0.13); rect(lastPX + 10, lastPY - 24, gw, 20);
+    dragMode === 60 ? set(0.5, 0.9, 0.6) : dragMode === 61
+      ? (dragKnob === 1 ? set(0.95, 0.72, 0.25) : set(0.3, 0.85, 0.85))
+      : set(0.9, 0.8, 0.55);
+    rect(lastPX + 10, lastPY - 24, gw, 1); rect(lastPX + 10, lastPY - 5, gw, 1);
+    rect(lastPX + 10, lastPY - 24, 1, 20); rect(lastPX + 10 + gw - 1, lastPY - 24, 1, 20);
+    textC(glbl, lastPX + 10, lastPX + 10 + gw, lastPY - 21, F11);
   }
 
   // status / hint line (bottom)
@@ -3125,9 +3356,10 @@ window.gnome = {
     MLFO_A, MOD_TGT_A, MOD_MSK_A, MOD_SLOTS,
     PAN_BNC, XY_DRV, XY_SKW, WHL_SPIN, SPIN_P,
     FRC_ON, FRC_RULE, FRC_DEPTH, FRC_AMT, FRC_PMASK,
+    DFILL_A, SFILL_A, FRC_BEND,
   },
   tables: { SCALE_NAMES, PROG_NAMES, SHAPE_NAMES, SYN_NAMES, FEEL_NAMES, SCL, STYLE_NAMES, FRACTAL_NAMES },
-  fractalLevels, buildFractalTree,
+  fractalLevels, buildFractalTree, sendFillNow, treeBranchAt, findModTarget,
   SAMPLE_DEFS,
   noteName, rollLabel, getParam, setParam, sget, sset, ronOff, rdgOff, effScale, effBase,
   buildScoreModel, setStatus,

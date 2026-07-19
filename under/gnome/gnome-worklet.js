@@ -57,6 +57,9 @@ const PAN_BNC = 904, XY_DRV = 905, XY_SKW = 906, WHL_SPIN = 907;
 const SPIN_P = 908;
 // fractal fills: L-system arrangement (on / ruleset / depth / amount / parts)
 const FRC_ON = 911, FRC_RULE = 912, FRC_DEPTH = 913, FRC_AMT = 914, FRC_PMASK = 915;
+// per-part fill density 0..7 (drum lanes, then bass/melody/chords) + bend
+const DFILL_A = 916, SFILL_A = 924, FRC_BEND = 927;
+const FR_DEPTH_FIXED = 5;
 // L-systems (mirror of gnome.js) -> per-loop fill levels 0..3
 const FRACTAL_RULES = [
   { axiom: 'A', rules: { A: 'AB', B: 'A' } },
@@ -180,7 +183,7 @@ function modRange(off) {
   if (within(PAN_AZ_A, 4)) return [-180, 180];
   if (off === PAN_BNC || off === XY_DRV) return [0, 100];
   if (off === XY_SKW) return [-50, 50];
-  if (off === FRC_AMT) return [0, 100];
+  if (off === FRC_AMT || off === FRC_BEND) return [0, 100];
   return null;
 }
 
@@ -252,6 +255,10 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     this.gsndB = -1; this.gsndM = -1; this.gsndC = F(4); this.gsndCn = 0;
     // fractal-fill arrangement: cached L-system level array + its config
     this.frLev = [0]; this.frRule = -1; this.frDepth = -1;
+    // branch-click one-shot: force this fill level until the beat passes
+    this.fillForce = -1; this.fillForceUntil = 0;
+    // per-lane sample gate (GATE truncates sample playback) + age counters
+    this.vGateLen = F(LANES_CAP); this.vAge = F(LANES_CAP);
 
     // ---- engine state ----
     // plucked-string (Karplus-Strong) delay lines. Voice slots: bass=0,
@@ -349,6 +356,10 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     } else if (d.type === 'record') {
       if (d.on) { this.rec = true; this.recPos = 0; }
       else { this.rec = false; this.flushRec(true); }
+    } else if (d.type === 'fillNow') {
+      // a tree branch was clicked: force that fill level for the next bars
+      this.fillForce = Math.max(1, Math.min(3, d.level | 0));
+      this.fillForceUntil = this.gBeat + 4;
     }
   }
 
@@ -393,12 +404,15 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
 
   // fire a drum lane's voice at sample offset `ofs` with velocity `vel`
   // (0..127). Shared by the main scan and the fractal-fill overlay.
-  fireDrum(l, ofs, vel) {
+  // gateSamp (optional): truncate sample playback after this many output
+  // samples (short fade) — GATE finally shapes sample length, not just SYN.
+  fireDrum(l, ofs, vel, gateSamp) {
     const m = this.m, s = this.samples[l];
     if (!s) return;
     this.vDel[l] = ofs; this.vPos[l] = 0;
     if (!s.synth && s.len) this.vPos[l] = Math.floor(m[DCRP_A + l] / 100 * s.len * 0.95);
     this.vOn[l] = 1; this.vGain[l] = vel / 127; this.fenv[l] = 1;
+    this.vGateLen[l] = gateSamp || 0; this.vAge[l] = 0;
     if (s.synth) {
       this.dEnv[l] = 1; this.dNzE[l] = 1; this.dPh[l] = 0; this.dSubPh[l] = 0;
       const tau = 0.02 + m[GATE_A + l] / 200 * 0.6;
@@ -419,75 +433,83 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
   // ("fractality") scales how much of the loop fills and how many branches.
   emitFills(blkStart, blkEnd, spb, nframes) {
     const m = this.m;
-    if (!m[FRC_ON]) return;
-    const rule = m[FRC_RULE] | 0, depth = Math.max(1, m[FRC_DEPTH] | 0);
-    if (rule !== this.frRule || depth !== this.frDepth) {
-      this.frLev = fractalLevels(rule, depth);
-      this.frRule = rule; this.frDepth = depth;
+    const forcing = this.fillForce > 0 && blkStart < this.fillForceUntil;
+    if (this.fillForce > 0 && blkStart >= this.fillForceUntil) this.fillForce = -1;
+    if (!m[FRC_ON] && !forcing) return;
+    const rule = m[FRC_RULE] | 0;
+    if (rule !== this.frRule || FR_DEPTH_FIXED !== this.frDepth) {
+      this.frLev = fractalLevels(rule, FR_DEPTH_FIXED);
+      this.frRule = rule; this.frDepth = FR_DEPTH_FIXED;
     }
     const lev = this.frLev, llen = lev.length;
-    const amt = m[FRC_AMT] / 100, pmask = m[FRC_PMASK] | 0;
+    const amt = forcing ? Math.max(0.6, m[FRC_AMT] / 100) : m[FRC_AMT] / 100;
+    const bend = m[FRC_BEND] / 100;
     if (amt <= 0.001) return;
 
-    // one shared helper: given a part's loop geometry + a callback that fires
-    // one hit at (beat, stepIndexInLoop, branchIndex), schedule the fill hits
-    const fillPart = (loopBeats, nst, active, fire) => {
-      if (loopBeats <= 0 || !active.length) return;
+    // per-part fill: the L-system picks WHEN (level L per loop of the part),
+    // the part's DENSITY D (0..7) picks HOW MUCH. F = strength 0..~3:
+    //   D1 -> one soft extra hit at normal step rate (a tiny tail variation)
+    //   D7 -> up to 4x subdivision and a long crescendo run (radical flurry)
+    // Hits walk the part's own active steps in order (self-similar), rising
+    // a scale degree per motif cycle; BEND swings every 2nd sub-slot.
+    const fillPart = (D, loopBeats, stepdur, active, fire) => {
+      if (!D || loopBeats <= 0 || !active.length) return;
       const k0 = Math.floor(blkStart / loopBeats), k1 = Math.floor(blkEnd / loopBeats);
       for (let k = k0; k <= k1; k++) {
-        const L = lev[((k % llen) + llen) % llen];
-        const la = L * amt;                 // effective fractal weight 0..3
-        if (la <= 0.05) continue;
-        const fillFrac = Math.min(0.6, 0.14 + la * 0.14);   // tail that fills
-        const reps = 1 + Math.floor(la * 1.2);              // branch copies
-        const winStart = (k + 1 - fillFrac) * loopBeats, winLen = fillFrac * loopBeats;
-        for (let r = 0; r < reps; r++) {
-          const subStart = winStart + r / reps * winLen, subLen = winLen / reps;
-          for (let a = 0; a < active.length; a++) {
-            const p = active[a].p;          // 0..1 position of the step in the loop
-            const tb = subStart + p * subLen;
-            if (tb < blkStart || tb >= blkEnd) continue;
-            const ofs = Math.min(Math.max(0, Math.floor((tb - blkStart) * spb)), nframes - 1);
-            fire(ofs, active[a], r, subLen);
-          }
+        const L = forcing ? this.fillForce : lev[((k % llen) + llen) % llen];
+        const F = L * amt * (0.25 + D * 0.18);
+        if (F < 0.1) continue;
+        const div = 1 + Math.min(3, Math.floor(F));
+        const nH = Math.min(10, Math.max(1, Math.round(F * 3.2)));
+        const subdur = stepdur / div;
+        if (nH * subdur >= loopBeats) continue;   // fill can't eat the loop
+        for (let h = 0; h < nH; h++) {
+          let tb = (k + 1) * loopBeats - (nH - h) * subdur;
+          if (h & 1) tb += subdur * 0.4 * bend;   // bent trees swing
+          if (tb < blkStart || tb >= blkEnd) continue;
+          const ofs = Math.min(Math.max(0, Math.floor((tb - blkStart) * spb)), nframes - 1);
+          const src = active[h % active.length];
+          const cyc = Math.floor(h / active.length);   // motif cycle = branch up
+          const velScale = 0.5 + 0.5 * (nH < 2 ? 1 : h / (nH - 1));  // crescendo
+          fire(ofs, src, cyc, subdur, velScale);
         }
       }
     };
 
-    // drums: each enabled lane fills from its own active hits (a roll)
-    if (pmask & 1) {
-      for (let l = 0; l < this.numLanes; l++) {
-        if (m[MUTE_A + l] || !this.samples[l]) continue;
-        const steps = m[STEPS_A + l];
-        const stepdur = m[LMODE_A + l] ? m[SPAN_A + l] / 16 : m[SPAN_A + l] / steps;
-        const loopBeats = steps * stepdur, active = [];
-        for (let i = 0; i < steps; i++) if (m[PAT + l * MAX_STEPS + i]) active.push({ p: i / steps });
-        const vel = m[VEL_A + l];
-        fillPart(loopBeats, steps, active, (ofs, st, r) =>
-          this.fireDrum(l, ofs, Math.max(1, vel * (0.6 - r * 0.08))));
-      }
+    // drums: each lane fills from its own hits at its own density
+    for (let l = 0; l < this.numLanes; l++) {
+      const D = m[DFILL_A + l] | 0;
+      if (!D || m[MUTE_A + l] || !this.samples[l]) continue;
+      const steps = m[STEPS_A + l];
+      const stepdur = m[LMODE_A + l] ? m[SPAN_A + l] / 16 : m[SPAN_A + l] / steps;
+      const active = [];
+      for (let i = 0; i < steps; i++) if (m[PAT + l * MAX_STEPS + i]) active.push({ p: i / steps });
+      const vel = m[VEL_A + l];
+      fillPart(D, steps * stepdur, stepdur, active, (ofs, st, cyc, subdur, vs) =>
+        this.fireDrum(l, ofs, Math.max(1, vel * vs * 0.9), subdur * spb * 0.9));
     }
-    // pitched parts: replay the loop's degrees, each branch a scale step up
+    // pitched parts: replay the loop's degrees, each motif cycle a step up
     for (let si = 0; si < NSYN; si++) {
-      if (!(pmask & (2 << si)) || m[(si === 0 ? BASS_P : si === 1 ? MEL_P : CHD_P) + 11]) continue;
+      const D = m[SFILL_A + si] | 0;
       const sp = si === 0 ? BASS_P : si === 1 ? MEL_P : CHD_P;
+      if (!D || m[sp + 11]) continue;
       const ron = this.ronOff(si), rdg = this.rdgOff(si);
       const escale = this.effScale(si), ebase = this.effBase(si);
       const nst = m[sp + 2];
       const stepdur = (m[sp + 15] ? m[sp + 3] / 16 : m[sp + 3] / nst) * FEL_MULT[m[SFL_A + si]];
-      const loopBeats = nst * stepdur, active = [];
+      const active = [];
       for (let i = 0; i < nst; i++) if (m[ron + i]) active.push({ p: i / nst, dg: m[rdg + i] });
       const gain = m[sp + 6] / 127 * 0.3 * 0.85;   // fills a touch softer
-      fillPart(loopBeats, nst, active, (ofs, st, r, subLen) => {
-        const hold = Math.floor(subLen * spb * 0.5);
+      fillPart(D, nst * stepdur, stepdur, active, (ofs, st, cyc, subdur, vs) => {
+        const hold = Math.floor(subdur * spb * 0.5);
         if (si < 2) {
-          const cents = degCents(st.dg + r, escale);
+          const cents = degCents(st.dg + cyc, escale);
           this.svNfreq[si] = Math.max(8, Math.min(12000,
             440 * Math.pow(2, (ebase - 69) / 12 + cents / 1200)));
-          this.svNgain[si] = gain; this.svDel[si] = ofs + 1; this.svHold[si] = hold;
+          this.svNgain[si] = gain * vs; this.svDel[si] = ofs + 1; this.svHold[si] = hold;
         } else {
           // chord fill = a fast restrike of the current voicing (a stutter)
-          this.svNgain[2] = gain; this.svDel[2] = ofs + 1; this.svHold[2] = hold;
+          this.svNgain[2] = gain * vs; this.svDel[2] = ofs + 1; this.svHold[2] = hold;
         }
       });
     }
@@ -803,7 +825,8 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
               let hvel = m[VEL_A + l];
               if (m[VHM_A + l] > 0)
                 hvel = Math.max(1, Math.floor(hvel * (1 - Math.random() * m[VHM_A + l] / 100 * 0.7)));
-              this.fireDrum(l, ofs, hvel);
+              // GATE = playback length in steps x2 (50% = one step, 200% = 4)
+              this.fireDrum(l, ofs, hvel, stepdur * spb * (m[GATE_A + l] / 100) * 2);
             }
           }
           n += 1;
@@ -1022,6 +1045,16 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
             smix2 = (sa2 + (sb2 - sa2) * frac) * this.vGain[c];
           } else smix2 = smix;
           this.vPos[c] = vp + vrate;
+          // GATE truncates sample playback: past the gate, a quick 20ms fade
+          if (this.vGateLen[c] > 0) {
+            const over = ++this.vAge[c] - this.vGateLen[c];
+            if (over > 0) {
+              const fadeN = 0.02 * srate;
+              const g = 1 - over / fadeN;
+              if (g <= 0) { this.vOn[c] = 0; continue; }
+              smix *= g; smix2 *= g;
+            }
+          }
         }
         { // shared lane filter + output (both drum voice kinds)
           if (this.fltF[c] < 1.99) {

@@ -175,27 +175,42 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
   part) beside the SENDS mini-knob matrix and the SPACE / MOD cells. The
   header volume knobs stay where they were.
 
-  **Fractal fills** (`FRC_*`): a classic **L-system** drives an arrangement of
-  self-similar fills across any of the four parts. Pick a ruleset — ALGAE
-  (Lindenmayer's original A→AB, B→A), THUE (Thue–Morse, evenly-spread fills),
-  CANTOR (fills in bursts), SIERP, or PLANT (a bracketed tree whose branch
-  *depth* becomes the fill size) — and a depth; the string is read one symbol
+  **Fractal fills** (`FRC_*`, `DFILL_A`/`SFILL_A`): a classic **L-system**
+  decides WHEN fills land; a per-part **density** decides HOW MUCH. Pick a
+  ruleset — ALGAE (Lindenmayer's original A→AB, B→A), THUE (Thue–Morse,
+  evenly-spread fills), CANTOR (bursts), SIERP, or PLANT (a bracketed tree
+  whose branch depth becomes the fill size); its expansion is read one symbol
   per pattern loop as a fill **level** (0 = play the base loop, 1–3 = grow a
-  fill). A fill sprays the loop's own active hits, compressed into the tail of
-  the bar and repeated, each repeat transposed up a scale step for pitched
-  parts (the tree's branches) so it riffs on what's already there at a smaller
-  time scale — drums roll, bass/melody run, chords stutter. **Fractality**
-  (`FRC_AMT`, an LFO target) dials how much of each loop fills and how many
-  branches, from the occasional tail fill to dense fractal regrowth. Controls
-  live in the CHORDS band's right column (on / L-system / depth / amount + DR
-  BS ML CH part chips) with a live **level strip** — taller bars = bigger
-  fills, the lit bar = the current loop — and a small **rotating tree** beside
-  the chord wheel that turtle-draws the current L-system (one teal line per
-  branch, spun on its vertical axis, same look as the XY scope) so you can see
-  the algorithm that's shaping the fills. The
-  fills are computed live in the worklet from the base pattern (no extra
-  storage), so editing a part instantly reshapes its fills. Pocket: a "fractal
-  fills" group on the FX tab.
+  fill). Every drum lane and each of bass/melody/chords has its own density
+  cell, **D0–D7**: D1 adds a single soft extra hit at normal step rate (a tiny
+  tail variation), D7 subdivides up to 4× into a long crescendo run (the
+  radical self-similar flurry) — so a snare can roll at D6 while the kick sits
+  at D1 and the bass at D2 stays musical. Fill hits walk the part's own active
+  steps in order, rising a scale degree per motif cycle, velocities cresting
+  into the downbeat. **Fractality** (`FRC_AMT`, LFO-able) scales every fill
+  the L-system asks for, and **bend** (`FRC_BEND`, LFO-able) bows the visual
+  tree AND swings the fill timing — bent trees play crooked. Controls live in
+  the CHORDS band's right column; the **combined visualizer** beside them puts
+  the rotating turtle-drawn tree *inside* the harmonic wheel (scope-style: a
+  sine-driven ring, breathing landmark circles, wobbling stroked part markers
+  you can still drag to retune), with the **fill map** along the bottom (one
+  bar per loop, taller = bigger fill, lit = now) and the SPIN chips in the
+  box's footer. **Click a branch of the tree to play that branch's fill** over
+  the next bars — deeper branches fire bigger fills. Fills are computed live
+  in the worklet from the base pattern (no extra storage), so editing a part
+  instantly reshapes its fills. Pocket: a "fractal fills" group on the FX tab
+  with per-part density steppers.
+
+  **Drag-and-drop chips**: the **GEN** chip (HARMONY panel — STYLE and GEN
+  moved down from the top row) is dragged onto bass, melody or chords to write
+  just that part in key, so it can't be mis-clicked; the **L1/L2 ARM** chips
+  drag onto any assignable field to toggle it as an LFO target directly (a
+  plain tap still arms the old way); and the **WIKI / 78s dig chips** drag
+  onto a specific drum lane to dig into THAT lane (a tap keeps the old
+  first-USR-lane behaviour). A ghost chip follows the pointer during the drag.
+  **GATE now truncates sample playback** on drum lanes (50% = one step, 200% =
+  four, with a short fade), not just the SYN voice — and fill hits are gated
+  to their sub-step so flurries stay tight.
 
   **Mod LFOs** (`MLFO_A`, `MOD_TGT_A`/`MOD_MSK_A`): two global assignable
   LFOs with rate / depth / shape each. Canvas: ARM L1 or L2 on the FX box's

@@ -55,6 +55,40 @@ const DCRP_A = 884, PAN_AZ_A = 896, PAN_FRC_A = 900;
 const PAN_BNC = 904, XY_DRV = 905, XY_SKW = 906, WHL_SPIN = 907;
 // which parts follow the spin (bass, melody, chords)
 const SPIN_P = 908;
+// fractal fills: L-system arrangement (on / ruleset / depth / amount / parts)
+const FRC_ON = 911, FRC_RULE = 912, FRC_DEPTH = 913, FRC_AMT = 914, FRC_PMASK = 915;
+// L-systems (mirror of gnome.js) -> per-loop fill levels 0..3
+const FRACTAL_RULES = [
+  { axiom: 'A', rules: { A: 'AB', B: 'A' } },
+  { axiom: 'A', rules: { A: 'AB', B: 'BA' } },
+  { axiom: 'A', rules: { A: 'ABA', B: 'BBB' } },
+  { axiom: 'A', rules: { A: 'BAB', B: 'ABA' } },
+  { axiom: 'F', rules: { F: 'FF-[-F+F+F]+[+F-F-F]' }, bracket: true },
+];
+const FR_LEVMAX = 64;
+function fractalLevels(rule, depth) {
+  const R = FRACTAL_RULES[rule] || FRACTAL_RULES[0];
+  let s = R.axiom;
+  for (let i = 0; i < depth; i++) {
+    let o = '';
+    for (const c of s) o += (R.rules[c] !== undefined ? R.rules[c] : c);
+    s = o;
+    if (s.length > 6000) break;
+  }
+  const out = [];
+  if (R.bracket) {
+    let d = 0;
+    for (const c of s) {
+      if (c === '[') d++;
+      else if (c === ']') d = Math.max(0, d - 1);
+      else if (c === 'F') { out.push(Math.min(3, d)); if (out.length >= FR_LEVMAX) break; }
+    }
+  } else {
+    for (const c of s) { out.push(c === 'A' ? 0 : 1); if (out.length >= FR_LEVMAX) break; }
+  }
+  if (!out.length) out.push(0);
+  return out;
+}
 
 // ---- scale / progression tables (mirror of the JSFX; keep in sync) ----
 const SCL = [
@@ -146,6 +180,7 @@ function modRange(off) {
   if (within(PAN_AZ_A, 4)) return [-180, 180];
   if (off === PAN_BNC || off === XY_DRV) return [0, 100];
   if (off === XY_SKW) return [-50, 50];
+  if (off === FRC_AMT) return [0, 100];
   return null;
 }
 
@@ -215,6 +250,8 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
 
     // sounding pitch classes for the UI's pitch wheel (-1 = nothing yet)
     this.gsndB = -1; this.gsndM = -1; this.gsndC = F(4); this.gsndCn = 0;
+    // fractal-fill arrangement: cached L-system level array + its config
+    this.frLev = [0]; this.frRule = -1; this.frDepth = -1;
 
     // ---- engine state ----
     // plucked-string (Karplus-Strong) delay lines. Voice slots: bass=0,
@@ -352,6 +389,108 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
       return this.m[GKEY_SPD] * (h === 0 ? 2 : h === 2 ? 0.5 : 1);
     }
     return this.sget(si, 23);
+  }
+
+  // fire a drum lane's voice at sample offset `ofs` with velocity `vel`
+  // (0..127). Shared by the main scan and the fractal-fill overlay.
+  fireDrum(l, ofs, vel) {
+    const m = this.m, s = this.samples[l];
+    if (!s) return;
+    this.vDel[l] = ofs; this.vPos[l] = 0;
+    if (!s.synth && s.len) this.vPos[l] = Math.floor(m[DCRP_A + l] / 100 * s.len * 0.95);
+    this.vOn[l] = 1; this.vGain[l] = vel / 127; this.fenv[l] = 1;
+    if (s.synth) {
+      this.dEnv[l] = 1; this.dNzE[l] = 1; this.dPh[l] = 0; this.dSubPh[l] = 0;
+      const tau = 0.02 + m[GATE_A + l] / 200 * 0.6;
+      this.dDecC[l] = Math.exp(-1 / (tau * sampleRate));
+      this.dNzDecC[l] = Math.exp(-1 / (0.03 * sampleRate));
+      this.dF0[l] = 55 * Math.pow(2, m[PIT_A + l] / 12);
+      this.dNseA[l] = m[DNSE_A + l] / 100; this.dSwpA[l] = m[DSWP_A + l] / 100;
+      this.dSubA[l] = m[DSUB_A + l] / 100; this.dClkA[l] = m[DCLK_A + l] / 100;
+    }
+  }
+
+  // ---- fractal fills ----
+  // An L-system arrangement (FRC_RULE/DEPTH) yields a fill LEVEL per loop of
+  // each part. A level > 0 sprays a self-similar fill into the tail of that
+  // loop: the loop's own active steps, compressed and repeated (each repeat
+  // transposed up a scale step for pitched parts = the tree's branches), so
+  // the fill riffs on what's already there at a smaller time scale. FRC_AMT
+  // ("fractality") scales how much of the loop fills and how many branches.
+  emitFills(blkStart, blkEnd, spb, nframes) {
+    const m = this.m;
+    if (!m[FRC_ON]) return;
+    const rule = m[FRC_RULE] | 0, depth = Math.max(1, m[FRC_DEPTH] | 0);
+    if (rule !== this.frRule || depth !== this.frDepth) {
+      this.frLev = fractalLevels(rule, depth);
+      this.frRule = rule; this.frDepth = depth;
+    }
+    const lev = this.frLev, llen = lev.length;
+    const amt = m[FRC_AMT] / 100, pmask = m[FRC_PMASK] | 0;
+    if (amt <= 0.001) return;
+
+    // one shared helper: given a part's loop geometry + a callback that fires
+    // one hit at (beat, stepIndexInLoop, branchIndex), schedule the fill hits
+    const fillPart = (loopBeats, nst, active, fire) => {
+      if (loopBeats <= 0 || !active.length) return;
+      const k0 = Math.floor(blkStart / loopBeats), k1 = Math.floor(blkEnd / loopBeats);
+      for (let k = k0; k <= k1; k++) {
+        const L = lev[((k % llen) + llen) % llen];
+        const la = L * amt;                 // effective fractal weight 0..3
+        if (la <= 0.05) continue;
+        const fillFrac = Math.min(0.6, 0.14 + la * 0.14);   // tail that fills
+        const reps = 1 + Math.floor(la * 1.2);              // branch copies
+        const winStart = (k + 1 - fillFrac) * loopBeats, winLen = fillFrac * loopBeats;
+        for (let r = 0; r < reps; r++) {
+          const subStart = winStart + r / reps * winLen, subLen = winLen / reps;
+          for (let a = 0; a < active.length; a++) {
+            const p = active[a].p;          // 0..1 position of the step in the loop
+            const tb = subStart + p * subLen;
+            if (tb < blkStart || tb >= blkEnd) continue;
+            const ofs = Math.min(Math.max(0, Math.floor((tb - blkStart) * spb)), nframes - 1);
+            fire(ofs, active[a], r, subLen);
+          }
+        }
+      }
+    };
+
+    // drums: each enabled lane fills from its own active hits (a roll)
+    if (pmask & 1) {
+      for (let l = 0; l < this.numLanes; l++) {
+        if (m[MUTE_A + l] || !this.samples[l]) continue;
+        const steps = m[STEPS_A + l];
+        const stepdur = m[LMODE_A + l] ? m[SPAN_A + l] / 16 : m[SPAN_A + l] / steps;
+        const loopBeats = steps * stepdur, active = [];
+        for (let i = 0; i < steps; i++) if (m[PAT + l * MAX_STEPS + i]) active.push({ p: i / steps });
+        const vel = m[VEL_A + l];
+        fillPart(loopBeats, steps, active, (ofs, st, r) =>
+          this.fireDrum(l, ofs, Math.max(1, vel * (0.6 - r * 0.08))));
+      }
+    }
+    // pitched parts: replay the loop's degrees, each branch a scale step up
+    for (let si = 0; si < NSYN; si++) {
+      if (!(pmask & (2 << si)) || m[(si === 0 ? BASS_P : si === 1 ? MEL_P : CHD_P) + 11]) continue;
+      const sp = si === 0 ? BASS_P : si === 1 ? MEL_P : CHD_P;
+      const ron = this.ronOff(si), rdg = this.rdgOff(si);
+      const escale = this.effScale(si), ebase = this.effBase(si);
+      const nst = m[sp + 2];
+      const stepdur = (m[sp + 15] ? m[sp + 3] / 16 : m[sp + 3] / nst) * FEL_MULT[m[SFL_A + si]];
+      const loopBeats = nst * stepdur, active = [];
+      for (let i = 0; i < nst; i++) if (m[ron + i]) active.push({ p: i / nst, dg: m[rdg + i] });
+      const gain = m[sp + 6] / 127 * 0.3 * 0.85;   // fills a touch softer
+      fillPart(loopBeats, nst, active, (ofs, st, r, subLen) => {
+        const hold = Math.floor(subLen * spb * 0.5);
+        if (si < 2) {
+          const cents = degCents(st.dg + r, escale);
+          this.svNfreq[si] = Math.max(8, Math.min(12000,
+            440 * Math.pow(2, (ebase - 69) / 12 + cents / 1200)));
+          this.svNgain[si] = gain; this.svDel[si] = ofs + 1; this.svHold[si] = hold;
+        } else {
+          // chord fill = a fast restrike of the current voicing (a stutter)
+          this.svNgain[2] = gain; this.svDel[2] = ofs + 1; this.svHold[2] = hold;
+        }
+      });
+    }
   }
 
   // beat-synced LFO, phase-locked to beat 0. si = S&H state slot.
@@ -664,27 +803,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
               let hvel = m[VEL_A + l];
               if (m[VHM_A + l] > 0)
                 hvel = Math.max(1, Math.floor(hvel * (1 - Math.random() * m[VHM_A + l] / 100 * 0.7)));
-              if (this.samples[l]) {
-                this.vDel[l] = ofs;
-                this.vPos[l] = 0;
-                if (!this.samples[l].synth && this.samples[l].len)
-                  this.vPos[l] = Math.floor(m[DCRP_A + l] / 100 * this.samples[l].len * 0.95);
-                this.vOn[l] = 1;
-                this.vGain[l] = hvel / 127;
-                this.fenv[l] = 1;
-                if (this.samples[l].synth) {
-                  // synth drum: capture the hit's voice settings now
-                  this.dEnv[l] = 1; this.dNzE[l] = 1; this.dPh[l] = 0; this.dSubPh[l] = 0;
-                  const tau = 0.02 + m[GATE_A + l] / 200 * 0.6;   // GATE = decay
-                  this.dDecC[l] = Math.exp(-1 / (tau * srate));
-                  this.dNzDecC[l] = Math.exp(-1 / (0.03 * srate));
-                  this.dF0[l] = 55 * Math.pow(2, m[PIT_A + l] / 12);
-                  this.dNseA[l] = m[DNSE_A + l] / 100;
-                  this.dSwpA[l] = m[DSWP_A + l] / 100;
-                  this.dSubA[l] = m[DSUB_A + l] / 100;
-                  this.dClkA[l] = m[DCLK_A + l] / 100;
-                }
-              }
+              this.fireDrum(l, ofs, hvel);
             }
           }
           n += 1;
@@ -768,6 +887,9 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
           t = n * stepdur;
         }
       }
+
+      // fractal-fill overlay: L-system-arranged self-similar fills
+      this.emitFills(blkStart, blkEnd, spb, nframes);
 
       this.gBeat = blkEnd;
     }

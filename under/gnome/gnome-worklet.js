@@ -22,7 +22,7 @@ const PAT = 0, STEPS_A = 272, SPAN_A = 280, PUL_A = 288,
   GKEY_SPD = 719, LOCK_A = 720, HML_A = 724;
 
 // ---- web-only region (>= 728; extends the JSFX block, kept in gnome.js) ----
-const MEM = 928;
+const MEM = 976;
 // per-synth engine: 0 classic osc, 1 plucked string, 2 blown glass (3 slots)
 const ENG_A = 728;
 // FX rack (delay -> avocado glitch -> clouds) fed by the full mix + sends
@@ -60,6 +60,8 @@ const FRC_ON = 911, FRC_RULE = 912, FRC_DEPTH = 913, FRC_AMT = 914, FRC_PMASK = 
 // per-part fill density 0..7 (drum lanes, then bass/melody/chords) + bend
 const DFILL_A = 916, SFILL_A = 924, FRC_BEND = 927;
 const FR_DEPTH_FIXED = 5;
+// drone openness per synth, per-lane mixer volume, per-lane fx sends
+const DRONE_OPEN_A = 928, DVOL_A = 931, DSND_A = 939;
 // L-systems (mirror of gnome.js) -> per-loop fill levels 0..3
 const FRACTAL_RULES = [
   { axiom: 'A', rules: { A: 'AB', B: 'A' } },
@@ -184,6 +186,7 @@ function modRange(off) {
   if (off === PAN_BNC || off === XY_DRV) return [0, 100];
   if (off === XY_SKW) return [-50, 50];
   if (off === FRC_AMT || off === FRC_BEND) return [0, 100];
+  if (within(DRONE_OPEN_A, 3) || within(DVOL_A, 8) || within(DSND_A, 24)) return [0, 100];
   return null;
 }
 
@@ -255,6 +258,8 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     this.gsndB = -1; this.gsndM = -1; this.gsndC = F(4); this.gsndCn = 0;
     // fractal-fill arrangement: cached L-system level array + its config
     this.frLev = [0]; this.frRule = -1; this.frDepth = -1;
+    // drone engine: slow throat-wobble phase per synth
+    this.drVib = F(NSYN);
     // branch-click one-shot: force this fill level until the beat passes
     this.fillForce = -1; this.fillForceUntil = 0;
     // per-lane sample gate (GATE truncates sample playback) + age counters
@@ -360,6 +365,11 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
       // a tree branch was clicked: force that fill level for the next bars
       this.fillForce = Math.max(1, Math.min(3, d.level | 0));
       this.fillForceUntil = this.gBeat + 4;
+    } else if (d.type === 'flick') {
+      // a dome marble was thrown: impart angular velocity (deg per block)
+      const p = d.part | 0;
+      if (p >= 0 && p < 4)
+        this.azVel[p] += Math.max(-25, Math.min(25, d.vel || 0));
     }
   }
 
@@ -558,6 +568,25 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     this.ksBuf[base + pos] = (cur + bright * (nxt - cur)) * decay;
     this.ksPos[slot] = pos + 1 < len ? pos + 1 : 0;
     return cur;
+  }
+
+  // one sample of a throat-song drone: a steady fundamental plus an overtone
+  // that climbs the harmonic series with "mouth openness" (closed = low
+  // harmonics, open = high), like sygyt overtone singing. The emphasis is a
+  // narrow gaussian over harmonics 2..10, morphing smoothly between them, so
+  // an LFO on OPEN sweeps the singing formant. si indexes the vibrato slot.
+  droneVoice(si, ph, open) {
+    const TAU = 2 * Math.PI;
+    this.drVib[si] += 0.9 / sampleRate;
+    if (this.drVib[si] > 1) this.drVib[si] -= 1;
+    const hSel = 1.6 + open / 100 * 8.2 + Math.sin(TAU * this.drVib[si]) * 0.18;
+    let s = Math.sin(TAU * ph);                       // the root drone
+    for (let h = 2; h <= 10; h++) {
+      const d = h - hSel;
+      const a = 0.16 / Math.pow(h, 0.7) + 1.9 * Math.exp(-d * d / 0.42) * 0.34;
+      if (a > 0.004) s += a * Math.sin(TAU * ph * h);
+    }
+    return s * 0.42;
   }
 
   // one sample of a blown-glass voice: stretched partials + a slow shimmer on
@@ -785,9 +814,10 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
         const e = Math.min(1, this.pEnerPrev[p] / nframes * 3);
         this.azVel[p] = sane(this.azVel[p]) * (0.92 + bnc * 0.04) + (Math.random() * 2 - 1) * frc * e * 6;
       } else {
-        // still damped + decaying, so repulsion shoves stay visible
-        this.azVel[p] = sane(this.azVel[p]) * (0.9 + bnc * 0.06);
-        this.azOff[p] *= 0.995;
+        // light drag so a thrown marble coasts with real inertia — BNC eases
+        // it further — and only a whisper of homing back to the set azimuth
+        this.azVel[p] = sane(this.azVel[p]) * (0.985 + bnc * 0.013);
+        this.azOff[p] *= 0.9995;
       }
       this.azOff[p] = sane(this.azOff[p]) + this.azVel[p];
       if (this.azOff[p] > 180) this.azOff[p] -= 360;
@@ -1075,10 +1105,12 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
             this.fltBp2[c] += fl2 * hp;
             smix2 = this.fltLo2[c];
           }
-          const la = laneAud[c];
+          const la = laneAud[c] * m[DVOL_A + c] / 100;   // per-lane mixer knob
           pm[0] += (smix + smix2) * 0.5 * gD * la;
           const dc = (smix + smix2) * 0.5 * (sndPre ? PRE_G : gD) * la;
-          dIn += dc * mtx[0][0]; aIn += dc * mtx[0][1]; cIn += dc * mtx[0][2];
+          // per-lane fx sends (the old all-drums row fans out on migration)
+          const sb = DSND_A + c * 3;
+          dIn += dc * m[sb] / 100; aIn += dc * m[sb + 1] / 100; cIn += dc * m[sb + 2] / 100;
         }
       }
 
@@ -1140,6 +1172,8 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
             osc = this.glassVoice(si2, ph, this.glMix[si2], false, 0);
           } else if (eng === 3) {
             osc = this.spliceStep(si2, si2, this.svFreq[si2]);
+          } else if (eng === 4) {
+            osc = this.droneVoice(si2, ph, m[DRONE_OPEN_A + si2]);
           } else {
             this.svPhs[si2] += this.svFreq[si2] * 0.5 / srate;
             if (this.svPhs[si2] >= 1) this.svPhs[si2] -= 1;
@@ -1165,6 +1199,8 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
               csum += this.glassVoice(2, cph, this.glMix[2], true, vv);
             } else if (eng === 3) {
               csum += this.spliceStep(2, 2 + vv, this.ch4Freq[vv]);
+            } else if (eng === 4) {
+              csum += this.droneVoice(2, cph, m[DRONE_OPEN_A + 2]);
             } else {
               const osin = Math.sin(TAU * cph) + 0.15 * Math.sin(2 * TAU * cph);
               const otri = 1 - 4 * Math.abs(cph - 0.5);

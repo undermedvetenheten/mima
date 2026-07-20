@@ -32,7 +32,12 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
     drones; CUT drives the shared post low-pass like every engine), 2 blown
     glass (stretched partials + shimmer + breathy onset, with a per-synth
     harmonic-cycle rate `GLC_A` that sweeps the emphasised partial for
-    evolving drones).
+    evolving drones — the GCY cell sits beside the ENG button now), 4 **throat
+    drone** (`DRONE_OPEN_A`): a steady root plus an overtone that climbs the
+    harmonic series with the OPN "mouth openness" cell — closed = low
+    overtones, open = high, like sygyt overtone singing. OPN is an LFO target,
+    so a slow sine literally makes it sing; pair with the LATCH envelope for
+    endless drones.
   - a global **FX rack** (`FX_*`), dub delay → glitch → granulator (names
     are ours; the granular design is inspired by the open Mutable Instruments
     code but deliberately does not reuse Mutable module names), with a
@@ -43,7 +48,10 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
     whole mix into the head of the chain. The chain stays series, but sends
     inject at their stage (a part sent to CLOUDS only enters the granulator).
     Pre-routing (768-length) saves migrate their old single-bus sends onto the
-    delay column.
+    delay column. Drum sends are **per lane** (`DSND_A`): every drum lane has
+    its own DLY/GLI/GRN mini-knob row in the SENDS matrix (LFO-able), so the
+    snare can swim in delay while the kick stays dry; old all-drums sends fan
+    out to every lane on migration.
     - dub delay with `DLY_PITCH` (repeats climb/fall — a two-grain
       resampler in the feedback path) and `DLY_REV` (reversed echoes); wow
       drift applies only when neither is engaged.
@@ -225,6 +233,15 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
   splice crop/tune, every fx parameter, the send matrix, and the tempo
   wobble. A **tempo wobble** (`BPM_WOB/BPM_WRT`) breathes the master bpm
   against a slow sine, and LFO shapes include an invertible saw (`SW↑`).
+
+  **Header mixer extras**: the tempo-wobble AMT/period cells sit beside the
+  mixer knobs now, and each drum lane gets a **mini volume knob** (`DVOL_A`,
+  LFO-able) next to the part knobs. The 3D dome is drawn scope-style (sine-
+  driven rings, wobbling stroked marbles) and marbles carry **inertia**: drag
+  and release mid-swing to *throw* one — it coasts around the head with only
+  light drag (BNC eases it further) and a whisper of homing. The tree's bend
+  is gentler and every branch droops the way it already leans, so stem and
+  leaves bow together.
 
   **Recording**: the worklet streams its master output (post-FX, post-limiter)
   to the main thread as PCM chunks; gnome.js encodes a 16-bit stereo WAV on

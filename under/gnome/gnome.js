@@ -9,7 +9,7 @@
 
 // bump on every release: cache-busts the worklet module so a stale cached
 // DSP can never run against fresh UI code
-const APP_V = '17';
+const APP_V = '18';
 
 
 const LANES_CAP = 8, MAX_STEPS = 32, EUC_N = 21, NROWS = 12, NSCALES = 14,
@@ -26,7 +26,7 @@ const PAT = 0, NOTE_A = 256, CHAN_A = 264, STEPS_A = 272, SPAN_A = 280,
   GKEY_SCALE = 717, GKEY_PROG = 718, GKEY_SPD = 719, LOCK_A = 720, HML_A = 724;
 
 // ---- web-only region (>= 728; extends the JSFX block, kept in the worklet) ----
-const MEM = 928;
+const MEM = 976;
 const ENG_A = 728;            // per-synth engine: 0 osc, 1 string, 2 glass
 const GEN_STYLE = 731;        // RND generation style (index into STYLE_NAMES)
 const FX_ON = 736, DLY_ON = 737, DLY_TIME = 738, DLY_FB = 739, DLY_TONE = 740,
@@ -77,6 +77,12 @@ const FRC_ON = 911, FRC_RULE = 912, FRC_DEPTH = 913, FRC_AMT = 914, FRC_PMASK = 
 const DFILL_A = 916, SFILL_A = 924;
 // tree bend: curls the visual branches AND swings the fill timing
 const FRC_BEND = 927;
+// drone engine (ENG 4): per-synth mouth openness — the emphasized harmonic
+// climbs from closed (low overtones) to open (high), throat-singing style
+const DRONE_OPEN_A = 928;
+// per-drum-lane mixer volume (header mini knobs) + per-lane fx sends
+const DVOL_A = 931;            // 931..938
+const DSND_A = 939;            // 939..962: lane*3 + fx (dly/gli/grn)
 
 const m = new Float64Array(MEM);
 let numLanes = 3;
@@ -474,18 +480,21 @@ function buildFractalTree(rule, bend) {
     if (s.length > 5000) break;
   }
   const GOLD = 2.39996, ANG = R.bracket ? 0.40 : 0.34;
-  const curl = (bq / 100) * 0.16;   // per-sub-segment droop: bent trees weep
+  const curl = (bq / 100) * 0.08;   // per-sub-segment droop: bent trees weep
   const segs = [];
   let x = 0, y = 0, ang = 0, phi = 0, len = 1, dep = 0, twig = 0;
   const stack = [];
   let maxR = 0.01, minY = 0, maxY = 0;
   const to3 = (lx, ly, ph) => [lx * Math.cos(ph), ly, lx * Math.sin(ph)];
   // draw a branch as 3 sub-segments, each curling a little further — the
-  // same bend that swings the fills bows the wood
+  // same bend that swings the fills bows the wood. Every branch droops in
+  // the direction it already leans (the trunk stays upright-ish), so stem
+  // and leaves bow together instead of fighting.
   const forward = (l) => {
     let a2 = ang;
+    const dir = ang > 0.01 ? 1 : ang < -0.01 ? -1 : 1;
     for (let ss = 0; ss < 3; ss++) {
-      a2 += curl * (dep + 1) * (x >= 0 ? 1 : -1);
+      a2 += curl * (dep + 1) * dir;
       const nx = x + Math.sin(a2) * (l / 3), ny = y + Math.cos(a2) * (l / 3);
       segs.push({ a: to3(x, y, phi), b: to3(nx, ny, phi), d: dep });
       x = nx; y = ny;
@@ -556,6 +565,9 @@ function treeBranchAt(x, y, ysv) {
 }
 function sendFillNow(level) {
   if (node) node.port.postMessage({ type: 'fillNow', level });
+}
+function sendFlick(part, vel) {
+  if (node) node.port.postMessage({ type: 'flick', part, vel });
 }
 
 // scale degree nearest a target interval (cents) — for finding the fifth/third
@@ -792,6 +804,11 @@ function seedNewRegions(arr) {
   for (let l = 0; l < LANES_CAP; l++) a[DFILL_A + l] = 2;
   a[SFILL_A] = 2; a[SFILL_A + 1] = 2; a[SFILL_A + 2] = 1;
   a[FRC_BEND] = 25;
+  for (let si = 0; si < NSYN; si++) a[DRONE_OPEN_A + si] = 30;
+  for (let l = 0; l < LANES_CAP; l++) {
+    a[DVOL_A + l] = 90;
+    a[DSND_A + l * 3] = 0; a[DSND_A + l * 3 + 1] = 0; a[DSND_A + l * 3 + 2] = 0;
+  }
 }
 // bring a stored mem block (768 / 800 / 864) up to the current layout;
 // returns a MEM-length plain array, or null for an unknown length
@@ -819,10 +836,19 @@ function migrateMem(arr) {
     return o;
   };
   if (arr.length === MEM) return spinFix(Array.from(arr));
-  if (![768, 800, 864, 896].includes(arr.length)) return null;
+  if (![768, 800, 864, 896, 928].includes(arr.length)) return null;
   const out = Array.from(arr);
   while (out.length < MEM) out.push(0);
   spinFix(out);
+  if (arr.length <= 928) {
+    // drone / per-lane volume / per-lane sends region: defaults, and the old
+    // all-drums send row fans out to every lane so routing keeps sounding
+    for (let si = 0; si < NSYN; si++) out[DRONE_OPEN_A + si] = 30;
+    for (let l = 0; l < LANES_CAP; l++) {
+      out[DVOL_A + l] = 90;
+      for (let f = 0; f < 3; f++) out[DSND_A + l * 3 + f] = out[SND_MTX + f] || 0;
+    }
+  }
   if (arr.length === 768)   // pre-routing: old single-bus sends -> delay column
     for (let p = 0; p < 4; p++) out[SND_MTX + p * 3] = arr[SEND_A + p] || 0;
   if (arr.length < 864) seedNewRegions(out);   // splice + drum-voice defaults
@@ -978,6 +1004,7 @@ function modRange(off) {
   if (off === PAN_BNC || off === XY_DRV) return [0, 100];
   if (off === XY_SKW) return [-50, 50];
   if (off === FRC_AMT || off === FRC_BEND) return [0, 100];
+  if (within(DRONE_OPEN_A, 3) || within(DVOL_A, 8) || within(DSND_A, 24)) return [0, 100];
   return null;
 }
 // mask of LFOs assigned to an offset (bit 1 = L1, bit 2 = L2)
@@ -1046,6 +1073,15 @@ function modTargets() {
     { name: 'dome bounciness', off: PAN_BNC },
     { name: 'fractal fill amount', off: FRC_AMT },
     { name: 'fractal bend (fill swing)', off: FRC_BEND });
+  for (let si = 0; si < NSYN; si++)
+    if (m[ENG_A + si] === 4)
+      out.push({ name: `${SYN_NAMES[si]} drone openness`, off: DRONE_OPEN_A + si });
+  for (let l = 0; l < numLanes; l++) {
+    out.push({ name: `lane ${l + 1} volume`, off: DVOL_A + l });
+    for (let f = 0; f < 3; f++)
+      out.push({ name: `lane ${l + 1} → ${['dub delay', 'glitch', 'granulator'][f]} send`,
+        off: DSND_A + l * 3 + f });
+  }
   return out;
 }
 const modTargetName = off => {
@@ -1603,13 +1639,7 @@ function fxCells() {
   tog(x, y, 34, 'FX', FX_ON); x += 40;
   val(x, y, 44, 'FEED', FX_FEED, 0, 100, 5, 'pct'); x += 50;
   tog(x, y, 40, 'PRE', SND_PRE); x += 48;
-  lbl(x, y + 9, 'GLASS CYC'); x += 72;
-  val(x, y, 38, 'BAS', GLC_A, 0, 100, 5, 'pct'); x += 42;
-  val(x, y, 38, 'MEL', GLC_A + 1, 0, 100, 5, 'pct'); x += 42;
-  val(x, y, 38, 'CHD', GLC_A + 2, 0, 100, 5, 'pct'); x += 54;
-  lbl(x, y + 9, 'TEMPO WOBBLE'); x += 96;
-  val(x, y, 42, 'AMT', BPM_WOB, 0, 100, 5, 'pct'); x += 46;
-  val(x, y, 46, 'BEATS', BPM_WRT, 4, 256, 4, 'raw');
+  lbl(x + 8, y + 9, 'glass GCY + drone OPN sit beside each ENG · wobble is up by the mixer');
   y = fy + 60; x = 12;
   lbl(x, y + 9, 'DUB DLY'); x += 52;
   tog(x, y, 34, '', DLY_ON); x += 40;
@@ -1636,40 +1666,45 @@ function fxCells() {
   val(x, y, 44, 'SPRD', CLD_SPREAD, 0, 100, 5, 'pct'); x += 48;
   val(x, y, 44, 'TAIL', CLD_REVERB, 0, 100, 5, 'pct'); x += 48;
   val(x, y, 42, 'MIX', CLD_MIX, 0, 100, 5, 'pct');
-  // 3D SPACE (left of the dome): azimuth + audio force
-  y = fy + 140; x = 744;
-  val(x, y, 44, 'DR·AZ', PAN_AZ_A, -180, 180, 5, 'deg'); x += 48;
-  val(x, y, 40, 'FRC', PAN_FRC_A, 0, 100, 5, 'pct'); x += 46;
-  val(x, y, 44, 'BS·AZ', PAN_AZ_A + 1, -180, 180, 5, 'deg'); x += 48;
-  val(x, y, 40, 'FRC', PAN_FRC_A + 1, 0, 100, 5, 'pct'); x += 46;
-  lbl(x + 4, y + 9, 'SPACE');
-  y = fy + 176; x = 744;
-  val(x, y, 44, 'ML·AZ', PAN_AZ_A + 2, -180, 180, 5, 'deg'); x += 48;
-  val(x, y, 40, 'FRC', PAN_FRC_A + 2, 0, 100, 5, 'pct'); x += 46;
-  val(x, y, 44, 'CH·AZ', PAN_AZ_A + 3, -180, 180, 5, 'deg'); x += 48;
-  val(x, y, 40, 'FRC', PAN_FRC_A + 3, 0, 100, 5, 'pct'); x += 46;
-  val(x, y, 42, 'BNC', PAN_BNC, 0, 100, 5, 'pct');
+  // 3D SPACE (bottom-left of the box): azimuth + audio force in one row
+  y = fy + 176; x = 12;
+  lbl(x, y + 9, 'SPACE'); x += 46;
+  val(x, y, 44, 'DR·AZ', PAN_AZ_A, -180, 180, 5, 'deg'); x += 46;
+  val(x, y, 36, 'FRC', PAN_FRC_A, 0, 100, 5, 'pct'); x += 40;
+  val(x, y, 44, 'BS·AZ', PAN_AZ_A + 1, -180, 180, 5, 'deg'); x += 46;
+  val(x, y, 36, 'FRC', PAN_FRC_A + 1, 0, 100, 5, 'pct'); x += 40;
+  val(x, y, 44, 'ML·AZ', PAN_AZ_A + 2, -180, 180, 5, 'deg'); x += 46;
+  val(x, y, 36, 'FRC', PAN_FRC_A + 2, 0, 100, 5, 'pct'); x += 40;
+  val(x, y, 44, 'CH·AZ', PAN_AZ_A + 3, -180, 180, 5, 'deg'); x += 46;
+  val(x, y, 36, 'FRC', PAN_FRC_A + 3, 0, 100, 5, 'pct'); x += 40;
+  val(x, y, 40, 'BNC', PAN_BNC, 0, 100, 5, 'pct');
 
   // mod LFOs: L1 / L2 rate + depth + shape; ARM chips drawn apart
-  y = fy + 214; x = 790;
+  y = fy + 214; x = 58;
   val(x, y, 46, 'RATE', MLFO_A, 0.25, 64, 0.25, 'beats'); x += 50;
   val(x, y, 42, 'DEP', MLFO_A + 1, 0, 100, 5, 'pct'); x += 46;
   val(x, y, 40, 'SHP', MLFO_A + 2, 0, 4, 1, 'shp'); x += 44;
-  lbl(x + 4, y + 9, 'drag ARM onto');
-  y = fy + 250; x = 790;
+  lbl(x + 4, y + 9, 'drag ARM onto a field (or tap to arm)');
+  y = fy + 250; x = 58;
   val(x, y, 46, 'RATE', MLFO_A + 3, 0.25, 64, 0.25, 'beats'); x += 50;
   val(x, y, 42, 'DEP', MLFO_A + 4, 0, 100, 5, 'pct'); x += 46;
   val(x, y, 40, 'SHP', MLFO_A + 5, 0, 4, 1, 'shp'); x += 44;
-  lbl(x + 4, y + 9, 'a field (or tap)');
+  lbl(x + 4, y + 9, 'corner ticks mark assigned fields');
   return c;
 }
 
-// SENDS matrix mini-knob centers (part 0..3 x fx 0..2), inside the FX band
-function sndKnobXY(part, fxi) {
-  return [800 + fxi * 42, fxY() + 36 + part * 26];
+// SENDS matrix mini-knob centers: one row per drum lane, then BS/ML/CH
+// (row index runs 0..numLanes+2), inside the FX band's right column
+function sndKnobXY(row, fxi) {
+  return [796 + fxi * 42, fxY() + 30 + row * 22];
+}
+// the mem offset behind a sends-matrix row/column
+function sndOff(row, fxi) {
+  return row < numLanes ? DSND_A + row * 3 + fxi
+    : SND_MTX + (row - numLanes + 1) * 3 + fxi;
 }
 // ARM button rects for the two mod LFOs (draw + hit share these)
-function armRect(n) { return [744, fxY() + (n === 1 ? 214 : 250), 40, 30]; }
+function armRect(n) { return [12, fxY() + (n === 1 ? 214 : 250), 40, 30]; }
 // 3D dome center x (right-aligned with the other visualizers)
 const DOME_CX = 1124;
 
@@ -1706,6 +1741,8 @@ let dragMode = 0, dragF = 0, dragLane = 0, dragSynth = 0, dragY = 0, dragV = 0,
   dragX = 0, dragV2 = 0, lastPX = 0, lastPY = 0;
 // mod-LFO assignment mode: 0 = off, 1/2 = tapping fields assigns that LFO
 let armLfo = 0;
+// dome marble throw: smoothed angular velocity while dragging (deg/ms)
+let flickAng = 0, flickT = 0, flickV = 0;
 
 // ---- Game of Life (melody band): HighLife B36/S23 on a torus. The melody
 // seeds cells as it plays; GROW lets the colony rewrite notes now and then.
@@ -1771,6 +1808,12 @@ function tryModAssign(off) {
 // which LFO-able mem offset sits under (x, y) — powers the ARM chip's
 // drag-and-drop assignment (mirrors the armed-tap hit zones)
 function findModTarget(x, y) {
+  if (y < 28) {   // header: tempo wobble + the per-lane mini mixer knobs
+    if (x >= 744 && x < 788) return BPM_WOB;
+    for (let l = 0; l < numLanes; l++)
+      if (x >= 840 + l * 19 && x < 858 + l * 19) return DVOL_A + l;
+    return null;
+  }
   const ml = Math.floor((y - laneTop) / rowh);
   if (y >= laneTop && ml >= 0 && ml < numLanes && x >= xFields && x < xFields + 17 * fieldw) {
     const uiF = Math.floor((x - xFields) / fieldw);
@@ -1796,11 +1839,15 @@ function findModTarget(x, y) {
         return f === 6 ? null : [SPL_ST_A, SPL_EN_A, SPL_TUNE_A][f - 3] + gsi;
       return spOff(gsi) + r2map(f);
     }
+    if (y >= ysv + rowh && y < ysv + 2 * rowh && x >= 516 && x < 560) {
+      if (m[ENG_A + gsi] === 2) return GLC_A + gsi;
+      if (m[ENG_A + gsi] === 4) return DRONE_OPEN_A + gsi;
+    }
   }
   if (y >= fxY() && y < fxY() + fxH) {
-    for (let p = 0; p < 4; p++) for (let f = 0; f < 3; f++) {
+    for (let p = 0; p < numLanes + 3; p++) for (let f = 0; f < 3; f++) {
       const [kx, ky] = sndKnobXY(p, f);
-      if ((x - kx) * (x - kx) + (y - ky) * (y - ky) <= 144) return SND_MTX + p * 3 + f;
+      if ((x - kx) * (x - kx) + (y - ky) * (y - ky) <= 121) return sndOff(p, f);
     }
     const cx = DOME_CX, cy = fxY() + 150;
     if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= 115 * 115) {
@@ -1862,6 +1909,21 @@ function onDown(x, y, right) {
       if (inRect(x, y, PRE_RS[i])) { recallPreset(PRESET_IDS[i]); return; }
     if (inRect(x, y, PEXP_R)) { downloadPreset('now'); setStatus('current groove saved as a .json file'); return; }
     if (inRect(x, y, PIMP_R)) { importCurrent(); return; }
+    // tempo wobble beside the mixer (drag amount / period)
+    if (x >= 744 && x < 788) {
+      if (armLfo) { tryModAssign(BPM_WOB); return; }
+      dragMode = 55; dragFx = BPM_WOB; dragY = y; dragV = m[BPM_WOB];
+      return;
+    }
+    if (x >= 792 && x < 836) { dragMode = 57; dragY = y; dragV = m[BPM_WRT]; return; }
+    // per-lane mini mixer knobs (LFO-able)
+    for (let l = 0; l < numLanes; l++) {
+      if (x >= 840 + l * 19 && x < 858 + l * 19) {
+        if (armLfo) { tryModAssign(DVOL_A + l); return; }
+        dragMode = 59; dragFx = DVOL_A + l; dragY = y; dragV = m[dragFx];
+        return;
+      }
+    }
     for (let i = 0; i < KNOBS.length; i++) {
       if (x >= knobX(i) && x < knobX(i) + 44) {
         dragMode = 20; dragKnob = i; dragY = y; dragV = vols[KNOBS[i].id];
@@ -1880,11 +1942,12 @@ function onDown(x, y, right) {
         return;
       }
     }
-    // SENDS matrix mini-knobs (vertical drag; armed tap assigns)
-    for (let p = 0; p < 4; p++) for (let f = 0; f < 3; f++) {
+    // SENDS matrix mini-knobs (vertical drag; armed tap assigns) —
+    // one row per drum lane, then the three pitched parts
+    for (let p = 0; p < numLanes + 3; p++) for (let f = 0; f < 3; f++) {
       const [kx, ky] = sndKnobXY(p, f);
-      if ((x - kx) * (x - kx) + (y - ky) * (y - ky) <= 144) {
-        const off = SND_MTX + p * 3 + f;
+      if ((x - kx) * (x - kx) + (y - ky) * (y - ky) <= 121) {
+        const off = sndOff(p, f);
         if (tryModAssign(off)) return;
         dragMode = 44; dragFx = off; dragY = y; dragV = m[off];
         return;
@@ -1905,6 +1968,8 @@ function onDown(x, y, right) {
         if (best >= 0 && bd <= 26 * 26) {
           if (tryModAssign(PAN_AZ_A + best)) return;
           dragMode = 51; dragLane = best;
+          flickAng = Math.atan2(x - cx, -(y - cy)) * 180 / Math.PI;
+          flickT = performance.now(); flickV = 0;
           return;
         }
       }
@@ -2149,12 +2214,20 @@ function onDown(x, y, right) {
         digSample('splice', gsi, 'wiki');   // each tap = a fresh find
       } else if (m[ENG_A + gsi] === 3 && x >= 560 && x < 600) {
         digSample('splice', gsi, 'ia');
+      } else if (m[ENG_A + gsi] === 2 && x >= 516 && x < 560) {
+        // glass harmonic-cycle cell lives with the instrument now
+        if (armLfo) { tryModAssign(GLC_A + gsi); return; }
+        dragMode = 55; dragFx = GLC_A + gsi; dragY = y; dragV = m[dragFx];
+      } else if (m[ENG_A + gsi] === 4 && x >= 516 && x < 560) {
+        // drone mouth openness (LFO it for the throat-song sweep)
+        if (armLfo) { tryModAssign(DRONE_OPEN_A + gsi); return; }
+        dragMode = 55; dragFx = DRONE_OPEN_A + gsi; dragY = y; dragV = m[dragFx];
       } else if (x >= xEuc && x < xEuc + 32) {
-        m[ENG_A + gsi] = (m[ENG_A + gsi] + 1) % 4;
+        m[ENG_A + gsi] = (m[ENG_A + gsi] + 1) % 5;
         if (m[ENG_A + gsi] === 3 && !splSmp[gsi])
-          setStatus(`${SYN_NAMES[gsi]} engine: SPLICE — ALT-tap ENG to load a sample (or dig one on the FX row)`);
+          setStatus(`${SYN_NAMES[gsi]} engine: SPLICE — ALT-tap ENG to load a sample (or dig one beside it)`);
         else
-          setStatus(`${SYN_NAMES[gsi]} engine: ${['classic oscillator', 'plucked string (RES=sustain, 100=infinite)', 'blown glass (GCY on the FX panel cycles harmonics)', 'splice — plays your sample; CRP crops, TRK follows the notes'][m[ENG_A + gsi]]}`);
+          setStatus(`${SYN_NAMES[gsi]} engine: ${['classic oscillator', 'plucked string (RES=sustain, 100=infinite)', 'blown glass — GCY beside ENG cycles the harmonics', 'splice — plays your sample; CRP crops, TRK follows the notes', 'throat drone — OPN beside ENG moves the overtone, LFO it to sing'][m[ENG_A + gsi]]}`);
         touchState();
       } else if (gsi === 2 && x >= xMode && x < xMode + 26) {
         sset(2, 24, sget(2, 24) ? 0 : 1);
@@ -2401,6 +2474,12 @@ function onMove(x, y) {
   } else if (dragMode === 56) {
     // per-part fill density D0..D7
     m[dragFx] = Math.max(0, Math.min(7, dragV + Math.floor(d / 2)));
+  } else if (dragMode === 57) {
+    // tempo-wobble period (beats)
+    m[BPM_WRT] = Math.max(4, Math.min(256, dragV + d * 4));
+  } else if (dragMode === 59) {
+    // per-lane mini mixer knob
+    m[dragFx] = Math.max(0, Math.min(100, dragV + Math.floor((dragY - y) / 2)));
   } else if (dragMode === 60 || dragMode === 61 || dragMode === 62) {
     // chip drags (GEN KEY / LFO arm / dig): just track the ghost
     return;
@@ -2415,10 +2494,16 @@ function onMove(x, y) {
     if (dragSynth < 0) { m[GKEY_NOTE] = nv; setStatus(`master key: ${noteName(nv)}`); }
     else { sset(dragSynth, 0, nv); setStatus(`${SYN_NAMES[dragSynth]} base: ${noteName(nv)}`); }
   } else if (dragMode === 51) {
-    // drag a dome ball: pointer angle around the head -> azimuth
+    // drag a dome ball: pointer angle around the head -> azimuth; track the
+    // angular speed so releasing mid-swing throws the marble
     const cx = DOME_CX, cy = fxY() + 150;
-    let deg = Math.atan2(x - cx, -(y - cy)) * 180 / Math.PI;
-    deg = Math.max(-180, Math.min(180, Math.round(deg / 5) * 5));
+    const raw = Math.atan2(x - cx, -(y - cy)) * 180 / Math.PI;
+    const now = performance.now();
+    let dd = raw - flickAng;
+    while (dd > 180) dd -= 360; while (dd < -180) dd += 360;
+    flickV = flickV * 0.7 + 0.3 * (dd / Math.max(1, now - flickT));
+    flickAng = raw; flickT = now;
+    const deg = Math.max(-180, Math.min(180, Math.round(raw / 5) * 5));
     m[PAN_AZ_A + dragLane] = deg;
   } else if (dragMode === 20) {
     vols[KNOBS[dragKnob].id] = Math.max(0, Math.min(100, dragV + Math.floor((dragY - y) / 2)));
@@ -2436,6 +2521,13 @@ function onMove(x, y) {
 function saveLater() { clearTimeout(saveTimer); saveTimer = setTimeout(saveState, 400); }
 
 function onUp() {
+  // dome marble release: a fast enough swing becomes a throw
+  if (dragMode === 51 && Math.abs(flickV) > 0.03
+      && performance.now() - flickT < 120) {
+    // deg/ms -> deg per 128-sample block (the worklet's physics tick)
+    sendFlick(dragLane, flickV * (128 / 44.1));
+    setStatus('thrown — FRC keeps it lively, BNC keeps it bouncing');
+  }
   // chip drops (drag-and-drop): GEN KEY -> part, ARM -> field, dig -> lane
   if (dragMode === 60) {
     dragMode = 0;
@@ -2638,6 +2730,29 @@ function draw() {
   set(0.24, 0.28, 0.34); rect(...PIMP_R);
   set(0.8, 0.85, 0.9); textC('⇧', PIMP_R[0], PIMP_R[0] + PIMP_R[2], 8, '14px Arial');
 
+  // tempo wobble beside the mixer (AMT drag / period drag)
+  m[BPM_WOB] > 0 ? set(0.3, 0.27, 0.34) : set(0.22, 0.22, 0.26);
+  rect(744, 4, 44, 22);
+  set(0.85, 0.8, 0.95); textC('W ' + Math.round(m[BPM_WOB]) + '%', 744, 788, 8, F10);
+  modTick(BPM_WOB, 744, 44, 4);
+  set(0.22, 0.22, 0.26); rect(792, 4, 44, 22);
+  set(0.75, 0.78, 0.85); textC(fmtG(m[BPM_WRT]) + 'b', 792, 836, 8, F10);
+  set(0.45, 0.45, 0.5); text('WOBBLE', 746, 27, '8px Arial');
+  // per-lane mini mixer knobs
+  for (let l = 0; l < numLanes; l++) {
+    const kx = 840 + l * 19 + 9, v = m[DVOL_A + l] / 100;
+    set(0.2, 0.21, 0.24); circle(kx, 13, 8, true);
+    ctx.strokeStyle = 'rgb(230,170,90)'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(kx, 13, 7, 0.75 * Math.PI, 0.75 * Math.PI + 1.5 * Math.PI * v);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+    const mk = modMaskFor(DVOL_A + l);
+    if (mk & 1) { set(0.95, 0.72, 0.25); rect(kx + 5, 2, 4, 4); }
+    if (mk & 2) { set(0.3, 0.85, 0.85); rect(kx + 5, 7, 4, 4); }
+    set(0.5, 0.52, 0.55);
+    textC(String(l + 1), kx - 9, kx + 9, 22, '8px Arial');
+  }
   for (let i = 0; i < KNOBS.length; i++) {
     const kx = knobX(i) + 22, ky = 13, v = vols[KNOBS[i].id] / 100;
     set(0.22, 0.22, 0.25); circle(kx, ky, 10, true);
@@ -2830,16 +2945,29 @@ function draw() {
     // green dot = a splice sample is loaded, ALT-tap loads one
     const eng = m[ENG_A + gsi];
     eng === 1 ? set(0.28, 0.4, 0.5) : eng === 2 ? set(0.46, 0.4, 0.28)
-      : eng === 3 ? set(0.36, 0.28, 0.44) : set(0.28, 0.3, 0.34);
+      : eng === 3 ? set(0.36, 0.28, 0.44) : eng === 4 ? set(0.3, 0.42, 0.4)
+      : set(0.28, 0.3, 0.34);
     rect(xEuc, ysv + rowh + 4, 32, 32);
     if (splSmp[gsi]) { set(0.4, 0.85, 0.45); rect(xEuc + 26, ysv + rowh + 6, 4, 4); }
     set(0.9, 0.92, 0.95);
-    textC(['OSC', 'STR', 'GLS', 'SPL'][eng], xEuc, xEuc + 32, ysv + rowh + 12, F12);
+    textC(['OSC', 'STR', 'GLS', 'SPL', 'DRN'][eng], xEuc, xEuc + 32, ysv + rowh + 12, F12);
     if (eng === 3) {   // crate digs: every tap swaps in a fresh find
       set(0.3, 0.26, 0.2); rect(516, ysv + rowh + 4, 40, 32);
       set(0.9, 0.8, 0.55); textC('WIKI', 516, 556, ysv + rowh + 12, F12);
       set(0.26, 0.22, 0.3); rect(560, ysv + rowh + 4, 40, 32);
       set(0.85, 0.75, 0.95); textC('78s', 560, 600, ysv + rowh + 12, F12);
+    }
+    if (eng === 2) {   // glass: harmonic-cycle rate beside the engine
+      set(0.4, 0.36, 0.26); rect(516, ysv + rowh + 4, 44, 32);
+      set(0.6, 0.55, 0.45); textC('GCY', 516, 560, ysv + rowh + 5, F10);
+      set(0.95, 0.9, 0.75); textC(Math.round(m[GLC_A + gsi]) + '%', 516, 560, ysv + rowh + 18, F13);
+      modTick(GLC_A + gsi, 516, 44, ysv + rowh + 4);
+    }
+    if (eng === 4) {   // drone: mouth openness (the singing overtone's seat)
+      set(0.24, 0.36, 0.34); rect(516, ysv + rowh + 4, 44, 32);
+      set(0.5, 0.62, 0.58); textC('OPN', 516, 560, ysv + rowh + 5, F10);
+      set(0.8, 0.95, 0.9); textC(Math.round(m[DRONE_OPEN_A + gsi]) + '%', 516, 560, ysv + rowh + 18, F13);
+      modTick(DRONE_OPEN_A + gsi, 516, 44, ysv + rowh + 4);
     }
 
     if (gsi === 2) {
@@ -3131,7 +3259,7 @@ function draw() {
   fxLit ? set(0.6, 0.85, 0.85) : set(0.5, 0.52, 0.56);
   text('FX RACK', 12, fy + 6, F12);
   set(0.4, 0.42, 0.46);
-  text('PRE = sends ignore the faders · FEED taps the whole mix · SENDS / SPACE / MOD mid · dome right', 78, fy + 7, F10);
+  text('PRE = sends ignore the faders · FEED taps the whole mix · per-lane SENDS right · SPACE + MOD below', 78, fy + 7, F10);
   for (const cell of fxCells()) {
     if (cell.t === 'lbl') {
       set(0.5, 0.52, 0.56); text(cell.text, cell.x, cell.y, F10);
@@ -3170,60 +3298,83 @@ function draw() {
     armLfo === 2 ? set(0.02, 0.14, 0.15) : set(0.7, 0.95, 0.95);
     textC(armLfo === 2 ? 'L2⦿' : 'L2', a2[0], a2[0] + a2[2], a2[1] + 8, F11);
 
-    // SENDS matrix: mini circular faders, part rows x fx columns
+    // SENDS matrix: mini circular faders — one row per drum lane, then the
+    // pitched parts (per-lane sends: every drum can take its own fx bath)
     set(0.5, 0.52, 0.56); text('SENDS', 744, fy + 6, F10);
-    const FXCOL = ['DLY', 'GLI', 'GRN'], PROW = ['DR', 'BS', 'ML', 'CH'];
+    const FXCOL = ['DLY', 'GLI', 'GRN'];
     for (let f = 0; f < 3; f++) {
       set(0.45, 0.46, 0.5);
-      textC(FXCOL[f], 800 + f * 42 - 16, 800 + f * 42 + 16, fy + 6, F10);
+      textC(FXCOL[f], 796 + f * 42 - 16, 796 + f * 42 + 16, fy + 6, F10);
     }
-    for (let p = 0; p < 4; p++) {
-      set(0.45, 0.46, 0.5); text(PROW[p], 754, fy + 30 + p * 26, F10);
+    for (let p = 0; p < numLanes + 3; p++) {
+      const rl = p < numLanes ? 'L' + (p + 1) : ['BS', 'ML', 'CH'][p - numLanes];
+      set(0.45, 0.46, 0.5); text(rl, 752, sndKnobXY(p, 0)[1] - 5, F10);
       for (let f = 0; f < 3; f++) {
         const [kx, ky] = sndKnobXY(p, f);
-        const off = SND_MTX + p * 3 + f, v = m[off] / 100;
+        const off = sndOff(p, f), v = m[off] / 100;
         v > 0 ? set(0.16, 0.34, 0.36) : set(0.2, 0.21, 0.24);
-        circle(kx, ky, 9, true);
-        set(0.32, 0.34, 0.38); circle(kx, ky, 9, false);
+        circle(kx, ky, 8, true);
+        set(0.32, 0.34, 0.38); circle(kx, ky, 8, false);
         if (v > 0) {
           ctx.strokeStyle = 'rgba(120,230,225,0.95)';
-          ctx.lineWidth = 2.4;
+          ctx.lineWidth = 2.2;
           ctx.beginPath();
-          ctx.arc(kx, ky, 9, Math.PI * 0.75, Math.PI * 0.75 + v * Math.PI * 1.5);
+          ctx.arc(kx, ky, 8, Math.PI * 0.75, Math.PI * 0.75 + v * Math.PI * 1.5);
           ctx.stroke();
         }
         const mk = modMaskFor(off);
-        if (mk & 1) { set(0.95, 0.72, 0.25); rect(kx + 7, ky - 12, 4, 4); }
-        if (mk & 2) { set(0.3, 0.85, 0.85); rect(kx + 7, ky - 6, 4, 4); }
+        if (mk & 1) { set(0.95, 0.72, 0.25); rect(kx + 6, ky - 11, 4, 4); }
+        if (mk & 2) { set(0.3, 0.85, 0.85); rect(kx + 6, ky - 5, 4, 4); }
       }
     }
-    set(0.45, 0.45, 0.5); text('drag ↕', 936, fy + 56, F10);
+    set(0.45, 0.45, 0.5); text('drag ↕', 930, fy + 40, F10);
 
-    // 3D dome: top-down head, one ball per part at its live azimuth. Balls
-    // pulse with energy, FRC physics shoves them, and they repel each other.
+    // 3D dome, scope-style: top-down head, one wobbling stroked marble per
+    // part at its live azimuth. Grab and THROW one — inertia carries it.
     const cx = DOME_CX, cy = fy + 150;
-    set(0.26, 0.28, 0.32); circle(cx, cy, 105, false);
-    set(0.2, 0.21, 0.24); circle(cx, cy, 78, false);
-    set(0.3, 0.32, 0.36);
+    const dnow = Date.now() * 0.002;
+    ctx.lineWidth = 1;
+    // outer + orbit rings as sine-driven circles (like the wheel)
+    for (const [RR, alpha] of [[105, 0.4], [78, 0.25]]) {
+      ctx.strokeStyle = `rgba(80,200,210,${alpha})`;
+      ctx.beginPath();
+      for (let i = 0; i <= 72; i++) {
+        const a = i / 72 * 2 * Math.PI;
+        const rr = RR + Math.sin(a * 5 + dnow) * 1.8;
+        const px = cx + Math.cos(a) * rr, py = cy + Math.sin(a) * rr;
+        i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+      }
+      ctx.stroke();
+    }
+    set(0.26, 0.28, 0.3);
     rect(cx - 105, cy, 210, 1); rect(cx, cy - 105, 1, 210);
     set(0.5, 0.52, 0.56);
     textC('FRONT', cx - 24, cx + 24, cy - 122, F10);
-    set(0.35, 0.37, 0.4); circle(cx, cy, 10, true);   // the head
-    const BCOL = [[1, 0.65, 0.3], [0.3, 0.85, 0.85], [0.35, 0.8, 0.45], [0.85, 0.55, 0.85]];
+    ctx.strokeStyle = 'rgba(120,200,205,0.6)';
+    ctx.beginPath(); ctx.arc(cx, cy, 9, 0, 2 * Math.PI); ctx.stroke();   // head
+    const BSTK = ['rgba(230,170,70,0.95)', 'rgba(80,215,215,0.95)',
+      'rgba(95,210,120,0.95)', 'rgba(215,140,215,0.95)'];
     const BLBL = ['DR', 'BS', 'ML', 'CH'];
     for (let p = 0; p < 4; p++) {
       const a = (azv[p] || 0) * Math.PI / 180;
       const bx = cx + Math.sin(a) * 78, by = cy - Math.cos(a) * 78;
       const br = 8 + (enerArr[p] || 0) * 10;
-      set(BCOL[p][0] * 0.4, BCOL[p][1] * 0.4, BCOL[p][2] * 0.4);
-      circle(bx, by, br + 3, true);
-      set(...BCOL[p]);
-      circle(bx, by, br, true);
-      set(0.05, 0.05, 0.08);
+      ctx.strokeStyle = BSTK[p];
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      for (let i = 0; i <= 22; i++) {
+        const wa = i / 22 * 2 * Math.PI;
+        const rr = br + Math.sin(wa * 3 + dnow * 2 + p * 1.7) * (1 + (enerArr[p] || 0) * 2);
+        const px = bx + Math.cos(wa) * rr, py = by + Math.sin(wa) * rr;
+        i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+      }
+      ctx.stroke();
+      ctx.lineWidth = 1;
+      set(0.75, 0.78, 0.8);
       textC(BLBL[p], bx - 12, bx + 12, by - 5, F10);
     }
     set(0.45, 0.45, 0.5);
-    text('drag a ball · FRC shoves it · BNC = bounce', DOME_CX - 105, fy + 268, F10);
+    text('drag a marble · THROW it · FRC shoves · BNC bounces', DOME_CX - 105, fy + 268, F10);
   }
 
   // floating ghost while a chip is being dragged (GEN / L1 / L2 / digs)
@@ -3245,7 +3396,7 @@ function draw() {
   if (haveStatus) { set(0.7, 0.85, 0.7); text(statusText, 8, yStat(), F11); }
   else {
     set(0.45, 0.45, 0.5);
-    text('drag fields · tap ENG to pick classic/string/glass · right-click notes for 2nd-cycle · sends / space / mod + the dome live right of the FX rack', 8, yStat(), F11);
+    text('drag fields · ENG cycles osc/string/glass/splice/drone · right-click notes for 2nd-cycle · per-lane sends + the dome live right of the FX rack', 8, yStat(), F11);
   }
 
   // wake overlay until the first gesture creates the AudioContext
@@ -3357,9 +3508,10 @@ window.gnome = {
     PAN_BNC, XY_DRV, XY_SKW, WHL_SPIN, SPIN_P,
     FRC_ON, FRC_RULE, FRC_DEPTH, FRC_AMT, FRC_PMASK,
     DFILL_A, SFILL_A, FRC_BEND,
+    DRONE_OPEN_A, DVOL_A, DSND_A,
   },
   tables: { SCALE_NAMES, PROG_NAMES, SHAPE_NAMES, SYN_NAMES, FEEL_NAMES, SCL, STYLE_NAMES, FRACTAL_NAMES },
-  fractalLevels, buildFractalTree, sendFillNow, treeBranchAt, findModTarget,
+  fractalLevels, buildFractalTree, sendFillNow, sendFlick, treeBranchAt, findModTarget,
   SAMPLE_DEFS,
   noteName, rollLabel, getParam, setParam, sget, sset, ronOff, rdgOff, effScale, effBase,
   buildScoreModel, setStatus,

@@ -34,6 +34,7 @@ window.createGnomeUI = function (G) {
         : (G.splSmp[0] || G.splSmp[1] || G.splSmp[2])
           ? 'splice: borrowing another part\'s sample — load one below to replace it'
           : 'splice: load a sample (below) and this part plays it')
+      : e === 4 ? 'throat drone: a steady root + an overtone that climbs with Openness — LFO it to sing (use LATCH to hold the drone)'
       : 'classic oscillator: sine → triangle → saw morph via Wave';
   };
 
@@ -343,11 +344,15 @@ window.createGnomeUI = function (G) {
         modeBar(),
         rollGrid(si)),
       group('instrument', 'the voice this part plays through',
-        seg('Engine', ['classic', 'string', 'glass', 'splice'],
+        seg('Engine', ['classic', 'string', 'glass', 'splice', 'drone'],
           () => m[C.ENG_A + si], i => { m[C.ENG_A + si] = i; rerender(); }, engHint()),
         ...(m[C.ENG_A + si] === 2
           ? [stepper('Harmonic cycle', 0, 100, 5, () => m[C.GLC_A + si], v => m[C.GLC_A + si] = v, fmtPct,
               'slowly sweeps which harmonic is loudest — 0 = static')]
+          : []),
+        ...(m[C.ENG_A + si] === 4
+          ? [stepper('Openness', 0, 100, 5, () => m[C.DRONE_OPEN_A + si], v => m[C.DRONE_OPEN_A + si] = v, fmtPct,
+              'closed mouth = low overtones, open = high — assign an LFO to make it sing')]
           : []),
         ...(m[C.ENG_A + si] === 3
           ? [h('div', 'pk-actions',
@@ -453,10 +458,18 @@ window.createGnomeUI = function (G) {
       ...asnRows, h('div', 'pk-row col', h('div', 'pk-rowlabel', 'Target'), sel), assignRow);
     // per-fx routing: send each part (0 drums,1 bass,2 melody,3 chords) into
     // this specific fx stage (fxi 0 delay, 1 glitch, 2 clouds).
-    const route = fxi => ['Drums', 'Bass', 'Melody', 'Chords'].map((nm, p) => {
-      const off = C.SND_MTX + p * 3 + fxi;
-      return stepper(nm + ' →', 0, 100, 5, () => m[off], v => m[off] = v, fmtPct);
-    });
+    const route = fxi => {
+      const rows = [];
+      for (let l = 0; l < G.numLanes; l++) {
+        const off = C.DSND_A + l * 3 + fxi;
+        rows.push(stepper('Lane ' + (l + 1) + ' →', 0, 100, 5, () => m[off], v => m[off] = v, fmtPct));
+      }
+      ['Bass', 'Melody', 'Chords'].forEach((nm, p) => {
+        const off = C.SND_MTX + (p + 1) * 3 + fxi;
+        rows.push(stepper(nm + ' →', 0, 100, 5, () => m[off], v => m[off] = v, fmtPct));
+      });
+      return rows;
+    };
     const fmtDeg = v => Math.round(v) + '°';
     const spaceRows = ['Drums', 'Bass', 'Melody', 'Chords'].map((nm, p) => [
       stepper(nm + ' azimuth', -180, 180, 5, () => m[C.PAN_AZ_A + p], v => m[C.PAN_AZ_A + p] = v, fmtDeg),
@@ -543,6 +556,9 @@ window.createGnomeUI = function (G) {
   function volumesSection() {
     return group('volumes', null,
       stepper('Drums', 0, 100, 5, () => G.vols.drum, v => G.setVol('drum', v)),
+      ...Array.from({ length: G.numLanes }, (_, l) =>
+        stepper('· lane ' + (l + 1), 0, 100, 5, () => m[C.DVOL_A + l],
+          v => m[C.DVOL_A + l] = v, fmtPct)),
       stepper('Bass', 0, 100, 5, () => G.vols.bass, v => G.setVol('bass', v)),
       stepper('Melody', 0, 100, 5, () => G.vols.mel, v => G.setVol('mel', v)),
       stepper('Chords', 0, 100, 5, () => G.vols.chd, v => G.setVol('chd', v)),

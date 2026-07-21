@@ -471,11 +471,18 @@ window.createGnomeUI = function (G) {
       return rows;
     };
     const fmtDeg = v => Math.round(v) + '°';
-    const spaceRows = ['Drums', 'Bass', 'Melody', 'Chords'].map((nm, p) => [
-      stepper(nm + ' azimuth', -180, 180, 5, () => m[C.PAN_AZ_A + p], v => m[C.PAN_AZ_A + p] = v, fmtDeg),
-      stepper(nm + ' force', 0, 100, 5, () => m[C.PAN_FRC_A + p], v => m[C.PAN_FRC_A + p] = v, fmtPct,
-        p === 0 ? 'the part’s own energy shoves it around the head' : null),
-    ]).flat();
+    const spaceRows = [];
+    for (let l = 0; l < G.numLanes; l++) {
+      spaceRows.push(
+        stepper('Lane ' + (l + 1) + ' azimuth', -180, 180, 5, () => m[C.DAZ_A + l], v => m[C.DAZ_A + l] = v, fmtDeg),
+        stepper('Lane ' + (l + 1) + ' force', 0, 100, 5, () => m[C.DFRC_A + l], v => m[C.DFRC_A + l] = v, fmtPct,
+          l === 0 ? 'each lane is its own marble; force 0 = other marbles can’t shove it' : null));
+    }
+    ['Bass', 'Melody', 'Chords'].forEach((nm, p) => {
+      spaceRows.push(
+        stepper(nm + ' azimuth', -180, 180, 5, () => m[C.PAN_AZ_A + 1 + p], v => m[C.PAN_AZ_A + 1 + p] = v, fmtDeg),
+        stepper(nm + ' force', 0, 100, 5, () => m[C.PAN_FRC_A + 1 + p], v => m[C.PAN_FRC_A + 1 + p] = v, fmtPct));
+    });
     const fmtDens = v => v ? 'D' + Math.round(v) : 'off';
     const fracParts = [];
     for (let l = 0; l < G.numLanes; l++)

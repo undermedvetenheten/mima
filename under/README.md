@@ -183,6 +183,16 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
   part) beside the SENDS mini-knob matrix and the SPACE / MOD cells. The
   header volume knobs stay where they were.
 
+  **Ghost-fill cells**: right-clicking a drum step now cycles hit → 2nd-cycle
+  → **ghost fill** (teal) → off; a ghost cell rolls two soft grace notes into a
+  half-velocity hit — snare ghosts on demand, no fractal machinery required.
+  Bigger L-system fills (level ≥ 2) also land a half-size run at the middle of
+  the loop, not just the tail. The FX rack stages run **in parallel**: each fx
+  hears only its own sends (delay also takes FEED) and returns wet-only, so
+  glitching a snare no longer glitches the mix and the granulator no longer
+  swallows the dub delay. Style + progression names use Earthsea island names
+  wherever they used to reference real-world music.
+
   **Fractal fills** (`FRC_*`, `DFILL_A`/`SFILL_A`): a classic **L-system**
   decides WHEN fills land; a per-part **density** decides HOW MUCH. Pick a
   ruleset — ALGAE (Lindenmayer's original A→AB, B→A), THUE (Thue–Morse,

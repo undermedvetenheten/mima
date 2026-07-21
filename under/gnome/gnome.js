@@ -9,10 +9,10 @@
 
 // bump on every release: cache-busts the worklet module so a stale cached
 // DSP can never run against fresh UI code
-const APP_V = '19';
+const APP_V = '20';
 
 
-const LANES_CAP = 8, MAX_STEPS = 32, EUC_N = 21, NROWS = 12, NSCALES = 14,
+const LANES_CAP = 8, MAX_STEPS = 32, EUC_N = 21, NROWS = 12, NSCALES = 15,
   NPROGS = 14, NSYN = 3;
 
 // ---- mem offsets (mirror of the JSFX block; keep in sync with the worklet) ----
@@ -85,6 +85,10 @@ const DVOL_A = 931;            // 931..938
 const DSND_A = 939;            // 939..962: lane*3 + fx (dly/gli/grn)
 // per-drum-lane 3D space: each lane is its own marble in the dome
 const DAZ_A = 976, DFRC_A = 984;   // 976..983 azimuth, 984..991 force
+// golden ratio: master phi-interval tuning, golden echo mode, PHI pad drift
+const PHI_TUNE = 995;              // 0/1: octave becomes a golden sixth
+const DLY_GLD = 996;               // 0 off / 1 echoes compress x0.618 / 2 expand
+const PHI_DRIFT_A = 997;           // 997..999 per-synth bloom drift (50 = still)
 
 const m = new Float64Array(MEM);
 let numLanes = 3;
@@ -105,16 +109,19 @@ const SCL = [
   [7, 0, 120, 270, 540, 670, 800, 1080],
   [5, 0, 240, 480, 720, 960],
   [7, 0, 200, 350, 500, 700, 900, 1050],
+  // Golden φ: the pitch sunflower — degrees at multiples of the golden
+  // angle (0.618 of an octave) wrapped and sorted, phyllotaxis-style
+  [7, 0, 108.2, 283.3, 566.6, 741.6, 849.8, 1024.9],
 ];
 const SCALE_NAMES = ['Major', 'Natural Minor', 'Dorian', 'Phrygian', 'Lydian',
   'Mixolydian', 'Pentatonic Major', 'Pentatonic Minor', 'Blues',
   'Harmonic Minor', 'Whole Tone', 'Pelog (approx)', 'Slendro (approx)',
-  'Rast (quarter-tone)'];
+  'Rast (quarter-tone)', 'Golden φ'];
 const PROG_NAMES = ['off', 'I - IV', 'I - IV - V - IV', 'Iffish I-vi-IV-V',
   'Havnor I-V-vi-IV', 'ii - V - I', 'Gont 12-bar', 'Selidor descent',
   'circle of fifths', 'minor 3rds (dim cycle)', 'Osskil (maj 3rd cycle)',
   'Ea V-I chain', 'harmonic series 3-5-7-11 (just)', 'overtone ladder (just)'];
-const SHAPE_NAMES = ['sine', 'triangle', 'saw down', 'random (S&H)', 'saw up'];
+const SHAPE_NAMES = ['sine', 'triangle', 'saw down', 'random (S&H)', 'saw up', 'spline drift', 'golden rise'];
 const SYN_NAMES = ['bass', 'melody', 'chords'];
 // RND generation styles. Each picks an idiomatic scale (-1 keeps the current
 // one) and steers the melodic contour; bass/chords stay root-anchored and go
@@ -817,6 +824,8 @@ function seedNewRegions(arr) {
     a[DSND_A + l * 3] = 0; a[DSND_A + l * 3 + 1] = 0; a[DSND_A + l * 3 + 2] = 0;
     a[DAZ_A + l] = 0; a[DFRC_A + l] = 0;
   }
+  a[PHI_TUNE] = 0; a[DLY_GLD] = 0;
+  for (let si = 0; si < NSYN; si++) a[PHI_DRIFT_A + si] = 58;
 }
 // bring a stored mem block (768 / 800 / 864) up to the current layout;
 // returns a MEM-length plain array, or null for an unknown length
@@ -828,6 +837,9 @@ function migrateMem(arr) {
     if (!o[SPIN_P] && !o[SPIN_P + 1] && !o[SPIN_P + 2]) o[SPIN_P + 2] = 1;
     // fractal region predates some saves: give it usable defaults (stays off)
     if (!o[FRC_DEPTH]) { o[FRC_DEPTH] = 4; o[FRC_AMT] = o[FRC_AMT] || 50; o[FRC_PMASK] = o[FRC_PMASK] || 3; }
+    // PHI drift predates some saves: 0 would mean full-down drift, seed still+
+    if (!o[PHI_DRIFT_A] && !o[PHI_DRIFT_A + 1] && !o[PHI_DRIFT_A + 2])
+      for (let si = 0; si < 3; si++) o[PHI_DRIFT_A + si] = 58;
     // densities predate some saves: derive from the legacy part bitmask so an
     // already-enabled fill setup keeps making sound (moderate defaults)
     let anyD = 0;
@@ -1022,6 +1034,7 @@ function modRange(off) {
   if (within(DRONE_OPEN_A, 3) || within(DVOL_A, 8) || within(DSND_A, 24)) return [0, 100];
   if (within(DAZ_A, 8)) return [-180, 180];
   if (within(DFRC_A, 8)) return [0, 100];
+  if (within(PHI_DRIFT_A, 3)) return [0, 100];
   return null;
 }
 // mask of LFOs assigned to an offset (bit 1 = L1, bit 2 = L2)
@@ -1090,9 +1103,12 @@ function modTargets() {
     { name: 'dome bounciness', off: PAN_BNC },
     { name: 'fractal fill amount', off: FRC_AMT },
     { name: 'fractal bend (fill swing)', off: FRC_BEND });
-  for (let si = 0; si < NSYN; si++)
+  for (let si = 0; si < NSYN; si++) {
     if (m[ENG_A + si] === 4)
       out.push({ name: `${SYN_NAMES[si]} drone openness`, off: DRONE_OPEN_A + si });
+    if (m[ENG_A + si] === 5)
+      out.push({ name: `${SYN_NAMES[si]} phi drift`, off: PHI_DRIFT_A + si });
+  }
   for (let l = 0; l < numLanes; l++) {
     out.push({ name: `lane ${l + 1} volume`, off: DVOL_A + l },
       { name: `lane ${l + 1} azimuth (3D)`, off: DAZ_A + l },
@@ -1643,7 +1659,7 @@ function fxFmt(kind, v) {
   return kind === 'pct' ? Math.round(v) + '%'
     : kind === 'st' ? (v > 0 ? '+' : '') + Math.round(v)
     : kind === 'beats' ? fmtG(v)
-    : kind === 'shp' ? ['SIN', 'TRI', 'SW\u2193', 'S&H', 'SW\u2191'][Math.round(v)] || 'SIN'
+    : kind === 'shp' ? ['SIN', 'TRI', 'SW\u2193', 'S&H', 'SW\u2191', 'SPL', 'GLD'][Math.round(v)] || 'SIN'
     : kind === 'deg' ? Math.round(v) + '\u00b0'
     : String(Math.round(v));
 }
@@ -1652,6 +1668,7 @@ function fxCells() {
   const val = (x, y, w, label, off, min, max, step, fmt) =>
     c.push({ t: 'val', x, y, w, label, off, min, max, step, fmt });
   const tog = (x, y, w, label, off) => c.push({ t: 'tog', x, y, w, label, off });
+  const tri = (x, y, w, off, labels) => c.push({ t: 'tri', x, y, w, off, labels });
   const lbl = (x, y, text) => c.push({ t: 'lbl', x, y, text });
   let x, y;
   y = fy + 24; x = 12;
@@ -1667,7 +1684,8 @@ function fxCells() {
   val(x, y, 40, 'PIT', DLY_PITCH, -24, 24, 1, 'st'); x += 44;
   tog(x, y, 42, 'REV', DLY_REV); x += 48;
   val(x, y, 42, 'TONE', DLY_TONE, 0, 100, 5, 'pct'); x += 46;
-  val(x, y, 42, 'WOW', DLY_WOW, 0, 100, 5, 'pct');
+  val(x, y, 42, 'WOW', DLY_WOW, 0, 100, 5, 'pct'); x += 46;
+  tri(x, y, 44, DLY_GLD, ['ECHO', 'φ↓', 'φ↑']);
   y = fy + 96; x = 12;
   lbl(x, y + 9, 'GLITCH'); x += 52;
   tog(x, y, 34, '', AVO_ON); x += 40;
@@ -1689,12 +1707,12 @@ function fxCells() {
   y = fy + 214; x = 58;
   val(x, y, 46, 'RATE', MLFO_A, 0.25, 64, 0.25, 'beats'); x += 50;
   val(x, y, 42, 'DEP', MLFO_A + 1, 0, 100, 5, 'pct'); x += 46;
-  val(x, y, 40, 'SHP', MLFO_A + 2, 0, 4, 1, 'shp'); x += 44;
+  val(x, y, 40, 'SHP', MLFO_A + 2, 0, 6, 1, 'shp'); x += 44;
   lbl(x + 4, y + 9, 'drag ARM onto a field (or tap to arm)');
   y = fy + 250; x = 58;
   val(x, y, 46, 'RATE', MLFO_A + 3, 0.25, 64, 0.25, 'beats'); x += 50;
   val(x, y, 42, 'DEP', MLFO_A + 4, 0, 100, 5, 'pct'); x += 46;
-  val(x, y, 40, 'SHP', MLFO_A + 5, 0, 4, 1, 'shp'); x += 44;
+  val(x, y, 40, 'SHP', MLFO_A + 5, 0, 6, 1, 'shp'); x += 44;
   lbl(x + 4, y + 9, 'corner ticks mark assigned fields');
   return c;
 }
@@ -1774,7 +1792,7 @@ const golGrid = new Uint8Array(GOL_W * GOL_H);
 const GOL_RATES = [0.25, 0.5, 1, 2, 4];   // generations per beat
 const GOL_RATE_LBL = ['¼×', '½×', '1×', '2×', '4×'];
 let golGrow = false, golGrowB = false, golGrowC = false,
-  golPaintV = 1, golLastBeat = -1, golLastStep = -1, golGen = 0, golRate = 2;
+  golPaintV = 1, golLastBeat = -1, golLastStep = -1, golGen = 0, golRate = 2, golPhiN = 0;
 function golStep() {
   const nx = new Uint8Array(GOL_W * GOL_H);
   for (let r = 0; r < GOL_H; r++) for (let c = 0; c < GOL_W; c++) {
@@ -1800,11 +1818,15 @@ function golStep() {
       for (let r = 0; r < GOL_H; r++) for (let c = 0; c < Math.min(steps, GOL_W); c++)
         if (golGrid[r * GOL_W + c]) alive.push([c, r]);
       if (!alive.length) continue;
-      const [c, r] = alive[Math.floor(Math.random() * alive.length)];
+      // golden-angle walk: successive picks land 0.618 of the way around the
+      // colony each time — sunflower coverage, no clumping (Fibonacci pick)
+      const idx = Math.floor(((golPhiN++ * 0.6180339887) % 1) * alive.length);
+      const [c, r] = alive[idx % alive.length];
       const deg = Math.max(0, Math.min(NROWS - 1, Math.floor((GOL_H - 1 - r) * NROWS / GOL_H)));
       const ron = ronOff(si), rdg = rdgOff(si);
-      if (m[ron + c] && m[rdg + c] === deg) m[ron + c] = 0;
-      else { m[ron + c] = 1; m[rdg + c] = deg; }
+      // phi bias: 61.8% place the note, 38.2% erase-if-present
+      if ((golPhiN * 0.6180339887) % 1 < 0.618) { m[ron + c] = 1; m[rdg + c] = deg; }
+      else if (m[ron + c]) m[ron + c] = 0;
       wrote = true;
     }
     if (wrote) touchState();
@@ -1872,6 +1894,7 @@ function findModTarget(x, y) {
     if (y >= ysv + rowh && y < ysv + 2 * rowh && x >= 516 && x < 560) {
       if (m[ENG_A + gsi] === 2) return GLC_A + gsi;
       if (m[ENG_A + gsi] === 4) return DRONE_OPEN_A + gsi;
+      if (m[ENG_A + gsi] === 5) return PHI_DRIFT_A + gsi;
     }
   }
   if (y >= fxY() && y < fxY() + fxH) {
@@ -2038,7 +2061,7 @@ function onDown(x, y, right) {
       if (cell.t === 'lbl') continue;
       if (x >= cell.x && x < cell.x + cell.w && y >= cell.y && y < cell.y + 30) {
         if (cell.t === 'val' && tryModAssign(cell.off)) return;
-        if (cell.t === 'tog') { dragMode = 31; dragFx = cell; dragY = y; }
+        if (cell.t === 'tog' || cell.t === 'tri') { dragMode = 31; dragFx = cell; dragY = y; }
         else { dragMode = 30; dragFx = cell; dragY = y; dragV = m[cell.off]; }
         return;
       }
@@ -2157,6 +2180,12 @@ function onDown(x, y, right) {
       if (x >= 882 && x < 924) {
         if (armLfo) { tryModAssign(FRC_BEND); return; }
         dragMode = 55; dragFx = FRC_BEND; dragY = y; dragV = m[FRC_BEND]; return;
+      }
+      if (x >= 928 && x < 966) {
+        m[PHI_TUNE] = m[PHI_TUNE] ? 0 : 1;
+        setStatus(m[PHI_TUNE] ? 'φ tuning ON — the octave becomes a golden sixth; every scale leans toward φ ratios'
+          : 'φ tuning off — standard octaves');
+        touchState(); return;
       }
     }
     // fill DENSITY cells: one per drum lane, then bass / melody / chords.
@@ -2292,12 +2321,16 @@ function onDown(x, y, right) {
         // drone mouth openness (LFO it for the throat-song sweep)
         if (armLfo) { tryModAssign(DRONE_OPEN_A + gsi); return; }
         dragMode = 55; dragFx = DRONE_OPEN_A + gsi; dragY = y; dragV = m[dragFx];
+      } else if (m[ENG_A + gsi] === 5 && x >= 516 && x < 560) {
+        // PHI pad drift (LFO it to make the golden cloud bloom faster/slower)
+        if (armLfo) { tryModAssign(PHI_DRIFT_A + gsi); return; }
+        dragMode = 55; dragFx = PHI_DRIFT_A + gsi; dragY = y; dragV = m[dragFx];
       } else if (x >= xEuc && x < xEuc + 32) {
-        m[ENG_A + gsi] = (m[ENG_A + gsi] + 1) % 5;
+        m[ENG_A + gsi] = (m[ENG_A + gsi] + 1) % 6;
         if (m[ENG_A + gsi] === 3 && !splSmp[gsi])
           setStatus(`${SYN_NAMES[gsi]} engine: SPLICE — ALT-tap ENG to load a sample (or dig one beside it)`);
         else
-          setStatus(`${SYN_NAMES[gsi]} engine: ${['classic oscillator', 'plucked string (RES=sustain, 100=infinite)', 'blown glass — GCY beside ENG cycles the harmonics', 'splice — plays your sample; CRP crops, TRK follows the notes', 'throat drone — OPN beside ENG moves the overtone, LFO it to sing'][m[ENG_A + gsi]]}`);
+          setStatus(`${SYN_NAMES[gsi]} engine: ${['classic oscillator', 'plucked string (RES=sustain, 100=infinite)', 'blown glass — GCY beside ENG cycles the harmonics', 'splice — plays your sample; CRP crops, TRK follows the notes', 'throat drone — OPN beside ENG moves the overtone, LFO it to sing', 'golden Shepard pad — DRF beside ENG blooms it endlessly (use LATCH)'][m[ENG_A + gsi]]}`);
         touchState();
       } else if (gsi === 2 && x >= xMode && x < xMode + 26) {
         sset(2, 24, sget(2, 24) ? 0 : 1);
@@ -2651,7 +2684,12 @@ function onUp() {
   if (dragMode && !dragMoved) {
     // taps on cycling fields (port of the JSFX release block)
     if (dragMode === 31) {
-      m[dragFx.off] = m[dragFx.off] ? 0 : 1;
+      if (dragFx.t === 'tri') {
+        m[dragFx.off] = ((m[dragFx.off] | 0) + 1) % dragFx.labels.length;
+        setStatus(dragFx.off === DLY_GLD
+          ? ['golden echo off', 'golden echo: repeats compress ×0.618 (500→309→191…)', 'golden echo: repeats expand ×φ'][m[dragFx.off]]
+          : '');
+      } else m[dragFx.off] = m[dragFx.off] ? 0 : 1;
     } else if (dragMode === 8) {
       rotatePat(dragLane, 1);
       const st = Math.max(1, m[STEPS_A + dragLane]);
@@ -2669,14 +2707,14 @@ function onUp() {
           : k === SMP_USR ? (userSmp[dragLane] ? ` (“${userSmp[dragLane].name}”)` : ' — ALT-tap SMP to load a file')
           : ''));
     } else if (dragMode === 1 && dragF === 13) {
-      m[LSHAPE_A + dragLane] = (m[LSHAPE_A + dragLane] + 1) % 5;
+      m[LSHAPE_A + dragLane] = (m[LSHAPE_A + dragLane] + 1) % 7;
       setStatus(`lane ${dragLane + 1} LFO shape: ${SHAPE_NAMES[m[LSHAPE_A + dragLane]]}`);
     } else if (dragMode === 5 && dragF === 1) {
       sset(dragSynth, 1, sget(dragSynth, 1) + 1);
       setStatus(`${SYN_NAMES[dragSynth]} scale: ${SCALE_NAMES[sget(dragSynth, 1)]}` +
         (m[LOCK_A + dragSynth] ? '  (locked to master key - unlock to use)' : ''));
     } else if (dragMode === 10 && dragF === 6) {
-      sset(dragSynth, 18, (sget(dragSynth, 18) + 1) % 5);
+      sset(dragSynth, 18, (sget(dragSynth, 18) + 1) % 7);
       setStatus(`${SYN_NAMES[dragSynth]} LFO shape: ${SHAPE_NAMES[sget(dragSynth, 18)]}`);
     } else if (dragMode === 10 && dragF === 7) {
       sset(dragSynth, 20, (sget(dragSynth, 20) + 1) % 3);
@@ -2873,7 +2911,7 @@ function draw() {
       else if (f === 7) v = m[GATE_A + gl] + '%';
       else if (f === 9) v = m[LPF_A + gl] >= 100 ? '---' : String(m[LPF_A + gl]);
       else if (f === 11) v = fmtG(m[LRATE_A + gl]);
-      else if (f === 13) v = ['SIN', 'TRI', 'SW↓', 'S&H', 'SW↑'][m[LSHAPE_A + gl]];
+      else if (f === 13) v = ['SIN', 'TRI', 'SW↓', 'S&H', 'SW↑', 'SPL', 'GLD'][m[LSHAPE_A + gl]];
       else v = String(getParam(gl, f));
       textC(v, fx, fx + fieldw - 4, ry + 18, F13);
       if (synF) modTick([DNSE_A, DSWP_A, DSUB_A, DCLK_A][gf - 10] + gl, fx, fieldw - 4, ry + 4);
@@ -3005,7 +3043,7 @@ function draw() {
       else if (gf === 3) v = m[sp + 19] <= 0 ? 'SIN' : m[sp + 19] >= 100 ? 'SAW' :
         m[sp + 19] === 50 ? 'TRI' : String(m[sp + 19]);
       else if (gf === 4) v = fmtG(m[sp + 16]);
-      else if (gf === 6) v = ['SIN', 'TRI', 'SW↓', 'S&H', 'SW↑'][m[sp + 18]];
+      else if (gf === 6) v = ['SIN', 'TRI', 'SW↓', 'S&H', 'SW↑', 'SPL', 'GLD'][m[sp + 18]];
       else if (gf === 7) v = ['AD', 'HLD', 'LAT'][m[sp + 20]];
       else if (gf === 11) v = ['STR', 'TRP', 'DOT'][m[SFL_A + gsi]];
       else if (gf === 12) v = m[sp + 22] > 0 ? 'P' + m[sp + 22] : 'off';
@@ -3021,11 +3059,11 @@ function draw() {
     const eng = m[ENG_A + gsi];
     eng === 1 ? set(0.28, 0.4, 0.5) : eng === 2 ? set(0.46, 0.4, 0.28)
       : eng === 3 ? set(0.36, 0.28, 0.44) : eng === 4 ? set(0.3, 0.42, 0.4)
-      : set(0.28, 0.3, 0.34);
+      : eng === 5 ? set(0.44, 0.38, 0.22) : set(0.28, 0.3, 0.34);
     rect(xEuc, ysv + rowh + 4, 32, 32);
     if (splSmp[gsi]) { set(0.4, 0.85, 0.45); rect(xEuc + 26, ysv + rowh + 6, 4, 4); }
     set(0.9, 0.92, 0.95);
-    textC(['OSC', 'STR', 'GLS', 'SPL', 'DRN'][eng], xEuc, xEuc + 32, ysv + rowh + 12, F12);
+    textC(['OSC', 'STR', 'GLS', 'SPL', 'DRN', 'PHI'][eng], xEuc, xEuc + 32, ysv + rowh + 12, F12);
     if (eng === 3) {   // crate digs: every tap swaps in a fresh find
       set(0.3, 0.26, 0.2); rect(516, ysv + rowh + 4, 40, 32);
       set(0.9, 0.8, 0.55); textC('WIKI', 516, 556, ysv + rowh + 12, F12);
@@ -3043,6 +3081,12 @@ function draw() {
       set(0.5, 0.62, 0.58); textC('OPN', 516, 560, ysv + rowh + 5, F10);
       set(0.8, 0.95, 0.9); textC(Math.round(m[DRONE_OPEN_A + gsi]) + '%', 516, 560, ysv + rowh + 18, F13);
       modTick(DRONE_OPEN_A + gsi, 516, 44, ysv + rowh + 4);
+    }
+    if (eng === 5) {   // PHI: bloom drift (50 = still, up climbs, down sinks)
+      set(0.4, 0.34, 0.2); rect(516, ysv + rowh + 4, 44, 32);
+      set(0.62, 0.56, 0.4); textC('DRF', 516, 560, ysv + rowh + 5, F10);
+      set(0.95, 0.88, 0.7); textC((m[PHI_DRIFT_A + gsi] - 50) + '', 516, 560, ysv + rowh + 18, F13);
+      modTick(PHI_DRIFT_A + gsi, 516, 44, ysv + rowh + 4);
     }
 
     if (gsi === 2) {
@@ -3108,8 +3152,11 @@ function draw() {
       set(0.24, 0.24, 0.3); rect(882, fry, 42, 18);
       set(0.85, 0.85, 0.9); textC('↝' + Math.round(m[FRC_BEND]), 882, 924, fry + 3, F10);
       modTick(FRC_BEND, 882, 42, fry);
+      m[PHI_TUNE] ? set(0.44, 0.38, 0.2) : set(0.24, 0.24, 0.28);
+      rect(928, fry, 38, 18);
+      set(0.95, 0.9, 0.72); textC('φ', 928, 966, fry + 2, F12);
       set(0.38, 0.4, 0.42);
-      text('on · L-system · amount · bend = swing', HK_X, ysv + 108, F9);
+      text('on · L-system · amount · bend · φ = golden tuning', HK_X, ysv + 108, F9);
       // per-part fill DENSITY cells: D0 off .. D7 radical flurry
       for (let i = 0; i < numLanes; i++) {
         const dv = m[DFILL_A + i] | 0;
@@ -3354,6 +3401,15 @@ function draw() {
       textC(cell.label || (on ? 'ON' : 'off'), cell.x, cell.x + cell.w, cell.y + 8, F11);
       continue;
     }
+    if (cell.t === 'tri') {
+      const v = m[cell.off] | 0;
+      v ? set(0.42, 0.36, 0.2) : set(0.26, 0.26, 0.3);
+      rect(cell.x, cell.y, cell.w, 30);
+      set(0.95, 0.9, 0.72);
+      textC(cell.labels[v], cell.x, cell.x + cell.w, cell.y + 8, F11);
+      modTick(cell.off, cell.x, cell.w, cell.y);
+      continue;
+    }
     // routing tint: a live send (matrix cell > 0) glows so you can see at a
     // glance which instruments feed which fx
     const isSend = cell.off >= SND_MTX && cell.off < SND_MTX + 12;
@@ -3511,7 +3567,7 @@ function draw() {
   if (haveStatus) { set(0.7, 0.85, 0.7); text(statusText, 8, yStat(), F11); }
   else {
     set(0.45, 0.45, 0.5);
-    text('drag fields · ENG cycles osc/string/glass/splice/drone · right-click notes for 2nd-cycle · per-lane sends + the dome live right of the FX rack', 8, yStat(), F11);
+    text('drag fields · ENG: osc/string/glass/splice/drone/phi · right-click a drum cell for 2nd-cycle → ghost fill · per-lane sends right of the FX rack', 8, yStat(), F11);
   }
 
   // wake overlay until the first gesture creates the AudioContext
@@ -3583,6 +3639,7 @@ window.gnome = {
   get scopeArr() { return scopeArr; }, get azv() { return azv; },
   get enerArr() { return enerArr; },
   get golGrid() { return golGrid; }, get golGrow() { return golGrow; },
+  setGrow(mel, bass, chd) { golGrow = !!mel; golGrowB = !!bass; golGrowC = !!chd; },
   get golRate() { return GOL_RATES[golRate]; },
   golStepOnce: golStep,
   initAudio, togglePlay,
@@ -3624,6 +3681,7 @@ window.gnome = {
     FRC_ON, FRC_RULE, FRC_DEPTH, FRC_AMT, FRC_PMASK,
     DFILL_A, SFILL_A, FRC_BEND,
     DRONE_OPEN_A, DVOL_A, DSND_A, DAZ_A, DFRC_A,
+    PHI_TUNE, DLY_GLD, PHI_DRIFT_A,
   },
   tables: { SCALE_NAMES, PROG_NAMES, SHAPE_NAMES, SYN_NAMES, FEEL_NAMES, SCL, STYLE_NAMES, FRACTAL_NAMES },
   fractalLevels, buildFractalTree, sendFillNow, sendFlick, treeBranchAt, findModTarget,

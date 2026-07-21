@@ -253,6 +253,30 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
   is gentler and every branch droops the way it already leans, so stem and
   leaves bow together.
 
+  **Golden ratio** — φ woven in as *behaviour*, not proportion:
+  - **Golden φ scale** (`SCL` last entry): seven degrees placed by the golden
+    angle around the octave (0, 108, 283, 567, 742, 850, 1025 cents) — a pitch
+    sunflower. Selectable like any scale.
+  - **φ tuning** (`PHI_TUNE`, the gold φ chip on the fractal row / "φ tuning"
+    in the pocket): scales every degree so the octave becomes a golden sixth
+    (833c) — intervals lean toward φ-ratios, "always almost familiar, never
+    settling." Note-name and wheel displays stay 1200-based (an approximation).
+  - **PHI engine** (ENG 6th, `PHI_DRIFT_A`): a Golden Shepard pad — six sines
+    stacked ×φ (not ×2) under a gaussian loudness window, with a slow drift
+    (the **DRF** cell beside ENG, LFO-able) that climbs endlessly and wraps
+    every φ-step (833c). Because the φ-ladder is self-similar under ×φ the wrap
+    is near-seamless: a loop that always seems to grow — the zoetrope idea as
+    timbre. LATCH holds it.
+  - **Golden echo** (`DLY_GLD`, the GLD cell on the dub-delay row): six delay
+    taps spaced by cumulative ×φ intervals, compressing (500→309→191…) or
+    expanding — ripples obeying a growth law instead of a metronome.
+  - **Two LFO shapes**: SPL (spline drift — cosine-slewed sample-and-hold, a
+    smooth wander) and GLD (golden rise — an exponential staircase whose treads
+    grow ×φ; on a filter it opens 200→324→524→848…).
+  - **Fibonacci GROW**: the Game-of-Life colony picks cells to write by a
+    golden-angle walk (each pick 0.618 around the colony — sunflower coverage,
+    no clumping) with a φ-bias (61.8% place / 38.2% erase).
+
   **Recording**: the worklet streams its master output (post-FX, post-limiter)
   to the main thread as PCM chunks; gnome.js encodes a 16-bit stereo WAV on
   stop and hands it off via the Web Share API (iOS "Save to Files") with a

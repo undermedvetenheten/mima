@@ -64,6 +64,9 @@ const FR_DEPTH_FIXED = 5;
 const DRONE_OPEN_A = 928, DVOL_A = 931, DSND_A = 939;
 // per-drum-lane 3D space (each lane is its own dome marble)
 const DAZ_A = 976, DFRC_A = 984;
+// golden ratio: phi-interval tuning, golden echo, PHI pad drift
+const PHI_TUNE = 995, DLY_GLD = 996, PHI_DRIFT_A = 997;
+const PHI = 1.6180339887, LOG2PHI = 0.6942419136;
 // L-systems (mirror of gnome.js) -> per-loop fill levels 0..3
 const FRACTAL_RULES = [
   { axiom: 'A', rules: { A: 'AB', B: 'A' } },
@@ -113,6 +116,9 @@ const SCL = [
   [7, 0, 120, 270, 540, 670, 800, 1080],
   [5, 0, 240, 480, 720, 960],
   [7, 0, 200, 350, 500, 700, 900, 1050],
+  // Golden φ: the pitch sunflower — degrees at multiples of the golden
+  // angle (0.618 of an octave) wrapped and sorted, phyllotaxis-style
+  [7, 0, 108.2, 283.3, 566.6, 741.6, 849.8, 1024.9],
 ];
 const PROG = [
   [1, 0],
@@ -191,6 +197,7 @@ function modRange(off) {
   if (within(DRONE_OPEN_A, 3) || within(DVOL_A, 8) || within(DSND_A, 24)) return [0, 100];
   if (within(DAZ_A, 8)) return [-180, 180];
   if (within(DFRC_A, 8)) return [0, 100];
+  if (within(PHI_DRIFT_A, 3)) return [0, 100];
   return null;
 }
 
@@ -249,7 +256,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     this.fltLo = F(LANES_CAP); this.fltBp = F(LANES_CAP);
     this.fltLo2 = F(LANES_CAP); this.fltBp2 = F(LANES_CAP);
     this.fltF = F(LANES_CAP); this.fenv = F(LANES_CAP);
-    this.shc = F(14); this.shv = F(14);
+    this.shc = F(14); this.shv = F(14); this.shn = F(14);
 
     this.svDel = F(NSYN); this.svNfreq = F(NSYN); this.svNgain = F(NSYN);
     this.svFreq = F(NSYN); this.svGain = F(NSYN); this.svStage = F(NSYN);
@@ -268,6 +275,8 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     this.frLev = [0]; this.frRule = -1; this.frDepth = -1;
     // drone engine: slow throat-wobble phase + slewed harmonic seat per synth
     this.drVib = F(NSYN); this.drHsel = F(NSYN).fill(4);
+    // PHI (golden Shepard) pad: 6 phase banks x 6 partials + per-synth drift
+    this.phiPh = F(36); this.phiRise = F(NSYN);
     // branch-click one-shot: force this fill level until the beat passes
     this.fillForce = -1; this.fillForceUntil = 0;
     // per-lane sample gate (GATE truncates sample playback) + age counters
@@ -545,6 +554,23 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
       if (cy !== this.shc[si]) { this.shc[si] = cy; this.shv[si] = Math.random() * 2 - 1; }
       return this.shv[si];
     }
+    if (shp === 5) {
+      // spline drift: S&H targets, cosine-slewed — smooth wandering, no steps
+      if (cy !== this.shc[si]) {
+        this.shc[si] = cy;
+        this.shv[si] = this.shn[si];
+        this.shn[si] = Math.random() * 2 - 1;
+      }
+      const t = (1 - Math.cos(Math.PI * fr)) * 0.5;
+      return this.shv[si] + (this.shn[si] - this.shv[si]) * t;
+    }
+    if (shp === 6) {
+      // golden rise: an exponential staircase whose treads grow by x phi —
+      // on a filter it opens 200, 324, 524, 848, 1372... then wraps
+      const k = Math.min(6, Math.floor(fr * 7));
+      const v = (Math.pow(PHI, k) - 1) / (Math.pow(PHI, 7) - 1);
+      return v * 2 - 1;
+    }
     if (shp === 0) return Math.sin(2 * Math.PI * fr);
     if (shp === 1) return 1 - 4 * Math.abs(fr - 0.5);
     if (shp === 4) return 2 * fr - 1;   // saw up (inverse of the default saw)
@@ -587,6 +613,26 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
   // harmonics, open = high), like sygyt overtone singing. The emphasis is a
   // narrow gaussian over harmonics 2..10, morphing smoothly between them, so
   // an LFO on OPEN sweeps the singing formant. si indexes the vibrato slot.
+  // Golden Shepard pad: partials stacked x phi (not x2), a gaussian loudness
+  // window in log-frequency, and a slow upward drift that wraps every phi-step
+  // (833c). Because a phi-ladder maps onto itself under x phi, the wrap is
+  // near-seamless: an endlessly unfolding harmonic cloud, not a clean loop.
+  // bank = phase-bank base (x6), rise = cents of accumulated drift.
+  phiVoice(bank, baseFreq, rise, nPart) {
+    const TAU = 2 * Math.PI, b = bank * 6;
+    const riseOct = Math.pow(2, rise / 1200), riseStep = rise / 833.09, c = 2.75;
+    let s = 0;
+    for (let k = 0; k < nPart; k++) {
+      const f = baseFreq * Math.pow(PHI, k - 2) * riseOct;
+      if (f < 8 || f > sampleRate * 0.45) continue;
+      this.phiPh[b + k] += f / sampleRate;
+      if (this.phiPh[b + k] >= 1) this.phiPh[b + k] -= 1;
+      const u = k + riseStep;                       // window position, log-phi
+      s += Math.exp(-(u - c) * (u - c) / 1.4) * Math.sin(TAU * this.phiPh[b + k]);
+    }
+    return s * 0.5;
+  }
+
   // wav (0..100) shapes the drone body like the classic osc: 0 = near-pure
   // fundamental + formant, 50 = tri-ish (1/h^2 partials), 100 = saw-ish (1/h)
   droneVoice(si, ph, open, wav) {
@@ -936,7 +982,8 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
               }
               if (si < 2) {
                 // ---- mono voice (bass / melody) ----
-                const cents = degCents(m[rdg + stepidx] + dsh + spd2, escale) + hcents;
+                let cents = degCents(m[rdg + stepidx] + dsh + spd2, escale) + hcents;
+                if (m[PHI_TUNE]) cents *= LOG2PHI;   // octave (1200c) -> golden sixth (833c)
                 const pc = ((ebase * 100 + cents) % 1200 + 1200) % 1200;
                 if (si === 0) this.gsndB = pc; else this.gsndM = pc;
                 this.svNfreq[si] = Math.max(8, Math.min(12000,
@@ -949,7 +996,8 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
                 // ---- chord (paraphonic): diatonic stack + voice leading ----
                 const nv = m[sp + 24] ? 4 : 3;
                 for (let v = 0; v < nv; v++) {
-                  const rcv = degCents(m[rdg + stepidx] + dsh + spd2 + v * 2, escale) + hcents;
+                  let rcv = degCents(m[rdg + stepidx] + dsh + spd2 + v * 2, escale) + hcents;
+                  if (m[PHI_TUNE]) rcv *= LOG2PHI;
                   let tc = rcv;
                   if (this.vlHave) {
                     // nearest-octave pull = inversion; anchor within an octave
@@ -1036,6 +1084,19 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     const dlyRate = Math.pow(2, m[DLY_PITCH] / 12);
     const dlyREff = m[DLY_REV] ? -dlyRate : dlyRate;
     const dlyPitching = m[DLY_PITCH] !== 0 || m[DLY_REV];
+    // golden echo tap positions (cumulative phi intervals) + gains
+    const gldMode = !dlyPitching && (m[DLY_GLD] | 0);
+    const gldTaps = [], gldGains = [];
+    if (gldMode) {
+      let acc = 0, iv = dlyTimeSamp;
+      const fbg = Math.max(0.25, m[DLY_FB] / 100);
+      for (let tp = 0; tp < 6; tp++) {
+        acc += iv;
+        gldTaps.push(Math.min(DMAX - 4, acc));
+        gldGains.push(Math.pow(fbg, tp * 0.5 + 0.5));
+        iv = gldMode === 1 ? iv / PHI : iv * PHI;   // compress or expand
+      }
+    }
     const PWIN = Math.min(6000, Math.max(512, Math.floor(dlyTimeSamp * 0.5)));
     // clouds granular reverb coefficients
     const cldOn = m[CLD_ON] ? 1 : 0;
@@ -1212,6 +1273,11 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
             osc = this.spliceStep(si2, si2, this.svFreq[si2]);
           } else if (eng === 4) {
             osc = this.droneVoice(si2, ph, m[DRONE_OPEN_A + si2], wv);
+          } else if (eng === 5) {
+            this.phiRise[si2] += (m[PHI_DRIFT_A + si2] - 50) / 2 / srate;
+            if (this.phiRise[si2] >= 833.09) this.phiRise[si2] -= 833.09;
+            if (this.phiRise[si2] < 0) this.phiRise[si2] += 833.09;
+            osc = this.phiVoice(si2, this.svFreq[si2], this.phiRise[si2], 6);
           } else {
             this.svPhs[si2] += this.svFreq[si2] * 0.5 / srate;
             if (this.svPhs[si2] >= 1) this.svPhs[si2] -= 1;
@@ -1239,6 +1305,13 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
               csum += this.spliceStep(2, 2 + vv, this.ch4Freq[vv]);
             } else if (eng === 4) {
               csum += this.droneVoice(2, cph, m[DRONE_OPEN_A + 2], wv);
+            } else if (eng === 5) {
+              if (vv === 0) {
+                this.phiRise[2] += (m[PHI_DRIFT_A + 2] - 50) / 2 / srate;
+                if (this.phiRise[2] >= 833.09) this.phiRise[2] -= 833.09;
+                if (this.phiRise[2] < 0) this.phiRise[2] += 833.09;
+              }
+              csum += this.phiVoice(2 + vv, this.ch4Freq[vv], this.phiRise[2], 4);
             } else {
               const osin = Math.sin(TAU * cph) + 0.15 * Math.sin(2 * TAU * cph);
               const otri = 1 - 4 * Math.abs(cph - 0.5);
@@ -1312,6 +1385,15 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
             const c1 = this.dlyW - dlyTimeSamp - ph1, c2 = this.dlyW - dlyTimeSamp - ph2;
             rL = this.frd(this.dlyL, c1, DMAX) * w1 + this.frd(this.dlyL, c2, DMAX) * w2;
             rR = this.frd(this.dlyR, c1, DMAX) * w1 + this.frd(this.dlyR, c2, DMAX) * w2;
+          } else if (gldMode) {
+            // golden echo: six taps whose spacing compresses (or expands) by
+            // x phi — ripples obeying a growth law instead of a metronome
+            rL = 0; rR = 0;
+            for (let tp = 0; tp < 6; tp++) {
+              const dpos = this.dlyW - gldTaps[tp];
+              rL += this.frd(this.dlyL, dpos, DMAX) * gldGains[tp];
+              rR += this.frd(this.dlyR, dpos, DMAX) * gldGains[tp];
+            }
           } else {
             this.dlyWow += wowInc;
             if (this.dlyWow > TAU) this.dlyWow -= TAU;
@@ -1322,8 +1404,8 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
           }
           this.dlyLoL += toneCoef * (rL - this.dlyLoL);
           this.dlyLoR += toneCoef * (rR - this.dlyLoR);
-          this.dlyL[this.dlyW] = dIn + this.dlyLoL * dlyFb;
-          this.dlyR[this.dlyW] = dIn + this.dlyLoR * dlyFb;
+          this.dlyL[this.dlyW] = dIn + this.dlyLoL * (gldMode ? dlyFb * 0.5 : dlyFb);
+          this.dlyR[this.dlyW] = dIn + this.dlyLoR * (gldMode ? dlyFb * 0.5 : dlyFb);
           this.dlyW = this.dlyW + 1 < DMAX ? this.dlyW + 1 : 0;
           fxoL += rL; fxoR += rR;
         }

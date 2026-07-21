@@ -35,6 +35,7 @@ window.createGnomeUI = function (G) {
           ? 'splice: borrowing another part\'s sample — load one below to replace it'
           : 'splice: load a sample (below) and this part plays it')
       : e === 4 ? 'throat drone: a steady root + an overtone that climbs with Openness — LFO it to sing (use LATCH to hold the drone)'
+      : e === 5 ? 'golden Shepard pad: voices stacked ×φ with an endless upward bloom (Drift) — a loop that always seems to grow (use LATCH)'
       : 'classic oscillator: sine → triangle → saw morph via Wave';
   };
 
@@ -315,7 +316,7 @@ window.createGnomeUI = function (G) {
       group('motion', 'a beat-synced LFO wobbles the filter (and pitch, if you let it)',
         stepper('LFO rate (beats)', 0.25, 16, 0.25, () => G.getParam(l, 11), v => G.setParam(l, 11, v), fmtQ),
         stepper('LFO → filter depth', 0, 100, 5, () => G.getParam(l, 12), v => G.setParam(l, 12, v)),
-        seg('LFO shape', ['sine', 'triangle', 'saw ↓', 'S&H', 'saw ↑'], () => m[C.LSHAPE_A + l], i => m[C.LSHAPE_A + l] = i),
+        seg('LFO shape', ['sine', 'triangle', 'saw ↓', 'S&H', 'saw ↑', 'spline', 'golden'], () => m[C.LSHAPE_A + l], i => m[C.LSHAPE_A + l] = i),
         stepper('LFO → pitch (semis)', 0, 24, 1, () => G.getParam(l, 14), v => G.setParam(l, 14, v))),
       group('groove', null,
         stepper('Swing', 0, 75, 5, () => G.getParam(l, 15), v => G.setParam(l, 15, v), fmtPct),
@@ -344,7 +345,7 @@ window.createGnomeUI = function (G) {
         modeBar(),
         rollGrid(si)),
       group('instrument', 'the voice this part plays through',
-        seg('Engine', ['classic', 'string', 'glass', 'splice', 'drone'],
+        seg('Engine', ['classic', 'string', 'glass', 'splice', 'drone', 'phi'],
           () => m[C.ENG_A + si], i => { m[C.ENG_A + si] = i; rerender(); }, engHint()),
         ...(m[C.ENG_A + si] === 2
           ? [stepper('Harmonic cycle', 0, 100, 5, () => m[C.GLC_A + si], v => m[C.GLC_A + si] = v, fmtPct,
@@ -353,6 +354,10 @@ window.createGnomeUI = function (G) {
         ...(m[C.ENG_A + si] === 4
           ? [stepper('Openness', 0, 100, 5, () => m[C.DRONE_OPEN_A + si], v => m[C.DRONE_OPEN_A + si] = v, fmtPct,
               'closed mouth = low overtones, open = high — assign an LFO to make it sing')]
+          : []),
+        ...(m[C.ENG_A + si] === 5
+          ? [stepper('Drift', 0, 100, 5, () => m[C.PHI_DRIFT_A + si], v => m[C.PHI_DRIFT_A + si] = v, fmtPct,
+              '50 = still · above = the cloud blooms upward · below = downward · LFO it')]
           : []),
         ...(m[C.ENG_A + si] === 3
           ? [h('div', 'pk-actions',
@@ -418,7 +423,7 @@ window.createGnomeUI = function (G) {
       group('motion', null,
         stepper('LFO rate (beats)', 0.25, 16, 0.25, () => G.sget(si, 16), v => G.sset(si, 16, v), fmtQ),
         stepper('LFO → filter depth', 0, 100, 5, () => G.sget(si, 17), v => G.sset(si, 17, v)),
-        seg('LFO shape', ['sine', 'triangle', 'saw ↓', 'S&H', 'saw ↑'], () => G.sget(si, 18), i => G.sset(si, 18, i))),
+        seg('LFO shape', ['sine', 'triangle', 'saw ↓', 'S&H', 'saw ↑', 'spline', 'golden'], () => G.sget(si, 18), i => G.sset(si, 18, i))),
       group('groove', null,
         stepper('Velocity', 1, 127, 1, () => G.sget(si, 6), v => G.sset(si, 6, v)),
         stepper('Gate length', 5, 200, 5, () => G.sget(si, 7), v => G.sset(si, 7, v), fmtPct),
@@ -436,7 +441,7 @@ window.createGnomeUI = function (G) {
       return group(`mod LFO ${n}`, null,
         stepper('Rate (beats)', 0.25, 64, 0.25, () => m[b], v => m[b] = v, fmtQ),
         stepper('Depth', 0, 100, 5, () => m[b + 1], v => m[b + 1] = v, fmtPct),
-        seg('Shape', ['sine', 'triangle', 'saw ↓', 'S&H', 'saw ↑'], () => m[b + 2], i => m[b + 2] = i));
+        seg('Shape', ['sine', 'triangle', 'saw ↓', 'S&H', 'saw ↑', 'spline', 'golden'], () => m[b + 2], i => m[b + 2] = i));
     });
     const asnRows = [];
     for (let k = 0; k < C.MOD_SLOTS; k++) {
@@ -522,6 +527,8 @@ window.createGnomeUI = function (G) {
         stepper('Tone', 0, 100, 5, () => m[C.DLY_TONE], v => m[C.DLY_TONE] = v, fmtPct),
         stepper('Float / wow', 0, 100, 5, () => m[C.DLY_WOW], v => m[C.DLY_WOW] = v, fmtPct,
           'slow pitch drift (only when Pitch/Reverse are off)'),
+        seg('Golden echo', ['off', 'φ↓ compress', 'φ↑ expand'], () => m[C.DLY_GLD], i => m[C.DLY_GLD] = i,
+          'repeats spaced by ×φ instead of evenly — ripples obeying a growth law'),
         ...route(0)),
       group('glitch', 'beat-synced stutter + crush for glitching out',
         seg('Glitch', ['off', 'on'], () => m[C.AVO_ON], i => m[C.AVO_ON] = i),
@@ -550,7 +557,9 @@ window.createGnomeUI = function (G) {
       selectRow('Scale', T.SCALE_NAMES, () => m[C.GKEY_SCALE], v => m[C.GKEY_SCALE] = v),
       selectRow('Progression', T.PROG_NAMES, () => m[C.GKEY_PROG], v => m[C.GKEY_PROG] = v),
       stepper('Progression speed', 0.25, 16, 0.25, () => m[C.GKEY_SPD], v => m[C.GKEY_SPD] = Math.max(0.25, v), fmtBeats),
-      selectRow('Generate style', T.STYLE_NAMES, () => m[C.GEN_STYLE], v => G.setStyle(v)));
+      selectRow('Generate style', T.STYLE_NAMES, () => m[C.GEN_STYLE], v => G.setStyle(v)),
+      seg('φ tuning', ['off', 'on'], () => m[C.PHI_TUNE], i => m[C.PHI_TUNE] = i,
+        'the octave becomes a golden sixth — every scale leans toward golden-ratio intervals'));
   }
 
   function locksSection() {

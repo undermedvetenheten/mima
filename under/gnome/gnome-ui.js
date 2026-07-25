@@ -35,7 +35,8 @@ window.createGnomeUI = function (G) {
           ? 'splice: borrowing another part\'s sample — load one below to replace it'
           : 'splice: load a sample (below) and this part plays it')
       : e === 4 ? 'throat drone: a steady root + an overtone that climbs with Openness — LFO it to sing (use LATCH to hold the drone)'
-      : e === 5 ? 'golden Shepard pad: voices stacked ×φ with an endless upward bloom (Drift) — a loop that always seems to grow (use LATCH)'
+      : e === 5 ? 'bell / gong: inharmonic partials with φ-spaced upper shimmer, each dying at its own rate. Low notes toll like a church bell, high ones clang like a kettle drum'
+      : e === 6 ? 'piano strings: hammered strings that ring long — Pedal sets the sustain and lets the chord\'s strings resonate into each other'
       : 'classic oscillator: sine → triangle → saw morph via Wave';
   };
 
@@ -345,7 +346,7 @@ window.createGnomeUI = function (G) {
         modeBar(),
         rollGrid(si)),
       group('instrument', 'the voice this part plays through',
-        seg('Engine', ['classic', 'string', 'glass', 'splice', 'drone', 'phi'],
+        seg('Engine', ['classic', 'string', 'glass', 'splice', 'drone', 'bell', 'piano'],
           () => m[C.ENG_A + si], i => { m[C.ENG_A + si] = i; rerender(); }, engHint()),
         ...(m[C.ENG_A + si] === 2
           ? [stepper('Harmonic cycle', 0, 100, 5, () => m[C.GLC_A + si], v => m[C.GLC_A + si] = v, fmtPct,
@@ -356,8 +357,12 @@ window.createGnomeUI = function (G) {
               'closed mouth = low overtones, open = high — assign an LFO to make it sing')]
           : []),
         ...(m[C.ENG_A + si] === 5
-          ? [stepper('Drift', 0, 100, 5, () => m[C.PHI_DRIFT_A + si], v => m[C.PHI_DRIFT_A + si] = v, fmtPct,
-              '50 = still · above = the cloud blooms upward · below = downward · LFO it')]
+          ? [stepper('Mallet hardness', 0, 100, 5, () => m[C.BELL_STK_A + si], v => m[C.BELL_STK_A + si] = v, fmtPct,
+              'soft felt … hard striker — brightness + attack noise (Decay scales the ring)')]
+          : []),
+        ...(m[C.ENG_A + si] === 6
+          ? [stepper('Sustain pedal', 0, 100, 5, () => m[C.PNO_A + si], v => m[C.PNO_A + si] = v, fmtPct,
+              'pedal down: strings ring longer and bleed into each other')]
           : []),
         ...(m[C.ENG_A + si] === 3
           ? [h('div', 'pk-actions',
@@ -488,6 +493,19 @@ window.createGnomeUI = function (G) {
         stepper(nm + ' azimuth', -180, 180, 5, () => m[C.PAN_AZ_A + 1 + p], v => m[C.PAN_AZ_A + 1 + p] = v, fmtDeg),
         stepper(nm + ' force', 0, 100, 5, () => m[C.PAN_FRC_A + 1 + p], v => m[C.PAN_FRC_A + 1 + p] = v, fmtPct));
     });
+    // sends into the piano-string resonator: one row per lane, then the parts
+    const pnoRoute = () => {
+      const rows = [];
+      for (let l = 0; l < G.numLanes; l++) {
+        const off = C.PLSND_A + l;
+        rows.push(stepper('Lane ' + (l + 1) + ' →', 0, 100, 5, () => m[off], v => m[off] = v, fmtPct));
+      }
+      ['Bass', 'Melody', 'Chords'].forEach((nm, p) => {
+        const off = C.PSND_A + 1 + p;
+        rows.push(stepper(nm + ' →', 0, 100, 5, () => m[off], v => m[off] = v, fmtPct));
+      });
+      return rows;
+    };
     const fmtDens = v => v ? 'D' + Math.round(v) : 'off';
     const fracParts = [];
     for (let l = 0; l < G.numLanes; l++)
@@ -530,6 +548,19 @@ window.createGnomeUI = function (G) {
         seg('Golden echo', ['off', 'φ↓ compress', 'φ↑ expand'], () => m[C.DLY_GLD], i => m[C.DLY_GLD] = i,
           'repeats spaced by ×φ instead of evenly — ripples obeying a growth law'),
         ...route(0)),
+      group('piano strings', 'a rack of strings with the sustain pedal down, tuned to the key — send anything into it (PNO sends) and the sympathetic strings ring',
+        seg('Resonator', ['off', 'on'], () => m[C.PRES_ON], i => m[C.PRES_ON] = i),
+        stepper('Mix', 0, 100, 5, () => m[C.PRES_MIX], v => m[C.PRES_MIX] = v, fmtPct),
+        stepper('Pedal (decay)', 0, 100, 5, () => m[C.PRES_DEC], v => m[C.PRES_DEC] = v, fmtPct),
+        stepper('Tone', 0, 100, 5, () => m[C.PRES_TONE], v => m[C.PRES_TONE] = v, fmtPct,
+          'string damping — low is felted, high is bright and open'),
+        ...pnoRoute()),
+      group('cross-routing', 'let one instrument work on another — ring-modulate it, sidechain-duck it, or drive it into distortion',
+        ...['Bass', 'Melody', 'Chords'].map((nm, si) => [
+          seg(nm + ' source', T.XSRC_NAMES, () => m[C.XSRC_A + si], i => m[C.XSRC_A + si] = i),
+          stepper(nm + ' amount', 0, 100, 5, () => m[C.XAMT_A + si], v => m[C.XAMT_A + si] = v, fmtPct),
+          seg(nm + ' mode', T.XMODE_NAMES, () => m[C.XMODE_A + si], i => m[C.XMODE_A + si] = i),
+        ]).flat()),
       group('glitch', 'beat-synced stutter + crush for glitching out',
         seg('Glitch', ['off', 'on'], () => m[C.AVO_ON], i => m[C.AVO_ON] = i),
         stepper('Amount', 0, 100, 5, () => m[C.AVO_AMT], v => m[C.AVO_AMT] = v, fmtPct),

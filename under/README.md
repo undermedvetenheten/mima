@@ -261,12 +261,20 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
     in the pocket): scales every degree so the octave becomes a golden sixth
     (833c) — intervals lean toward φ-ratios, "always almost familiar, never
     settling." Note-name and wheel displays stay 1200-based (an approximation).
-  - **PHI engine** (ENG 6th, `PHI_DRIFT_A`): a Golden Shepard pad — six sines
-    stacked ×φ (not ×2) under a gaussian loudness window, with a slow drift
-    (the **DRF** cell beside ENG, LFO-able) that climbs endlessly and wraps
-    every φ-step (833c). Because the φ-ladder is self-similar under ×φ the wrap
-    is near-seamless: a loop that always seems to grow — the zoetrope idea as
-    timbre. LATCH holds it.
+  - **BELL engine** (ENG 6th, `BELL_STK_A`): a struck bell / gong. Partials
+    follow a church bell's inharmonic set (hum, prime, minor tierce, quint,
+    nominal) with three **φ-spaced upper partials** for the shimmer, and every
+    partial decays at its own rate — higher ones die first, which is the core
+    bell cue. The register decides the character automatically: low notes toll
+    for many seconds with a heavy hum (church bell, gong), high notes clang
+    short and noisy (kettle drum, hand bell). **STK** beside ENG is mallet
+    hardness (brightness + attack noise); DEC scales the ring; the partials
+    warble slightly against each other so it breathes like real metal.
+  - **PIANO engine** (ENG 7th, `PNO_A`): hammered strings that ring long.
+    **PED** beside ENG is the sustain pedal — it lengthens the ring and lets a
+    chord's strings bleed into each other (sympathetic resonance). The bleed is
+    AC-coupled and scaled by the loop's own losses, so the coupled bank blooms
+    without ever self-oscillating.
   - **Golden echo** (`DLY_GLD`, the GLD cell on the dub-delay row): six delay
     taps spaced by cumulative ×φ intervals, compressing (500→309→191…) or
     expanding — ripples obeying a growth law instead of a metronome.
@@ -276,6 +284,21 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
   - **Fibonacci GROW**: the Game-of-Life colony picks cells to write by a
     golden-angle walk (each pick 0.618 around the colony — sunflower coverage,
     no clumping) with a φ-bias (61.8% place / 38.2% erase).
+
+  **Piano-string resonator** (`PRES_*`, `PSND_A`/`PLSND_A`): a rack of strings
+  with the sustain pedal down, tuned to two octaves of the chords part's key.
+  It has its own **PNO column** in the SENDS matrix, so any drum lane or part
+  can be played *into* the piano — the sympathetic strings ring in the key, the
+  way playing into an open piano sounds. MIX / PED (decay) / TONE (string
+  damping) live on the PIANO STR row of the FX box. The input is DC-blocked
+  because near-unity combs integrate DC.
+
+  **Cross-routing** (`XSRC_A`/`XAMT_A`/`XMODE_A`): each pitched part can pick
+  another instrument as a modulator — **RING** (it amplitude-modulates this
+  part, offset so a silent source dims rather than erases), **DUCK** (classic
+  sidechain: drums duck the bass) or **DRV** (the source drives this part into
+  distortion). One row per part on the FX box's CROSS strip; sources read the
+  previous frame's bus, so any part can modulate any other.
 
   **Recording**: the worklet streams its master output (post-FX, post-limiter)
   to the main thread as PCM chunks; gnome.js encodes a 16-bit stereo WAV on

@@ -22,7 +22,7 @@ const PAT = 0, STEPS_A = 272, SPAN_A = 280, PUL_A = 288,
   GKEY_SPD = 719, LOCK_A = 720, HML_A = 724;
 
 // ---- web-only region (>= 728; extends the JSFX block, kept in gnome.js) ----
-const MEM = 1024;
+const MEM = 1072;
 // per-synth engine: 0 classic osc, 1 plucked string, 2 blown glass (3 slots)
 const ENG_A = 728;
 // FX rack (delay -> avocado glitch -> clouds) fed by the full mix + sends
@@ -65,7 +65,13 @@ const DRONE_OPEN_A = 928, DVOL_A = 931, DSND_A = 939;
 // per-drum-lane 3D space (each lane is its own dome marble)
 const DAZ_A = 976, DFRC_A = 984;
 // golden ratio: phi-interval tuning, golden echo, PHI pad drift
-const PHI_TUNE = 995, DLY_GLD = 996, PHI_DRIFT_A = 997;
+const PHI_TUNE = 995, DLY_GLD = 996, BELL_STK_A = 997;
+const PNO_A = 1000, PSND_A = 1003, PLSND_A = 1007;
+const PRES_ON = 1015, PRES_MIX = 1016, PRES_DEC = 1017, PRES_TONE = 1018;
+const XSRC_A = 1019, XAMT_A = 1022, XMODE_A = 1025;
+// church-bell partial set: hum, prime, minor tierce, quint, nominal, then
+// three phi-spaced upper partials (inharmonic shimmer, the golden character)
+const BELL_R = [0.5, 1.0, 1.19, 1.5, 2.0, 3.236, 5.236, 8.472];
 const PHI = 1.6180339887, LOG2PHI = 0.6942419136;
 // L-systems (mirror of gnome.js) -> per-loop fill levels 0..3
 const FRACTAL_RULES = [
@@ -197,7 +203,10 @@ function modRange(off) {
   if (within(DRONE_OPEN_A, 3) || within(DVOL_A, 8) || within(DSND_A, 24)) return [0, 100];
   if (within(DAZ_A, 8)) return [-180, 180];
   if (within(DFRC_A, 8)) return [0, 100];
-  if (within(PHI_DRIFT_A, 3)) return [0, 100];
+  if (within(BELL_STK_A, 3) || within(PNO_A, 3)) return [0, 100];
+  if (within(PSND_A, 4) || within(PLSND_A, 8)) return [0, 100];
+  if (off === PRES_MIX || off === PRES_DEC || off === PRES_TONE) return [0, 100];
+  if (within(XAMT_A, 3)) return [0, 100];
   return null;
 }
 
@@ -275,8 +284,21 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     this.frLev = [0]; this.frRule = -1; this.frDepth = -1;
     // drone engine: slow throat-wobble phase + slewed harmonic seat per synth
     this.drVib = F(NSYN); this.drHsel = F(NSYN).fill(4);
-    // PHI (golden Shepard) pad: 6 phase banks x 6 partials + per-synth drift
-    this.phiPh = F(36); this.phiRise = F(NSYN);
+    // BELL: 6 voice banks x 8 partials (phase, amp, per-partial decay coef)
+    // + a strike-noise env and a slow warble phase per bank
+    this.blPh = F(48); this.blAmp = F(48); this.blDec = F(48).fill(0.999);
+    this.blNz = F(6); this.blNzD = F(6).fill(0.999); this.blBeat = F(6);
+    this.blF = F(48);                       // per-partial frequency
+    // PIANO: previous frame's summed voice output per synth (pedal coupling)
+    this.pnoPrev = F(NSYN); this.pnoDc = F(NSYN); this.blDsc = F(NSYN).fill(1);
+    // piano-string RESONATOR bus: 12 tuned comb strings, own ring buffer
+    this.PR_N = 12; this.PR_MAX = 4096;
+    this.prBuf = new Float64Array(this.PR_N * this.PR_MAX);
+    this.prPos = new Int32Array(this.PR_N);
+    this.prLen = new Int32Array(this.PR_N).fill(512);
+    this.prLo = F(this.PR_N); this.prDc = 0;
+    // cross-routing: last frame's source values + envelope followers
+    this.xSrc = F(5); this.xEnv = F(5);
     // branch-click one-shot: force this fill level until the beat passes
     this.fillForce = -1; this.fillForceUntil = 0;
     // per-lane sample gate (GATE truncates sample playback) + age counters
@@ -598,12 +620,12 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
 
   // one sample of a Karplus-Strong string. bright: loop-filter blend
   // (0.5 = dark/heavy averaging, ~0.05 = bright). decay: loop sustain (<1).
-  ksStep(slot, decay, bright) {
+  ksStep(slot, decay, bright, inj) {
     if (!this.ksActive[slot]) return 0;
     const base = slot * this.KS_MAX, len = this.ksLen[slot], pos = this.ksPos[slot];
     const cur = this.ksBuf[base + pos];
     const nxt = this.ksBuf[base + (pos + 1 < len ? pos + 1 : 0)];
-    this.ksBuf[base + pos] = (cur + bright * (nxt - cur)) * decay;
+    this.ksBuf[base + pos] = (cur + bright * (nxt - cur)) * decay + (inj || 0);
     this.ksPos[slot] = pos + 1 < len ? pos + 1 : 0;
     return cur;
   }
@@ -618,19 +640,62 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
   // (833c). Because a phi-ladder maps onto itself under x phi, the wrap is
   // near-seamless: an endlessly unfolding harmonic cloud, not a clean loop.
   // bank = phase-bank base (x6), rise = cents of accumulated drift.
-  phiVoice(bank, baseFreq, rise, nPart) {
-    const TAU = 2 * Math.PI, b = bank * 6;
-    const riseOct = Math.pow(2, rise / 1200), riseStep = rise / 833.09, c = 2.75;
-    let s = 0;
-    for (let k = 0; k < nPart; k++) {
-      const f = baseFreq * Math.pow(PHI, k - 2) * riseOct;
-      if (f < 8 || f > sampleRate * 0.45) continue;
-      this.phiPh[b + k] += f / sampleRate;
-      if (this.phiPh[b + k] >= 1) this.phiPh[b + k] -= 1;
-      const u = k + riseStep;                       // window position, log-phi
-      s += Math.exp(-(u - c) * (u - c) / 1.4) * Math.sin(TAU * this.phiPh[b + k]);
+  // Strike a bell/gong. Register decides the character automatically: low
+  // notes ring for many seconds with a heavy hum + prime (church bell, gong),
+  // high notes decay fast and clangy with a noisy attack (kettle, hand bell).
+  // stk = mallet hardness (brightness + attack noise); dec = ring-length scale.
+  bellStrike(bank, f0, stk, decScale) {
+    const b = bank * 8, sr = sampleRate;
+    // 0 at ~55Hz (gong end), 1 at ~880Hz (kettle end)
+    const reg = Math.max(0, Math.min(1, Math.log2(Math.max(20, f0) / 55) / 4));
+    const bright = 0.2 + stk / 100 * 0.8;
+    const tau0 = (0.5 + (1 - reg) * 7.5) * decScale;      // seconds of ring
+    // the gaussian window rides up the partials with mallet hardness + register
+    const centre = 1.1 + bright * 2.8 + reg * 1.4, wide = 2.2 + (1 - reg) * 2.2;
+    let norm = 0;
+    for (let k = 0; k < 8; k++) {
+      const ratio = BELL_R[k], f = f0 * ratio;
+      const d = k - centre;
+      let amp = Math.exp(-d * d / wide);
+      // the bottom partials stay solid so low bells feel massive, not airy
+      if (k <= 1) amp = Math.max(amp, 1 - reg * 0.35);
+      if (k === 2) amp = Math.max(amp, (1 - reg) * 0.5);
+      if (f > sr * 0.45 || f < 15) amp = 0;
+      this.blF[b + k] = f;
+      this.blAmp[b + k] = amp;
+      // higher partials always die first — the core bell cue
+      const tau = Math.max(0.02, tau0 / Math.pow(ratio, 0.8));
+      this.blDec[b + k] = Math.exp(-1 / (tau * sr));
+      this.blPh[b + k] = k < 2 ? 0 : Math.random();
+      norm += amp;
     }
-    return s * 0.5;
+    if (norm > 0.001) for (let k = 0; k < 8; k++) this.blAmp[b + k] /= norm;
+    // the strike itself: a short noise chirp, brighter/louder on small bells
+    this.blNz[bank] = (0.25 + stk / 100 * 0.75) * (0.35 + reg * 0.9);
+    this.blNzD[bank] = Math.exp(-1 / ((0.004 + (1 - reg) * 0.03) * sr));
+  }
+
+  bellVoice(bank) {
+    const TAU = 2 * Math.PI, b = bank * 8, sr = sampleRate;
+    this.blBeat[bank] += 0.7 / sr;
+    if (this.blBeat[bank] > 1) this.blBeat[bank] -= 1;
+    const beat = TAU * this.blBeat[bank];
+    let s = 0;
+    for (let k = 0; k < 8; k++) {
+      const a = this.blAmp[b + k];
+      if (a < 1e-5) continue;
+      this.blPh[b + k] += this.blF[b + k] / sr;
+      if (this.blPh[b + k] >= 1) this.blPh[b + k] -= 1;
+      // every partial warbles at its own rate: real bells shimmer and beat
+      const warb = 1 + 0.14 * Math.sin(beat * (1 + k * 0.37) + k);
+      s += a * warb * Math.sin(TAU * this.blPh[b + k]);
+      this.blAmp[b + k] = a * this.blDec[b + k];
+    }
+    if (this.blNz[bank] > 1e-4) {
+      s += (Math.random() * 2 - 1) * this.blNz[bank] * 0.5;
+      this.blNz[bank] *= this.blNzD[bank];
+    }
+    return s * 2.2;
   }
 
   // wav (0..100) shapes the drone body like the classic osc: 0 = near-pure
@@ -800,12 +865,19 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     for (let si = 0; si < NSYN; si++) {
       const sp = (si === 0 ? BASS_P : si === 1 ? MEL_P : CHD_P);
       const eng = m[ENG_A + si];
-      if (eng === 1) {
-        // string: fast pluck attack; ring length tied to RES. Now goes through
-        // the CUT low-pass like the other engines (RES only sets sustain).
+      if (eng === 1 || eng === 6) {
+        // string / piano: fast hammer attack; ring length tied to RES. Both go
+        // through the CUT low-pass like every engine (RES only sets sustain).
         this.svAtk[si] = 1 / (0.002 * srate);
-        const ringSec = 0.25 + m[sp + 13] / 100 * 4.0;
+        // the piano's pedal is what really holds the note (up to ~9s)
+        const ringSec = 0.25 + m[sp + 13] / 100 * 4.0
+          + (eng === 6 ? m[PNO_A + si] / 100 * 5 : 0);
         this.svDcm[si] = Math.exp(-1 / (ringSec * srate));
+      } else if (eng === 5) {
+        // bell: the partials carry their own decay, so the shared envelope
+        // just opens fast and stays out of the way (DEC scales the ring)
+        this.svAtk[si] = 1 / (0.001 * srate);
+        this.svDcm[si] = Math.exp(-1 / (30 * srate));
       } else {
         this.svAtk[si] = 1 / (Math.max(m[sp + 8], 0.5) * 0.001 * srate);
         this.svDcm[si] = Math.exp(-1 / (Math.max(m[sp + 9], 5) * 0.001 * srate));
@@ -823,6 +895,15 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
       // so the loop filter stays a mild fixed damping.
       this.ksDecay[si] = m[sp + 13] >= 100 ? 1.0 : 0.965 + m[sp + 13] / 100 * 0.0349;
       this.ksBright[si] = 0.16;
+      if (eng === 6) {
+        // piano: stiffer, brighter strings that ring long — PNO is the
+        // sustain pedal (longer ring + more sympathetic bleed between voices)
+        const ped = m[PNO_A + si] / 100;
+        this.ksDecay[si] = Math.min(0.99985, 0.9993 + ped * 0.00055 + m[sp + 13] / 100 * 0.0002);
+        this.ksBright[si] = 0.34;
+      }
+      // bell ring-length scale from DEC (ms), so DEC still shapes the tail
+      this.blDsc[si] = Math.max(0.12, m[sp + 9] / 600);
       // glass: WAV -> upper-partial richness
       this.glMix[si] = 0.25 + m[sp + 19] / 100 * 0.75;
       // splice: crop window in sample frames + the fixed-pitch rate. TRK mode
@@ -1128,9 +1209,31 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
       this.cldL.fill(0); this.cldR.fill(0); this.cldFbL = 0; this.cldFbR = 0;
     }
     const fxActive = fxOn && (dlyOn || avoOn || cldOn);
+    // ---- piano-string resonator: a rack of tuned strings with the sustain
+    // pedal down. Anything sent into it makes the sympathetic strings ring.
+    // The strings follow the chords part's key, two octaves of the scale.
+    const presOn = m[PRES_ON] ? 1 : 0;
+    const presMix = m[PRES_MIX] / 100;
+    const presFb = Math.min(0.9995, 0.97 + m[PRES_DEC] / 100 * 0.0295);
+    const presTone = 0.06 + m[PRES_TONE] / 100 * 0.85;
+    if (presOn) {
+      const psc = this.effScale(2), pbase = this.effBase(2) - 12;
+      for (let i = 0; i < this.PR_N; i++) {
+        const deg = i % 7, oct = Math.floor(i / 7);
+        const cents = degCents(deg, psc) + oct * 1200;
+        const f = 440 * Math.pow(2, (pbase - 69) / 12 + cents / 1200);
+        const len = Math.round(srate / Math.max(20, f));
+        this.prLen[i] = Math.max(8, Math.min(this.PR_MAX - 1, len));
+        if (this.prPos[i] >= this.prLen[i]) this.prPos[i] = 0;
+      }
+    }
+    // cross-routing per synth (source, amount, mode) read once per block
+    const xSrcI = [m[XSRC_A] | 0, m[XSRC_A + 1] | 0, m[XSRC_A + 2] | 0];
+    const xAmtI = [m[XAMT_A] / 100, m[XAMT_A + 1] / 100, m[XAMT_A + 2] / 100];
+    const xModeI = [m[XMODE_A] | 0, m[XMODE_A + 1] | 0, m[XMODE_A + 2] | 0];
 
     for (let f = 0; f < nframes; f++) {
-      let spl0 = 0, spl1 = 0, dIn = 0, aIn = 0, cIn = 0;
+      let spl0 = 0, spl1 = 0, dIn = 0, aIn = 0, cIn = 0, pIn = 0;
       const pm = this.emTmp;
       pm.fill(0);
 
@@ -1210,6 +1313,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
           // per-lane fx sends (the old all-drums row fans out on migration)
           const sb = DSND_A + c * 3;
           dIn += dc * m[sb] / 100; aIn += dc * m[sb + 1] / 100; cIn += dc * m[sb + 2] / 100;
+          pIn += dc * m[PLSND_A + c] / 100;      // this lane -> piano strings
         }
       }
 
@@ -1223,17 +1327,21 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
               this.svTfreq[si2] = this.svNfreq[si2];
               if (this.svGcoef[si2] >= 1 || this.svEnv[si2] < 0.001)
                 this.svFreq[si2] = this.svNfreq[si2];
-              if (eng === 1) this.exciteString(si2, this.svNfreq[si2]);
+              if (eng === 1 || eng === 6) this.exciteString(si2, this.svNfreq[si2]);
               else if (eng === 2) this.glBreath[si2] = 1;
               else if (eng === 3) this.spPos[si2] = this.spSt[si2];
+              else if (eng === 5)
+                this.bellStrike(si2, this.svNfreq[si2], m[BELL_STK_A + si2], this.blDsc[si2]);
             } else {
               for (let vv = 0; vv < this.chNv; vv++) {
                 this.ch4Tfreq[vv] = this.ch4Nfreq[vv];
                 if (this.svGcoef[2] >= 1 || this.svEnv[2] < 0.001)
                   this.ch4Freq[vv] = this.ch4Nfreq[vv];
-                if (eng === 1) this.exciteString(2 + vv, this.ch4Nfreq[vv]);
+                if (eng === 1 || eng === 6) this.exciteString(2 + vv, this.ch4Nfreq[vv]);
                 else if (eng === 2) this.glBreathC[vv] = 1;
                 else if (eng === 3) this.spPos[2 + vv] = this.spSt[2];
+                else if (eng === 5)
+                  this.bellStrike(2 + vv, this.ch4Nfreq[vv], m[BELL_STK_A + 2], this.blDsc[2]);
               }
             }
             this.svGain[si2] = this.svNgain[si2];
@@ -1274,10 +1382,9 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
           } else if (eng === 4) {
             osc = this.droneVoice(si2, ph, m[DRONE_OPEN_A + si2], wv);
           } else if (eng === 5) {
-            this.phiRise[si2] += (m[PHI_DRIFT_A + si2] - 50) / 2 / srate;
-            if (this.phiRise[si2] >= 833.09) this.phiRise[si2] -= 833.09;
-            if (this.phiRise[si2] < 0) this.phiRise[si2] += 833.09;
-            osc = this.phiVoice(si2, this.svFreq[si2], this.phiRise[si2], 6);
+            osc = this.bellVoice(si2);
+          } else if (eng === 6) {
+            osc = this.ksStep(si2, this.ksDecay[si2], this.ksBright[si2], 0);
           } else {
             this.svPhs[si2] += this.svFreq[si2] * 0.5 / srate;
             if (this.svPhs[si2] >= 1) this.svPhs[si2] -= 1;
@@ -1306,12 +1413,20 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
             } else if (eng === 4) {
               csum += this.droneVoice(2, cph, m[DRONE_OPEN_A + 2], wv);
             } else if (eng === 5) {
-              if (vv === 0) {
-                this.phiRise[2] += (m[PHI_DRIFT_A + 2] - 50) / 2 / srate;
-                if (this.phiRise[2] >= 833.09) this.phiRise[2] -= 833.09;
-                if (this.phiRise[2] < 0) this.phiRise[2] += 833.09;
-              }
-              csum += this.phiVoice(2 + vv, this.ch4Freq[vv], this.phiRise[2], 4);
+              csum += this.bellVoice(2 + vv);
+            } else if (eng === 6) {
+              // sustain pedal: every string hears a little of all the others,
+              // so held chords bloom the way an open piano does
+              // Sympathetic coupling has to be LOSSY: a near-lossless comb
+              // integrates any DC, so strip the mean and scale the bleed by
+              // the loop's own losses. Strings share energy, never create it.
+              this.pnoDc[2] += 0.0008 * (this.pnoPrev[2] - this.pnoDc[2]);
+              const ac = this.pnoPrev[2] - this.pnoDc[2];
+              // total bleed across the voices must stay under the loop loss,
+              // or the coupled bank slowly self-oscillates
+              const inj = ac * (m[PNO_A + 2] / 100) * (1 - this.ksDecay[2])
+                * 0.6 / Math.max(1, this.chNv);
+              csum += this.ksStep(2 + vv, this.ksDecay[2], this.ksBright[2], inj);
             } else {
               const osin = Math.sin(TAU * cph) + 0.15 * Math.sin(2 * TAU * cph);
               const otri = 1 - 4 * Math.abs(cph - 0.5);
@@ -1320,7 +1435,9 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
                              : otri + (osaw - otri) * ((wv - 50) / 50);
             }
           }
-          so = csum * (eng === 1 || eng === 3 ? 0.5 : 0.35) * this.svEnv[2] * this.svGain[2];
+          if (eng === 6) this.pnoPrev[2] = csum;
+          so = csum * (eng === 1 || eng === 3 ? 0.5 : eng === 6 ? 1.7 : 0.35)
+            * this.svEnv[2] * this.svGain[2];
         }
 
         if (this.svFon[si2]) {
@@ -1339,11 +1456,22 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
           this.svBp[si2] += sf * sHp;
           so = this.svLo[si2];
         }
+        // cross-routing: another instrument rings, ducks or drives this one
+        const xs = xSrcI[si2];
+        if (xs) {
+          const amt = xAmtI[si2], sv = this.xSrc[xs], se = this.xEnv[xs];
+          // RING: amplitude-modulate, but around an offset so a source that
+          // happens to be silent dims the part instead of erasing it
+          if (xModeI[si2] === 0) so *= 1 - amt + amt * Math.max(0, 0.55 + sv * 4);
+          else if (xModeI[si2] === 1) so *= Math.max(0, 1 - amt * Math.min(1.2, se * 7));
+          else so = Math.tanh(so * (1 + amt * 12 * Math.min(1, se * 5)));
+        }
         const ps = so * gS[si2] * synAud[si2];
         pm[8 + si2] += ps;
         const pt = si2 + 1;
         const px = so * (sndPre ? PRE_G : gS[si2]) * synAud[si2];
         dIn += px * mtx[pt][0]; aIn += px * mtx[pt][1]; cIn += px * mtx[pt][2];
+        pIn += px * m[PSND_A + pt] / 100;         // this part -> piano strings
       }
 
       if (xyOn) pm[8] = (Math.tanh(xyG * pm[8] + xyB) - xyTb) * xyN;
@@ -1491,6 +1619,37 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
         }
         spl0 += fxoL;
         spl1 += fxoR;
+      }
+
+      // ---- piano-string resonator (parallel, wet-only) ----
+      if (presOn && presMix > 0.001) {
+        // block DC before the strings: a near-unity comb integrates it
+        this.prDc += 0.0004 * (pIn - this.prDc);
+        const pAc = pIn - this.prDc;
+        let wL = 0, wR = 0;
+        for (let i = 0; i < this.PR_N; i++) {
+          const base = i * this.PR_MAX, len = this.prLen[i], pos = this.prPos[i];
+          const v = this.prBuf[base + pos];
+          this.prLo[i] = sane(this.prLo[i] + presTone * (v - this.prLo[i]));
+          this.prBuf[base + pos] = pAc * 0.2 + this.prLo[i] * presFb;
+          this.prPos[i] = pos + 1 < len ? pos + 1 : 0;
+          if (i & 1) wR += v; else wL += v;
+        }
+        wL = sane(wL) * 0.3; wR = sane(wR) * 0.3;
+        spl0 += Math.tanh(wL) * presMix;
+        spl1 += Math.tanh(wR) * presMix;
+      }
+
+      // cross-routing sources: this frame's buses feed the next frame, so a
+      // part can modulate one that renders before it (1-sample delay)
+      {
+        let ds = 0;
+        for (let c = 0; c < this.numLanes; c++) ds += pm[c];
+        this.xSrc[1] = ds; this.xSrc[2] = pm[8]; this.xSrc[3] = pm[9]; this.xSrc[4] = pm[10];
+        for (let q = 1; q < 5; q++) {
+          const a = Math.abs(this.xSrc[q]);
+          this.xEnv[q] = a > this.xEnv[q] ? a : this.xEnv[q] * 0.9995;
+        }
       }
 
       // gentle safety limiter (protects against delay-feedback runaway)

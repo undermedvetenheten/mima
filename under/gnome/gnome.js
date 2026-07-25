@@ -9,7 +9,7 @@
 
 // bump on every release: cache-busts the worklet module so a stale cached
 // DSP can never run against fresh UI code
-const APP_V = '20';
+const APP_V = '21';
 
 
 const LANES_CAP = 8, MAX_STEPS = 32, EUC_N = 21, NROWS = 12, NSCALES = 15,
@@ -26,7 +26,7 @@ const PAT = 0, NOTE_A = 256, CHAN_A = 264, STEPS_A = 272, SPAN_A = 280,
   GKEY_SCALE = 717, GKEY_PROG = 718, GKEY_SPD = 719, LOCK_A = 720, HML_A = 724;
 
 // ---- web-only region (>= 728; extends the JSFX block, kept in the worklet) ----
-const MEM = 1024;
+const MEM = 1072;
 const ENG_A = 728;            // per-synth engine: 0 osc, 1 string, 2 glass
 const GEN_STYLE = 731;        // RND generation style (index into STYLE_NAMES)
 const FX_ON = 736, DLY_ON = 737, DLY_TIME = 738, DLY_FB = 739, DLY_TONE = 740,
@@ -88,7 +88,18 @@ const DAZ_A = 976, DFRC_A = 984;   // 976..983 azimuth, 984..991 force
 // golden ratio: master phi-interval tuning, golden echo mode, PHI pad drift
 const PHI_TUNE = 995;              // 0/1: octave becomes a golden sixth
 const DLY_GLD = 996;               // 0 off / 1 echoes compress x0.618 / 2 expand
-const PHI_DRIFT_A = 997;           // 997..999 per-synth bloom drift (50 = still)
+// BELL engine strike/mallet hardness per synth (was the PHI drift slot)
+const BELL_STK_A = 997;            // 997..999
+// PIANO engine: sustain-pedal sympathetic resonance per synth
+const PNO_A = 1000;                // 1000..1002
+// piano-string resonator bus sends: parts (0 drums..3 chords) then drum lanes
+const PSND_A = 1003, PLSND_A = 1007;
+// resonator globals: on, mix, decay (pedal length), tone (string damping)
+const PRES_ON = 1015, PRES_MIX = 1016, PRES_DEC = 1017, PRES_TONE = 1018;
+// cross-routing: per-synth source / amount / mode (ring, duck, drive)
+const XSRC_A = 1019, XAMT_A = 1022, XMODE_A = 1025;
+const XSRC_NAMES = ['—', 'DR', 'BS', 'ML', 'CH'];
+const XMODE_NAMES = ['RING', 'DUCK', 'DRV'];
 
 const m = new Float64Array(MEM);
 let numLanes = 3;
@@ -825,7 +836,11 @@ function seedNewRegions(arr) {
     a[DAZ_A + l] = 0; a[DFRC_A + l] = 0;
   }
   a[PHI_TUNE] = 0; a[DLY_GLD] = 0;
-  for (let si = 0; si < NSYN; si++) a[PHI_DRIFT_A + si] = 58;
+  for (let si = 0; si < NSYN; si++) { a[BELL_STK_A + si] = 40; a[PNO_A + si] = 45; }
+  for (let p = 0; p < 4; p++) a[PSND_A + p] = 0;
+  for (let l = 0; l < LANES_CAP; l++) a[PLSND_A + l] = 0;
+  a[PRES_ON] = 0; a[PRES_MIX] = 45; a[PRES_DEC] = 70; a[PRES_TONE] = 55;
+  for (let si = 0; si < NSYN; si++) { a[XSRC_A + si] = 0; a[XAMT_A + si] = 40; a[XMODE_A + si] = 0; }
 }
 // bring a stored mem block (768 / 800 / 864) up to the current layout;
 // returns a MEM-length plain array, or null for an unknown length
@@ -837,9 +852,14 @@ function migrateMem(arr) {
     if (!o[SPIN_P] && !o[SPIN_P + 1] && !o[SPIN_P + 2]) o[SPIN_P + 2] = 1;
     // fractal region predates some saves: give it usable defaults (stays off)
     if (!o[FRC_DEPTH]) { o[FRC_DEPTH] = 4; o[FRC_AMT] = o[FRC_AMT] || 50; o[FRC_PMASK] = o[FRC_PMASK] || 3; }
-    // PHI drift predates some saves: 0 would mean full-down drift, seed still+
-    if (!o[PHI_DRIFT_A] && !o[PHI_DRIFT_A + 1] && !o[PHI_DRIFT_A + 2])
-      for (let si = 0; si < 3; si++) o[PHI_DRIFT_A + si] = 58;
+    // bell / piano / resonator / cross regions predate some saves
+    if (!o[BELL_STK_A] && !o[BELL_STK_A + 1] && !o[BELL_STK_A + 2])
+      for (let si = 0; si < 3; si++) o[BELL_STK_A + si] = 40;
+    if (!o[PNO_A] && !o[PNO_A + 1] && !o[PNO_A + 2])
+      for (let si = 0; si < 3; si++) o[PNO_A + si] = 45;
+    if (!o[PRES_MIX]) { o[PRES_MIX] = 45; o[PRES_DEC] = 70; o[PRES_TONE] = 55; }
+    if (!o[XAMT_A] && !o[XAMT_A + 1] && !o[XAMT_A + 2])
+      for (let si = 0; si < 3; si++) o[XAMT_A + si] = 40;
     // densities predate some saves: derive from the legacy part bitmask so an
     // already-enabled fill setup keeps making sound (moderate defaults)
     let anyD = 0;
@@ -856,7 +876,7 @@ function migrateMem(arr) {
     return o;
   };
   if (arr.length === MEM) return spinFix(Array.from(arr));
-  if (![768, 800, 864, 896, 928, 976].includes(arr.length)) return null;
+  if (![768, 800, 864, 896, 928, 976, 1024].includes(arr.length)) return null;
   const out = Array.from(arr);
   while (out.length < MEM) out.push(0);
   spinFix(out);
@@ -1034,7 +1054,10 @@ function modRange(off) {
   if (within(DRONE_OPEN_A, 3) || within(DVOL_A, 8) || within(DSND_A, 24)) return [0, 100];
   if (within(DAZ_A, 8)) return [-180, 180];
   if (within(DFRC_A, 8)) return [0, 100];
-  if (within(PHI_DRIFT_A, 3)) return [0, 100];
+  if (within(BELL_STK_A, 3) || within(PNO_A, 3)) return [0, 100];
+  if (within(PSND_A, 4) || within(PLSND_A, 8)) return [0, 100];
+  if (off === PRES_MIX || off === PRES_DEC || off === PRES_TONE) return [0, 100];
+  if (within(XAMT_A, 3)) return [0, 100];
   return null;
 }
 // mask of LFOs assigned to an offset (bit 1 = L1, bit 2 = L2)
@@ -1107,8 +1130,18 @@ function modTargets() {
     if (m[ENG_A + si] === 4)
       out.push({ name: `${SYN_NAMES[si]} drone openness`, off: DRONE_OPEN_A + si });
     if (m[ENG_A + si] === 5)
-      out.push({ name: `${SYN_NAMES[si]} phi drift`, off: PHI_DRIFT_A + si });
+      out.push({ name: `${SYN_NAMES[si]} bell strike`, off: BELL_STK_A + si });
+    if (m[ENG_A + si] === 6)
+      out.push({ name: `${SYN_NAMES[si]} piano pedal`, off: PNO_A + si });
+    out.push({ name: `${SYN_NAMES[si]} cross amount`, off: XAMT_A + si });
   }
+  out.push({ name: 'piano resonator mix', off: PRES_MIX },
+    { name: 'piano resonator decay', off: PRES_DEC },
+    { name: 'piano resonator tone', off: PRES_TONE });
+  for (let p = 1; p < 4; p++)
+    out.push({ name: `${['drums', 'bass', 'melody', 'chords'][p]} → piano strings`, off: PSND_A + p });
+  for (let l = 0; l < numLanes; l++)
+    out.push({ name: `lane ${l + 1} → piano strings`, off: PLSND_A + l });
   for (let l = 0; l < numLanes; l++) {
     out.push({ name: `lane ${l + 1} volume`, off: DVOL_A + l },
       { name: `lane ${l + 1} azimuth (3D)`, off: DAZ_A + l },
@@ -1675,7 +1708,7 @@ function fxCells() {
   tog(x, y, 34, 'FX', FX_ON); x += 40;
   val(x, y, 44, 'FEED', FX_FEED, 0, 100, 5, 'pct'); x += 50;
   tog(x, y, 40, 'PRE', SND_PRE); x += 48;
-  lbl(x + 8, y + 9, 'glass GCY + drone OPN sit beside each ENG · wobble is up by the mixer');
+  lbl(x + 8, y + 9, 'per-ENG cells sit beside each ENG button · PNO column in SENDS feeds the piano strings');
   y = fy + 60; x = 12;
   lbl(x, y + 9, 'DUB DLY'); x += 52;
   tog(x, y, 34, '', DLY_ON); x += 40;
@@ -1703,6 +1736,21 @@ function fxCells() {
   val(x, y, 44, 'SPRD', CLD_SPREAD, 0, 100, 5, 'pct'); x += 48;
   val(x, y, 44, 'TAIL', CLD_REVERB, 0, 100, 5, 'pct'); x += 48;
   val(x, y, 42, 'MIX', CLD_MIX, 0, 100, 5, 'pct');
+  // piano-string resonator + cross-routing, sharing the free row
+  y = fy + 168; x = 12;
+  lbl(x, y + 9, 'PIANO STR'); x += 58;
+  tog(x, y, 34, '', PRES_ON); x += 38;
+  val(x, y, 38, 'MIX', PRES_MIX, 0, 100, 5, 'pct'); x += 42;
+  val(x, y, 38, 'PED', PRES_DEC, 0, 100, 5, 'pct'); x += 42;
+  val(x, y, 40, 'TONE', PRES_TONE, 0, 100, 5, 'pct'); x += 50;
+  lbl(x, y + 9, 'CROSS'); x += 46;
+  for (let si = 0; si < NSYN; si++) {
+    lbl(x, y + 9, ['BS', 'ML', 'CH'][si]); x += 20;
+    tri(x, y, 34, XSRC_A + si, XSRC_NAMES); x += 36;
+    val(x, y, 32, 'AMT', XAMT_A + si, 0, 100, 5, 'pct'); x += 34;
+    tri(x, y, 44, XMODE_A + si, XMODE_NAMES); x += 46;
+  }
+
   // mod LFOs: L1 / L2 rate + depth + shape; ARM chips drawn apart
   y = fy + 214; x = 58;
   val(x, y, 46, 'RATE', MLFO_A, 0.25, 64, 0.25, 'beats'); x += 50;
@@ -1724,6 +1772,8 @@ function sndKnobXY(row, fxi) {
 }
 // the mem offset behind a sends-matrix row/column
 function sndOff(row, fxi) {
+  if (fxi === 3)   // the piano-string resonator column
+    return row < numLanes ? PLSND_A + row : PSND_A + (row - numLanes + 1);
   return row < numLanes ? DSND_A + row * 3 + fxi
     : SND_MTX + (row - numLanes + 1) * 3 + fxi;
 }
@@ -1894,11 +1944,12 @@ function findModTarget(x, y) {
     if (y >= ysv + rowh && y < ysv + 2 * rowh && x >= 516 && x < 560) {
       if (m[ENG_A + gsi] === 2) return GLC_A + gsi;
       if (m[ENG_A + gsi] === 4) return DRONE_OPEN_A + gsi;
-      if (m[ENG_A + gsi] === 5) return PHI_DRIFT_A + gsi;
+      if (m[ENG_A + gsi] === 5) return BELL_STK_A + gsi;
+      if (m[ENG_A + gsi] === 6) return PNO_A + gsi;
     }
   }
   if (y >= fxY() && y < fxY() + fxH) {
-    for (let p = 0; p < numLanes + 3; p++) for (let f = 0; f < 3; f++) {
+    for (let p = 0; p < numLanes + 3; p++) for (let f = 0; f < 4; f++) {
       const [kx, ky] = sndKnobXY(p, f);
       if ((x - kx) * (x - kx) + (y - ky) * (y - ky) <= 121) return sndOff(p, f);
     }
@@ -2006,7 +2057,7 @@ function onDown(x, y, right) {
     }
     // SENDS matrix mini-knobs (vertical drag; armed tap assigns) —
     // one row per drum lane, then the three pitched parts
-    for (let p = 0; p < numLanes + 3; p++) for (let f = 0; f < 3; f++) {
+    for (let p = 0; p < numLanes + 3; p++) for (let f = 0; f < 4; f++) {
       const [kx, ky] = sndKnobXY(p, f);
       if ((x - kx) * (x - kx) + (y - ky) * (y - ky) <= 121) {
         const off = sndOff(p, f);
@@ -2322,15 +2373,19 @@ function onDown(x, y, right) {
         if (armLfo) { tryModAssign(DRONE_OPEN_A + gsi); return; }
         dragMode = 55; dragFx = DRONE_OPEN_A + gsi; dragY = y; dragV = m[dragFx];
       } else if (m[ENG_A + gsi] === 5 && x >= 516 && x < 560) {
-        // PHI pad drift (LFO it to make the golden cloud bloom faster/slower)
-        if (armLfo) { tryModAssign(PHI_DRIFT_A + gsi); return; }
-        dragMode = 55; dragFx = PHI_DRIFT_A + gsi; dragY = y; dragV = m[dragFx];
+        // bell mallet hardness (soft felt .. hard metal striker)
+        if (armLfo) { tryModAssign(BELL_STK_A + gsi); return; }
+        dragMode = 55; dragFx = BELL_STK_A + gsi; dragY = y; dragV = m[dragFx];
+      } else if (m[ENG_A + gsi] === 6 && x >= 516 && x < 560) {
+        // piano sustain pedal (ring length + sympathetic bleed)
+        if (armLfo) { tryModAssign(PNO_A + gsi); return; }
+        dragMode = 55; dragFx = PNO_A + gsi; dragY = y; dragV = m[dragFx];
       } else if (x >= xEuc && x < xEuc + 32) {
-        m[ENG_A + gsi] = (m[ENG_A + gsi] + 1) % 6;
+        m[ENG_A + gsi] = (m[ENG_A + gsi] + 1) % 7;
         if (m[ENG_A + gsi] === 3 && !splSmp[gsi])
           setStatus(`${SYN_NAMES[gsi]} engine: SPLICE — ALT-tap ENG to load a sample (or dig one beside it)`);
         else
-          setStatus(`${SYN_NAMES[gsi]} engine: ${['classic oscillator', 'plucked string (RES=sustain, 100=infinite)', 'blown glass — GCY beside ENG cycles the harmonics', 'splice — plays your sample; CRP crops, TRK follows the notes', 'throat drone — OPN beside ENG moves the overtone, LFO it to sing', 'golden Shepard pad — DRF beside ENG blooms it endlessly (use LATCH)'][m[ENG_A + gsi]]}`);
+          setStatus(`${SYN_NAMES[gsi]} engine: ${['classic oscillator', 'plucked string (RES=sustain, 100=infinite)', 'blown glass — GCY beside ENG cycles the harmonics', 'splice — plays your sample; CRP crops, TRK follows the notes', 'throat drone — OPN beside ENG moves the overtone, LFO it to sing', 'bell / gong — low notes toll like a church bell, high ones clang like a kettle drum; STK = mallet hardness', 'piano strings — PED is the sustain pedal; chords ring sympathetically'][m[ENG_A + gsi]]}`);
         touchState();
       } else if (gsi === 2 && x >= xMode && x < xMode + 26) {
         sset(2, 24, sget(2, 24) ? 0 : 1);
@@ -2688,6 +2743,10 @@ function onUp() {
         m[dragFx.off] = ((m[dragFx.off] | 0) + 1) % dragFx.labels.length;
         setStatus(dragFx.off === DLY_GLD
           ? ['golden echo off', 'golden echo: repeats compress ×0.618 (500→309→191…)', 'golden echo: repeats expand ×φ'][m[dragFx.off]]
+          : dragFx.off >= XSRC_A && dragFx.off < XSRC_A + 3
+          ? `${SYN_NAMES[dragFx.off - XSRC_A]} cross source: ${XSRC_NAMES[m[dragFx.off]]}${m[dragFx.off] ? ' — set AMT and pick RING / DUCK / DRV' : ' (off)'}`
+          : dragFx.off >= XMODE_A && dragFx.off < XMODE_A + 3
+          ? `${SYN_NAMES[dragFx.off - XMODE_A]} cross mode: ${['RING — the source amplitude-modulates it', 'DUCK — the source sidechains it down', 'DRV — the source drives it into distortion'][m[dragFx.off]]}`
           : '');
       } else m[dragFx.off] = m[dragFx.off] ? 0 : 1;
     } else if (dragMode === 8) {
@@ -3059,11 +3118,12 @@ function draw() {
     const eng = m[ENG_A + gsi];
     eng === 1 ? set(0.28, 0.4, 0.5) : eng === 2 ? set(0.46, 0.4, 0.28)
       : eng === 3 ? set(0.36, 0.28, 0.44) : eng === 4 ? set(0.3, 0.42, 0.4)
-      : eng === 5 ? set(0.44, 0.38, 0.22) : set(0.28, 0.3, 0.34);
+      : eng === 5 ? set(0.44, 0.38, 0.22) : eng === 6 ? set(0.4, 0.3, 0.26)
+      : set(0.28, 0.3, 0.34);
     rect(xEuc, ysv + rowh + 4, 32, 32);
     if (splSmp[gsi]) { set(0.4, 0.85, 0.45); rect(xEuc + 26, ysv + rowh + 6, 4, 4); }
     set(0.9, 0.92, 0.95);
-    textC(['OSC', 'STR', 'GLS', 'SPL', 'DRN', 'PHI'][eng], xEuc, xEuc + 32, ysv + rowh + 12, F12);
+    textC(['OSC', 'STR', 'GLS', 'SPL', 'DRN', 'BEL', 'PNO'][eng], xEuc, xEuc + 32, ysv + rowh + 12, F12);
     if (eng === 3) {   // crate digs: every tap swaps in a fresh find
       set(0.3, 0.26, 0.2); rect(516, ysv + rowh + 4, 40, 32);
       set(0.9, 0.8, 0.55); textC('WIKI', 516, 556, ysv + rowh + 12, F12);
@@ -3082,11 +3142,17 @@ function draw() {
       set(0.8, 0.95, 0.9); textC(Math.round(m[DRONE_OPEN_A + gsi]) + '%', 516, 560, ysv + rowh + 18, F13);
       modTick(DRONE_OPEN_A + gsi, 516, 44, ysv + rowh + 4);
     }
-    if (eng === 5) {   // PHI: bloom drift (50 = still, up climbs, down sinks)
+    if (eng === 5) {   // bell: mallet hardness (soft felt .. hard striker)
       set(0.4, 0.34, 0.2); rect(516, ysv + rowh + 4, 44, 32);
-      set(0.62, 0.56, 0.4); textC('DRF', 516, 560, ysv + rowh + 5, F10);
-      set(0.95, 0.88, 0.7); textC((m[PHI_DRIFT_A + gsi] - 50) + '', 516, 560, ysv + rowh + 18, F13);
-      modTick(PHI_DRIFT_A + gsi, 516, 44, ysv + rowh + 4);
+      set(0.62, 0.56, 0.4); textC('STK', 516, 560, ysv + rowh + 5, F10);
+      set(0.95, 0.88, 0.7); textC(Math.round(m[BELL_STK_A + gsi]) + '%', 516, 560, ysv + rowh + 18, F13);
+      modTick(BELL_STK_A + gsi, 516, 44, ysv + rowh + 4);
+    }
+    if (eng === 6) {   // piano: the sustain pedal
+      set(0.38, 0.3, 0.24); rect(516, ysv + rowh + 4, 44, 32);
+      set(0.6, 0.52, 0.44); textC('PED', 516, 560, ysv + rowh + 5, F10);
+      set(0.95, 0.9, 0.82); textC(Math.round(m[PNO_A + gsi]) + '%', 516, 560, ysv + rowh + 18, F13);
+      modTick(PNO_A + gsi, 516, 44, ysv + rowh + 4);
     }
 
     if (gsi === 2) {
@@ -3438,15 +3504,15 @@ function draw() {
     // SENDS matrix: mini circular faders — one row per drum lane, then the
     // pitched parts (per-lane sends: every drum can take its own fx bath)
     set(0.5, 0.52, 0.56); text('SENDS', 744, fy + 6, F10);
-    const FXCOL = ['DLY', 'GLI', 'GRN'];
-    for (let f = 0; f < 3; f++) {
+    const FXCOL = ['DLY', 'GLI', 'GRN', 'PNO'];
+    for (let f = 0; f < 4; f++) {
       set(0.45, 0.46, 0.5);
       textC(FXCOL[f], 796 + f * 42 - 16, 796 + f * 42 + 16, fy + 6, F10);
     }
     for (let p = 0; p < numLanes + 3; p++) {
       const rl = p < numLanes ? 'L' + (p + 1) : ['BS', 'ML', 'CH'][p - numLanes];
       set(0.45, 0.46, 0.5); text(rl, 752, sndKnobXY(p, 0)[1] - 5, F10);
-      for (let f = 0; f < 3; f++) {
+      for (let f = 0; f < 4; f++) {
         const [kx, ky] = sndKnobXY(p, f);
         const off = sndOff(p, f), v = m[off] / 100;
         v > 0 ? set(0.16, 0.34, 0.36) : set(0.2, 0.21, 0.24);
@@ -3464,7 +3530,7 @@ function draw() {
         if (mk & 2) { set(0.3, 0.85, 0.85); rect(kx + 6, ky - 5, 4, 4); }
       }
     }
-    set(0.45, 0.45, 0.5); text('drag ↕', 930, fy + 40, F10);
+
 
     // SPACE mini-knobs under the sends: AZ + FRC per entity, BNC at the end
     {
@@ -3567,7 +3633,7 @@ function draw() {
   if (haveStatus) { set(0.7, 0.85, 0.7); text(statusText, 8, yStat(), F11); }
   else {
     set(0.45, 0.45, 0.5);
-    text('drag fields · ENG: osc/string/glass/splice/drone/phi · right-click a drum cell for 2nd-cycle → ghost fill · per-lane sends right of the FX rack', 8, yStat(), F11);
+    text('drag fields · ENG: osc/string/glass/splice/drone/bell/piano · right-click a drum cell for 2nd-cycle → ghost fill · sends + piano strings right of the rack', 8, yStat(), F11);
   }
 
   // wake overlay until the first gesture creates the AudioContext
@@ -3681,9 +3747,10 @@ window.gnome = {
     FRC_ON, FRC_RULE, FRC_DEPTH, FRC_AMT, FRC_PMASK,
     DFILL_A, SFILL_A, FRC_BEND,
     DRONE_OPEN_A, DVOL_A, DSND_A, DAZ_A, DFRC_A,
-    PHI_TUNE, DLY_GLD, PHI_DRIFT_A,
+    PHI_TUNE, DLY_GLD, BELL_STK_A, PNO_A, PSND_A, PLSND_A,
+    PRES_ON, PRES_MIX, PRES_DEC, PRES_TONE, XSRC_A, XAMT_A, XMODE_A,
   },
-  tables: { SCALE_NAMES, PROG_NAMES, SHAPE_NAMES, SYN_NAMES, FEEL_NAMES, SCL, STYLE_NAMES, FRACTAL_NAMES },
+  tables: { SCALE_NAMES, PROG_NAMES, SHAPE_NAMES, SYN_NAMES, FEEL_NAMES, SCL, STYLE_NAMES, FRACTAL_NAMES, XSRC_NAMES, XMODE_NAMES },
   fractalLevels, buildFractalTree, sendFillNow, sendFlick, treeBranchAt, findModTarget,
   SAMPLE_DEFS,
   noteName, rollLabel, getParam, setParam, sget, sset, ronOff, rdgOff, effScale, effBase,

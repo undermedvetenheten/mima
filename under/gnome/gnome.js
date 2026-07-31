@@ -9,7 +9,7 @@
 
 // bump on every release: cache-busts the worklet module so a stale cached
 // DSP can never run against fresh UI code
-const APP_V = '23';
+const APP_V = '24';
 
 
 const LANES_CAP = 8, MAX_STEPS = 32, EUC_N = 21, NROWS = 12, NSCALES = 15,
@@ -803,31 +803,66 @@ function initState() {
     m[VEL_A + l] = 100; m[GATE_A + l] = 50; m[LPF_A + l] = 100;
     m[LRATE_A + l] = 4;
   }
+  // drums breathe: swung hats, the kick dragged a touch behind the grid
+  m[SWG_A] = 35; m[SWG_A + 1] = 50; m[NDG_A] = -10; m[NDG_A + 1] = 15;
   const B = BASS_P, M2 = MEL_P, C = CHD_P;
-  // BASS: big saw bass on C1, filter mostly closed, env opens it
-  [24, 0, 16, 4, 5, 0, 100, 80, 3, 250, 1, 0, 33, 28, 33, 0, 4, 0, 0, 100, 0, 0, 0, 4]
+  // BASS: drone, filter shut and resonant so the LFO-swept DRONE opening sings
+  [24, 0, 16, 4, 5, 0, 100, 80, 3, 250, 1, 0, 0, 60, 40, 0, 4, 0, 0, 100, 0, 0, 0, 4]
     .forEach((v, i) => m[B + i] = v);
-  // MELODY: triangle, 2-bar phrases, soft attack, gentle LFO sweep
-  [60, 0, 16, 8, 7, 0, 100, 90, 60, 600, 1, 0, 60, 20, 20, 0, 8, 15, 0, 50, 0, 0, 0, 4]
+  // MELODY: half-length phrase in triplet feel, half-second swell, long tail
+  [60, 0, 8, 8, 7, 0, 100, 90, 500, 1025, 1, 0, 0, 0, 85, 1, 8, 15, 0, 50, 0, 30, 0, 4]
     .forEach((v, i) => m[M2 + i] = v);
-  // CHORDS: soft sine-tri pad, held for gate, glide, 7ths on
-  [48, 0, 8, 8, 4, 0, 90, 95, 120, 900, 1, 0, 55, 15, 15, 0, 8, 10, 0, 35, 1, 80, 0, 4, 1]
+  // CHORDS: glass pad on a 16th grid, held for gate, glide, 7ths on
+  [48, 0, 8, 8, 4, 0, 90, 95, 120, 900, 1, 0, 55, 15, 15, 1, 8, 10, 0, 35, 1, 80, 0, 4, 1]
     .forEach((v, i) => m[C + i] = v);
-  m[GKEY_NOTE] = 48; m[GKEY_SCALE] = 0; m[GKEY_PROG] = 0; m[GKEY_SPD] = 4;
-  m[GEN_STYLE] = 0;
-  for (let i = 0; i < 3; i++) { m[LOCK_A + i] = 1; m[HML_A + i] = 1; m[ENG_A + i] = 0; }
+  // parts sit off the grid from each other: bass early, melody late and swung
+  m[SND_A] = -15; m[SSW_A] = 20; m[SSW_A + 1] = 5;
+  m[SFL_A + 1] = 1; m[SFL_A + 2] = 2;          // melody triplet, chords dotted
+  // A# Phrygian, I - IV, generated in the Ark style (which picks Phrygian)
+  m[GKEY_NOTE] = 46; m[GKEY_SCALE] = 3; m[GKEY_PROG] = 1; m[GKEY_SPD] = 4;
+  m[GEN_STYLE] = 5;
+  for (let i = 0; i < 3; i++) { m[LOCK_A + i] = 1; m[HML_A + i] = 1; }
+  // drone bass under a glass pad; melody stays on the plain oscillator so a
+  // fresh gnome never depends on a sample the user hasn't loaded yet
+  m[ENG_A] = 4; m[ENG_A + 1] = 0; m[ENG_A + 2] = 2;
+  m[GLC_A + 2] = 100;                          // chords: glass rotation wide open
   smpA = LANE_SAMPLE.slice();
-  // FX rack defaults: a gentle floaty delay ready to go, glitch idle
-  m[FX_ON] = 0;
-  m[DLY_ON] = 1; m[DLY_TIME] = 0.75; m[DLY_FB] = 38; m[DLY_TONE] = 55;
+  // FX rack on from the start: a slow dotted delay with the chords in it
+  m[FX_ON] = 1;
+  m[DLY_ON] = 1; m[DLY_TIME] = 1.1875; m[DLY_FB] = 38; m[DLY_TONE] = 55;
   m[DLY_WOW] = 30; m[FX_FEED] = 0;
   m[AVO_ON] = 0; m[AVO_AMT] = 40; m[AVO_RATE] = 0.5; m[AVO_CRUSH] = 0; m[AVO_MIX] = 100;
   m[DLY_PITCH] = 0; m[DLY_REV] = 0;
   for (let i = 0; i < 4; i++) m[SEND_A + i] = 0;
-  for (let i = 0; i < 3; i++) m[GLC_A + i] = 0;
+  m[SND_MTX + 9] = 100;                        // chords -> delay, full send
   m[CLD_ON] = 0; m[CLD_MIX] = 50; m[CLD_SIZE] = 45; m[CLD_DENS] = 55;
   m[CLD_PITCH] = 0; m[CLD_SPREAD] = 40; m[CLD_REVERB] = 55; m[CLD_REVG] = 0;
   seedNewRegions();
+  // ---- and the parts of the jam that live in the newer regions. These sit
+  // AFTER seedNewRegions because that function also fills those regions in for
+  // old saves, which must keep their neutral defaults rather than inherit a mood.
+  // two slow triangle LFOs, both at full depth, doing the breathing
+  m[MLFO_A + 1] = 100; m[MLFO_A + 2] = 1;      // L1: 8 beats, triangle
+  m[MLFO_A + 4] = 100; m[MLFO_A + 5] = 1;      // L2: 16 beats, triangle
+  m[MOD_TGT_A] = FRC_BEND; m[MOD_MSK_A] = 2;           // L2 bends the tree
+  m[MOD_TGT_A + 1] = DRONE_OPEN_A; m[MOD_MSK_A + 1] = 1; // L1 opens the drone
+  m[XY_DRV] = 100; m[XY_SKW] = 10;             // bass waveshaper driven hard
+  // fractal fills: none on the kick, a little on the snare, a lot on the rim
+  m[FRC_ON] = 1; m[FRC_AMT] = 100; m[FRC_BEND] = 0;
+  m[DFILL_A] = 0; m[DFILL_A + 1] = 2; m[DFILL_A + 2] = 3;
+  m[SFILL_A] = 1; m[SFILL_A + 1] = 1; m[SFILL_A + 2] = 3;
+  m[DRONE_OPEN_A] = 0; m[DRONE_OPEN_A + 1] = 100; m[DRONE_OPEN_A + 2] = 30;
+  // the kick plays into the piano strings, which ring short and bright
+  m[PLSND_A] = 100;
+  m[PRES_ON] = 1; m[PRES_MIX] = 100; m[PRES_DEC] = 5; m[PRES_TONE] = 100;
+  // instruments lean on each other: the drums drive the melody, the bass rings
+  // the chords, and the bass rings against its own last frame
+  m[XSRC_A] = 2; m[XAMT_A] = 75; m[XMODE_A] = 0;
+  m[XSRC_A + 1] = 1; m[XAMT_A + 1] = 10; m[XMODE_A + 1] = 2;
+  m[XSRC_A + 2] = 2; m[XAMT_A + 2] = 20; m[XMODE_A + 2] = 0;
+  // unhurried, and mixed with headroom for the drone + delay tails
+  bpm = 90;
+  vols = { drum: 90, bass: 100, mel: 100, chd: 100, master: 75 };
 }
 // defaults for the splice + synth-drum regions (also applied to old saves)
 function seedNewRegions(arr) {
@@ -932,7 +967,9 @@ function seedGroove() {
   // the plugin starts with empty grids; the web demo starts with a groove
   m[PUL_A + 0] = 4; m[ROT_A + 0] = 0; applyEuclid(0);          // BD four-floor
   m[PUL_A + 1] = 2; m[ROT_A + 1] = 4; applyEuclid(1);          // SN backbeat
-  m[PUL_A + 2] = 8; m[ROT_A + 2] = 1; applyEuclid(2);          // RIM off-8ths
+  // RIM runs its own short loop on the 16th grid: 3-in-4 ticking over the bar
+  m[STEPS_A + 2] = 4; m[SPAN_A + 2] = 4; m[LMODE_A + 2] = 1;
+  m[PUL_A + 2] = 3; m[ROT_A + 2] = 0; applyEuclid(2);
   for (let si = 0; si < NSYN; si++) synGenerate(si);
 }
 

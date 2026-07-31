@@ -276,6 +276,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     this.azE = F(this.NENT);               // effective azimuths (for the dome)
     this.scopeBuf = new Float32Array(512); // bass waveform tap for the XY scope
     this.scopeW = 0;
+    this.xyDc = 0;                         // DC tracker for the XY waveshaper
     this.spSt = F(NSYN); this.spEnWin = F(NSYN);
     this.spFix = F(NSYN); this.spTrk = F(NSYN);
     this.fltLo = F(LANES_CAP); this.fltBp = F(LANES_CAP);
@@ -1524,7 +1525,15 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
         pIn += px * m[PSND_A + pt] / 100;         // this part -> piano strings
       }
 
-      if (xyOn) pm[8] = (Math.tanh(xyG * pm[8] + xyB) - xyTb) * xyN;
+      if (xyOn) {
+        // Driving hard through an odd nonlinearity leaves DC behind whenever
+        // the input is skewed (a drone is), and subtracting tanh(bias) only
+        // recentres silence. Block it, or the offset eats headroom and thumps.
+        const xw = (Math.tanh(xyG * pm[8] + xyB) - xyTb) * xyN;
+        const xo = xw - this.xyDc;
+        this.xyDc = sane(this.xyDc) + xo * 0.0004;   // ~3 Hz one-pole DC tracker
+        pm[8] = xo;
+      }
       this.scopeBuf[this.scopeW] = pm[8];   // bass tap for the XY scope
       this.scopeW = (this.scopeW + 1) & 511;
 

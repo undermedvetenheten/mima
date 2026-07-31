@@ -103,6 +103,20 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
   iOS. The canvas has a ♪ PDF header button; the pocket has a "Sheet music
   (PDF)" action on the KEY·MIX tab.
 
+  **A fresh gnome starts as a chill jam.** INIT (and a first-ever visit) no
+  longer deals a neutral test groove — it opens playable: **90 bpm, A#
+  Phrygian, I - IV**, with the parts generated in the **Ark** style. A **drone
+  bass** whose opening is swept by LFO1 sits under a **glass pad** on the
+  chords; the melody stays on the plain oscillator (a half-second swell with a
+  long tail) so a fresh gnome never depends on a sample nobody has loaded yet.
+  The drums swing (35/50) with the kick dragged 10% behind the grid, the rim
+  runs its own 4-step loop on the 16th grid, and the parts sit in different
+  feels — melody triplet, chords dotted. The **FX rack is already on** with a
+  slow dotted delay carrying the chords, the **piano-string resonator** is lit
+  with the kick playing into it, **fractal fills** are running, and LFO2 bends
+  the tree while LFO1 breathes the drone. The rhythms and notes are still
+  generated fresh every INIT — it's a mood, not a fixed song.
+
   **Presets** (A/B/C): full-groove slots stored in their own localStorage key,
   recallable live mid-playback (recall is a single undoable step). Canvas: tap
   A/B/C to recall, ALT/right-click to store, ⇩/⇧ save/load the current groove

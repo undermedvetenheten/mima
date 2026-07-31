@@ -9,7 +9,7 @@
 
 // bump on every release: cache-busts the worklet module so a stale cached
 // DSP can never run against fresh UI code
-const APP_V = '21';
+const APP_V = '27';
 
 
 const LANES_CAP = 8, MAX_STEPS = 32, EUC_N = 21, NROWS = 12, NSCALES = 15,
@@ -98,6 +98,31 @@ const PSND_A = 1003, PLSND_A = 1007;
 const PRES_ON = 1015, PRES_MIX = 1016, PRES_DEC = 1017, PRES_TONE = 1018;
 // cross-routing: per-synth source / amount / mode (ring, duck, drive)
 const XSRC_A = 1019, XAMT_A = 1022, XMODE_A = 1025;
+const GLD_TIME = 1028;
+const MBR_ON = 1029, MBR_FREQ = 1030, MBR_SPRD = 1031, MBR_Q = 1032;
+const MBR_MODE = 1033, MBR_MIX = 1034, MBR_DRV = 1035;
+const MBR_SND_A = 1036, MBR_LSND_A = 1040;   // 4 parts, then 8 drum lanes
+// GOLDEN METER: tempo and grid are untouched — the LOOP LENGTH grows
+// 1,1,2,3,5,8,13,21 steps and snaps back. Mirrors goldLoop() in the worklet.
+const GM_STEPS = [1, 1, 2, 3, 5, 8, 13, 21];
+const GM_CUM = [0, 1, 2, 4, 7, 12, 20, 33];
+const GM_TOTAL = 54;
+function goldLoop(n) {
+  const lap = Math.floor(n / GM_TOTAL), t = n - lap * GM_TOTAL;
+  let i = 7;
+  for (let k = 0; k < 8; k++) if (t < GM_CUM[k] + GM_STEPS[k]) { i = k; break; }
+  return { i, local: t - GM_CUM[i], pass: lap * 8 + i };
+}
+// reference grid for the read-out: drum lane 1's step length
+function gridSd() {
+  return m[LMODE_A] ? m[SPAN_A] / 16 : m[SPAN_A] / Math.max(1, m[STEPS_A]);
+}
+// which pattern step a part is on, given the beat and that part's grid
+function loopStep(beat, stepdur, steps) {
+  const n = Math.floor(beat / stepdur);
+  if (m[GLD_TIME]) return goldLoop(n).local % steps;
+  return ((n % steps) + steps) % steps;
+}
 const XSRC_NAMES = ['—', 'DR', 'BS', 'ML', 'CH'];
 const XMODE_NAMES = ['RING', 'DUCK', 'DRV'];
 
@@ -781,31 +806,66 @@ function initState() {
     m[VEL_A + l] = 100; m[GATE_A + l] = 50; m[LPF_A + l] = 100;
     m[LRATE_A + l] = 4;
   }
+  // drums breathe: swung hats, the kick dragged a touch behind the grid
+  m[SWG_A] = 35; m[SWG_A + 1] = 50; m[NDG_A] = -10; m[NDG_A + 1] = 15;
   const B = BASS_P, M2 = MEL_P, C = CHD_P;
-  // BASS: big saw bass on C1, filter mostly closed, env opens it
-  [24, 0, 16, 4, 5, 0, 100, 80, 3, 250, 1, 0, 33, 28, 33, 0, 4, 0, 0, 100, 0, 0, 0, 4]
+  // BASS: drone, filter shut and resonant so the LFO-swept DRONE opening sings
+  [24, 0, 16, 4, 5, 0, 100, 80, 3, 250, 1, 0, 0, 60, 40, 0, 4, 0, 0, 100, 0, 0, 0, 4]
     .forEach((v, i) => m[B + i] = v);
-  // MELODY: triangle, 2-bar phrases, soft attack, gentle LFO sweep
-  [60, 0, 16, 8, 7, 0, 100, 90, 60, 600, 1, 0, 60, 20, 20, 0, 8, 15, 0, 50, 0, 0, 0, 4]
+  // MELODY: half-length phrase in triplet feel, half-second swell, long tail
+  [60, 0, 8, 8, 7, 0, 100, 90, 500, 1025, 1, 0, 0, 0, 85, 1, 8, 15, 0, 50, 0, 30, 0, 4]
     .forEach((v, i) => m[M2 + i] = v);
-  // CHORDS: soft sine-tri pad, held for gate, glide, 7ths on
-  [48, 0, 8, 8, 4, 0, 90, 95, 120, 900, 1, 0, 55, 15, 15, 0, 8, 10, 0, 35, 1, 80, 0, 4, 1]
+  // CHORDS: glass pad on a 16th grid, held for gate, glide, 7ths on
+  [48, 0, 8, 8, 4, 0, 90, 95, 120, 900, 1, 0, 55, 15, 15, 1, 8, 10, 0, 35, 1, 80, 0, 4, 1]
     .forEach((v, i) => m[C + i] = v);
-  m[GKEY_NOTE] = 48; m[GKEY_SCALE] = 0; m[GKEY_PROG] = 0; m[GKEY_SPD] = 4;
-  m[GEN_STYLE] = 0;
-  for (let i = 0; i < 3; i++) { m[LOCK_A + i] = 1; m[HML_A + i] = 1; m[ENG_A + i] = 0; }
+  // parts sit off the grid from each other: bass early, melody late and swung
+  m[SND_A] = -15; m[SSW_A] = 20; m[SSW_A + 1] = 5;
+  m[SFL_A + 1] = 1; m[SFL_A + 2] = 2;          // melody triplet, chords dotted
+  // A# Phrygian, I - IV, generated in the Ark style (which picks Phrygian)
+  m[GKEY_NOTE] = 46; m[GKEY_SCALE] = 3; m[GKEY_PROG] = 1; m[GKEY_SPD] = 4;
+  m[GEN_STYLE] = 5;
+  for (let i = 0; i < 3; i++) { m[LOCK_A + i] = 1; m[HML_A + i] = 1; }
+  // drone bass under a glass pad; melody stays on the plain oscillator so a
+  // fresh gnome never depends on a sample the user hasn't loaded yet
+  m[ENG_A] = 4; m[ENG_A + 1] = 0; m[ENG_A + 2] = 2;
+  m[GLC_A + 2] = 100;                          // chords: glass rotation wide open
   smpA = LANE_SAMPLE.slice();
-  // FX rack defaults: a gentle floaty delay ready to go, glitch idle
-  m[FX_ON] = 0;
-  m[DLY_ON] = 1; m[DLY_TIME] = 0.75; m[DLY_FB] = 38; m[DLY_TONE] = 55;
+  // FX rack on from the start: a slow dotted delay with the chords in it
+  m[FX_ON] = 1;
+  m[DLY_ON] = 1; m[DLY_TIME] = 1.1875; m[DLY_FB] = 38; m[DLY_TONE] = 55;
   m[DLY_WOW] = 30; m[FX_FEED] = 0;
   m[AVO_ON] = 0; m[AVO_AMT] = 40; m[AVO_RATE] = 0.5; m[AVO_CRUSH] = 0; m[AVO_MIX] = 100;
   m[DLY_PITCH] = 0; m[DLY_REV] = 0;
   for (let i = 0; i < 4; i++) m[SEND_A + i] = 0;
-  for (let i = 0; i < 3; i++) m[GLC_A + i] = 0;
+  m[SND_MTX + 9] = 100;                        // chords -> delay, full send
   m[CLD_ON] = 0; m[CLD_MIX] = 50; m[CLD_SIZE] = 45; m[CLD_DENS] = 55;
   m[CLD_PITCH] = 0; m[CLD_SPREAD] = 40; m[CLD_REVERB] = 55; m[CLD_REVG] = 0;
   seedNewRegions();
+  // ---- and the parts of the jam that live in the newer regions. These sit
+  // AFTER seedNewRegions because that function also fills those regions in for
+  // old saves, which must keep their neutral defaults rather than inherit a mood.
+  // two slow triangle LFOs, both at full depth, doing the breathing
+  m[MLFO_A + 1] = 100; m[MLFO_A + 2] = 1;      // L1: 8 beats, triangle
+  m[MLFO_A + 4] = 100; m[MLFO_A + 5] = 1;      // L2: 16 beats, triangle
+  m[MOD_TGT_A] = FRC_BEND; m[MOD_MSK_A] = 2;           // L2 bends the tree
+  m[MOD_TGT_A + 1] = DRONE_OPEN_A; m[MOD_MSK_A + 1] = 1; // L1 opens the drone
+  m[XY_DRV] = 100; m[XY_SKW] = 10;             // bass waveshaper driven hard
+  // fractal fills: none on the kick, a little on the snare, a lot on the rim
+  m[FRC_ON] = 1; m[FRC_AMT] = 100; m[FRC_BEND] = 0;
+  m[DFILL_A] = 0; m[DFILL_A + 1] = 2; m[DFILL_A + 2] = 3;
+  m[SFILL_A] = 1; m[SFILL_A + 1] = 1; m[SFILL_A + 2] = 3;
+  m[DRONE_OPEN_A] = 0; m[DRONE_OPEN_A + 1] = 100; m[DRONE_OPEN_A + 2] = 30;
+  // the kick plays into the piano strings, which ring short and bright
+  m[PLSND_A] = 100;
+  m[PRES_ON] = 1; m[PRES_MIX] = 100; m[PRES_DEC] = 5; m[PRES_TONE] = 100;
+  // instruments lean on each other: the drums drive the melody, the bass rings
+  // the chords, and the bass rings against its own last frame
+  m[XSRC_A] = 2; m[XAMT_A] = 75; m[XMODE_A] = 0;
+  m[XSRC_A + 1] = 1; m[XAMT_A + 1] = 10; m[XMODE_A + 1] = 2;
+  m[XSRC_A + 2] = 2; m[XAMT_A + 2] = 20; m[XMODE_A + 2] = 0;
+  // unhurried, and mixed with headroom for the drone + delay tails
+  bpm = 90;
+  vols = { drum: 90, bass: 100, mel: 100, chd: 100, master: 75 };
 }
 // defaults for the splice + synth-drum regions (also applied to old saves)
 function seedNewRegions(arr) {
@@ -841,6 +901,11 @@ function seedNewRegions(arr) {
   for (let l = 0; l < LANES_CAP; l++) a[PLSND_A + l] = 0;
   a[PRES_ON] = 0; a[PRES_MIX] = 45; a[PRES_DEC] = 70; a[PRES_TONE] = 55;
   for (let si = 0; si < NSYN; si++) { a[XSRC_A + si] = 0; a[XAMT_A + si] = 40; a[XMODE_A + si] = 0; }
+  a[GLD_TIME] = 0;
+  a[MBR_ON] = 0; a[MBR_FREQ] = 180; a[MBR_SPRD] = 50; a[MBR_Q] = 45;
+  a[MBR_MODE] = 0; a[MBR_MIX] = 60; a[MBR_DRV] = 30;
+  for (let i = 0; i < 4; i++) a[MBR_SND_A + i] = 0;
+  for (let l = 0; l < LANES_CAP; l++) a[MBR_LSND_A + l] = 0;
 }
 // bring a stored mem block (768 / 800 / 864) up to the current layout;
 // returns a MEM-length plain array, or null for an unknown length
@@ -860,6 +925,12 @@ function migrateMem(arr) {
     if (!o[PRES_MIX]) { o[PRES_MIX] = 45; o[PRES_DEC] = 70; o[PRES_TONE] = 55; }
     if (!o[XAMT_A] && !o[XAMT_A + 1] && !o[XAMT_A + 2])
       for (let si = 0; si < 3; si++) o[XAMT_A + si] = 40;
+    // the 4-band resonator region reads all-zero on saves that predate it,
+    // and a zero frequency / zero Q would be a dead filter if switched on
+    if (!o[MBR_FREQ]) {
+      o[MBR_FREQ] = 180; o[MBR_SPRD] = 50; o[MBR_Q] = 45;
+      o[MBR_MIX] = 60; o[MBR_DRV] = 30;
+    }
     // densities predate some saves: derive from the legacy part bitmask so an
     // already-enabled fill setup keeps making sound (moderate defaults)
     let anyD = 0;
@@ -909,7 +980,9 @@ function seedGroove() {
   // the plugin starts with empty grids; the web demo starts with a groove
   m[PUL_A + 0] = 4; m[ROT_A + 0] = 0; applyEuclid(0);          // BD four-floor
   m[PUL_A + 1] = 2; m[ROT_A + 1] = 4; applyEuclid(1);          // SN backbeat
-  m[PUL_A + 2] = 8; m[ROT_A + 2] = 1; applyEuclid(2);          // RIM off-8ths
+  // RIM runs its own short loop on the 16th grid: 3-in-4 ticking over the bar
+  m[STEPS_A + 2] = 4; m[SPAN_A + 2] = 4; m[LMODE_A + 2] = 1;
+  m[PUL_A + 2] = 3; m[ROT_A + 2] = 0; applyEuclid(2);
   for (let si = 0; si < NSYN; si++) synGenerate(si);
 }
 
@@ -928,6 +1001,9 @@ function resetAll() {
   initState();
   seedGroove();
   touchState();
+  // INIT resets the tempo and the mixer too, and touchState only ships the mem
+  // block — without these the worklet keeps the old bpm and the old faders.
+  pushGains(); pushTransport();
   for (let l = 0; l < LANES_CAP; l++) pushSample(l);
 }
 
@@ -1056,6 +1132,9 @@ function modRange(off) {
   if (within(DFRC_A, 8)) return [0, 100];
   if (within(BELL_STK_A, 3) || within(PNO_A, 3)) return [0, 100];
   if (within(PSND_A, 4) || within(PLSND_A, 8)) return [0, 100];
+  if (within(MBR_SND_A, 4) || within(MBR_LSND_A, 8)) return [0, 100];
+  if (off === MBR_FREQ) return [40, 4000];
+  if (off === MBR_SPRD || off === MBR_Q || off === MBR_MIX || off === MBR_DRV) return [0, 100];
   if (off === PRES_MIX || off === PRES_DEC || off === PRES_TONE) return [0, 100];
   if (within(XAMT_A, 3)) return [0, 100];
   return null;
@@ -1648,13 +1727,20 @@ const xEuc = xSolo + 22, xMode = xEuc + 36, xGrid = xMode + 30;
 const cellw = 16, cellh = 28, rollrh = 8;
 function yBtn() { return laneTop + numLanes * rowh + 2; }
 function ys(si) { return yBtn() + 28 + si * 208; }
-const fxH = 300;                        // demarcated FX box at the bottom
+const fxH = 336;                        // demarcated FX box at the bottom
+// FX rack row offsets from fxY(); armRect must track the LFO rows
+const FXR_MBR = 204, FXR_L1 = 250, FXR_L2 = 286;
 const ROLL_X = 8, ROLL_Y = 88;          // rolls sit UNDER the control rows
 const RC_X = 744;                       // right-hand column (text + visuals)
 const HK_X = 744;                       // HARMONY panel (chords right column)
 function fxY() { return ys(2) + 184; }
 function yStat() { return fxY() + fxH + 2; }
-function totalH() { return yStat() + 22; }
+// the experimental strip lives below the status line, at the very bottom
+function yExp() { return yStat() + 20; }
+const EXP_H = 30;
+// φ tuning / φ loop chips inside that strip
+const EXP_PHI_X = 250, EXP_GLD_X = 292, EXP_CHIP_W = 34;
+function totalH() { return yExp() + EXP_H + 4; }
 
 // KEY row layout
 const kxKey = 156, kxScl = 204, kxPrg = 252, kxSpd = 298;
@@ -1694,6 +1780,7 @@ function fxFmt(kind, v) {
     : kind === 'beats' ? fmtG(v)
     : kind === 'shp' ? ['SIN', 'TRI', 'SW\u2193', 'S&H', 'SW\u2191', 'SPL', 'GLD'][Math.round(v)] || 'SIN'
     : kind === 'deg' ? Math.round(v) + '\u00b0'
+    : kind === 'hz' ? (v >= 1000 ? (v / 1000).toFixed(1) + 'k' : Math.round(v) + '')
     : String(Math.round(v));
 }
 function fxCells() {
@@ -1708,7 +1795,7 @@ function fxCells() {
   tog(x, y, 34, 'FX', FX_ON); x += 40;
   val(x, y, 44, 'FEED', FX_FEED, 0, 100, 5, 'pct'); x += 50;
   tog(x, y, 40, 'PRE', SND_PRE); x += 48;
-  lbl(x + 8, y + 9, 'per-ENG cells sit beside each ENG button · PNO column in SENDS feeds the piano strings');
+  lbl(x + 8, y + 9, 'per-ENG cells sit beside each ENG button · PNO + 4B columns in SENDS feed the two resonators');
   y = fy + 60; x = 12;
   lbl(x, y + 9, 'DUB DLY'); x += 52;
   tog(x, y, 34, '', DLY_ON); x += 40;
@@ -1751,13 +1838,25 @@ function fxCells() {
     tri(x, y, 44, XMODE_A + si, XMODE_NAMES); x += 46;
   }
 
+  // 4-band resonator: bandpass bank, summed or multiplied
+  y = fy + FXR_MBR; x = 12;
+  lbl(x, y + 9, '4-BAND'); x += 52;
+  tog(x, y, 34, '', MBR_ON); x += 38;
+  tri(x, y, 50, MBR_MODE, ['SUM', 'RING', 'PAIR', 'MULT']); x += 54;
+  val(x, y, 46, 'FREQ', MBR_FREQ, 40, 4000, 10, 'hz'); x += 50;
+  val(x, y, 44, 'SPRD', MBR_SPRD, 0, 100, 5, 'pct'); x += 48;
+  val(x, y, 36, 'Q', MBR_Q, 0, 100, 5, 'pct'); x += 40;
+  val(x, y, 40, 'DRV', MBR_DRV, 0, 100, 5, 'pct'); x += 44;
+  val(x, y, 40, 'MIX', MBR_MIX, 0, 100, 5, 'pct'); x += 48;
+  lbl(x, y + 9, 'summed = formant · multiplied = wreckage · 4B sends →');
+
   // mod LFOs: L1 / L2 rate + depth + shape; ARM chips drawn apart
-  y = fy + 214; x = 58;
+  y = fy + FXR_L1; x = 58;
   val(x, y, 46, 'RATE', MLFO_A, 0.25, 64, 0.25, 'beats'); x += 50;
   val(x, y, 42, 'DEP', MLFO_A + 1, 0, 100, 5, 'pct'); x += 46;
   val(x, y, 40, 'SHP', MLFO_A + 2, 0, 6, 1, 'shp'); x += 44;
   lbl(x + 4, y + 9, 'drag ARM onto a field (or tap to arm)');
-  y = fy + 250; x = 58;
+  y = fy + FXR_L2; x = 58;
   val(x, y, 46, 'RATE', MLFO_A + 3, 0.25, 64, 0.25, 'beats'); x += 50;
   val(x, y, 42, 'DEP', MLFO_A + 4, 0, 100, 5, 'pct'); x += 46;
   val(x, y, 40, 'SHP', MLFO_A + 5, 0, 6, 1, 'shp'); x += 44;
@@ -1766,19 +1865,23 @@ function fxCells() {
 }
 
 // SENDS matrix mini-knob centers: one row per drum lane, then BS/ML/CH
-// (row index runs 0..numLanes+2), inside the FX band's right column
+// (row index runs 0..numLanes+2), inside the FX band's right column.
+// Columns: delay, glitch, grain, piano strings, 4-band resonator.
+const SND_COLS = 5;
 function sndKnobXY(row, fxi) {
   return [796 + fxi * 42, fxY() + 30 + row * sndPitch()];
 }
 // the mem offset behind a sends-matrix row/column
 function sndOff(row, fxi) {
+  if (fxi === 4)   // the 4-band resonator column
+    return row < numLanes ? MBR_LSND_A + row : MBR_SND_A + (row - numLanes + 1);
   if (fxi === 3)   // the piano-string resonator column
     return row < numLanes ? PLSND_A + row : PSND_A + (row - numLanes + 1);
   return row < numLanes ? DSND_A + row * 3 + fxi
     : SND_MTX + (row - numLanes + 1) * 3 + fxi;
 }
 // ARM button rects for the two mod LFOs (draw + hit share these)
-function armRect(n) { return [12, fxY() + (n === 1 ? 214 : 250), 40, 30]; }
+function armRect(n) { return [12, fxY() + (n === 1 ? FXR_L1 : FXR_L2), 40, 30]; }
 // 3D dome center x (right-aligned with the other visualizers)
 const DOME_CX = 1124;
 // 3D-space entities: 0..7 drum lanes, 8..10 bass/melody/chords
@@ -1888,7 +1991,7 @@ function golFrame() {
   if (b !== golLastBeat) { golLastBeat = b; golStep(); }
   const steps = Math.max(1, Math.round(sget(1, 2)));
   const msd = (sget(1, 15) ? sget(1, 3) / 16 : sget(1, 3) / steps) * FEL_MULT[m[SFL_A + 1]];
-  const st = ((Math.floor(dispBeat / msd) % steps) + steps) % steps;
+  const st = loopStep(dispBeat, msd, steps);
   if (st !== golLastStep) {
     golLastStep = st;
     if (m[ronOff(1) + st]) {
@@ -1949,7 +2052,7 @@ function findModTarget(x, y) {
     }
   }
   if (y >= fxY() && y < fxY() + fxH) {
-    for (let p = 0; p < numLanes + 3; p++) for (let f = 0; f < 4; f++) {
+    for (let p = 0; p < numLanes + 3; p++) for (let f = 0; f < SND_COLS; f++) {
       const [kx, ky] = sndKnobXY(p, f);
       if ((x - kx) * (x - kx) + (y - ky) * (y - ky) <= 121) return sndOff(p, f);
     }
@@ -1993,6 +2096,25 @@ function onDown(x, y, right) {
   if (right || altMode) { onRClick(x, y); return; }
   dragMode = 0; dragMoved = false; rotApplied = 0;
   dragX = x; dragY = y;   // tap-vs-drag baseline for every mode
+
+  // experimental strip (very bottom): the two golden-ratio toggles
+  if (y >= yExp() && y < yExp() + EXP_H) {
+    if (x >= EXP_PHI_X && x < EXP_PHI_X + EXP_CHIP_W) {
+      m[PHI_TUNE] = m[PHI_TUNE] ? 0 : 1;
+      setStatus(m[PHI_TUNE]
+        ? 'φ tuning ON (experimental) — the octave becomes a golden sixth; every scale leans toward φ ratios'
+        : 'φ tuning off — standard octaves');
+      touchState(); return;
+    }
+    if (x >= EXP_GLD_X && x < EXP_GLD_X + EXP_CHIP_W) {
+      m[GLD_TIME] = m[GLD_TIME] ? 0 : 1;
+      setStatus(m[GLD_TIME]
+        ? 'golden LOOP on (experimental) — same tempo, same grid: the loop runs 1, 1, 2, 3, 5, 8, 13 then 21 steps before snapping back to step 1. The pattern grows, so it lands somewhere new every pass'
+        : 'golden loop off — every loop is the full pattern');
+      touchState(); return;
+    }
+    return;
+  }
 
   // header
   if (y < 28) {
@@ -2057,7 +2179,7 @@ function onDown(x, y, right) {
     }
     // SENDS matrix mini-knobs (vertical drag; armed tap assigns) —
     // one row per drum lane, then the three pitched parts
-    for (let p = 0; p < numLanes + 3; p++) for (let f = 0; f < 4; f++) {
+    for (let p = 0; p < numLanes + 3; p++) for (let f = 0; f < SND_COLS; f++) {
       const [kx, ky] = sndKnobXY(p, f);
       if ((x - kx) * (x - kx) + (y - ky) * (y - ky) <= 121) {
         const off = sndOff(p, f);
@@ -2231,12 +2353,6 @@ function onDown(x, y, right) {
       if (x >= 882 && x < 924) {
         if (armLfo) { tryModAssign(FRC_BEND); return; }
         dragMode = 55; dragFx = FRC_BEND; dragY = y; dragV = m[FRC_BEND]; return;
-      }
-      if (x >= 928 && x < 966) {
-        m[PHI_TUNE] = m[PHI_TUNE] ? 0 : 1;
-        setStatus(m[PHI_TUNE] ? 'φ tuning ON — the octave becomes a golden sixth; every scale leans toward φ ratios'
-          : 'φ tuning off — standard octaves');
-        touchState(); return;
       }
     }
     // fill DENSITY cells: one per drum lane, then bass / melody / chords.
@@ -2741,7 +2857,12 @@ function onUp() {
     if (dragMode === 31) {
       if (dragFx.t === 'tri') {
         m[dragFx.off] = ((m[dragFx.off] | 0) + 1) % dragFx.labels.length;
-        setStatus(dragFx.off === DLY_GLD
+        setStatus(dragFx.off === MBR_MODE
+          ? ['4-band SUM — the four resonant bands are added: a formant bank, the gentle end',
+             '4-band RING — neighbouring bands multiply each other: metallic, still pitched',
+             '4-band PAIR — two independent ring pairs, one per side: wide and hollow',
+             '4-band MULT — all four multiplied: intermodulation wreckage, the harsh end'][m[dragFx.off]]
+          : dragFx.off === DLY_GLD
           ? ['golden echo off', 'golden echo: repeats compress ×0.618 (500→309→191…)', 'golden echo: repeats expand ×φ'][m[dragFx.off]]
           : dragFx.off >= XSRC_A && dragFx.off < XSRC_A + 3
           ? `${SYN_NAMES[dragFx.off - XSRC_A]} cross source: ${XSRC_NAMES[m[dragFx.off]]}${m[dragFx.off] ? ' — set AMT and pick RING / DUCK / DRV' : ' (off)'}`
@@ -2832,6 +2953,57 @@ function textC(s, x1, x2, y, font) {
 function circle(x, y, r, fill) {
   ctx.beginPath(); ctx.arc(x, y, r, 0, 2 * Math.PI);
   if (fill) ctx.fill(); else { ctx.strokeStyle = ctx.fillStyle; ctx.stroke(); }
+}
+// A snail, drawn rather than loaded: foot, head, two eye stalks, and a shell
+// that is a real logarithmic spiral — r grows by phi every quarter turn, which
+// is the same golden growth the chips beside it apply to tuning and to the loop.
+function snail(x, y, s) {
+  ctx.strokeStyle = ctx.fillStyle;
+  ctx.lineWidth = Math.max(1.1, s * 0.13);
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  // body: flat sole, tapering tail at the left, head rising at the right
+  ctx.beginPath();
+  ctx.moveTo(x - s * 1.45, y + s * 0.78);
+  ctx.quadraticCurveTo(x - s * 0.1, y + s * 0.96, x + s * 1.12, y + s * 0.72);
+  ctx.quadraticCurveTo(x + s * 1.56, y + s * 0.58, x + s * 1.38, y + s * 0.14);
+  ctx.quadraticCurveTo(x + s * 1.0, y + s * 0.34, x + s * 0.3, y + s * 0.48);
+  ctx.quadraticCurveTo(x - s * 0.8, y + s * 0.56, x - s * 1.45, y + s * 0.78);
+  ctx.fill();
+  // eye stalks off the head, with knobs on the ends
+  ctx.beginPath();
+  ctx.moveTo(x + s * 1.18, y + s * 0.3); ctx.lineTo(x + s * 1.62, y - s * 0.52);
+  ctx.moveTo(x + s * 0.94, y + s * 0.36); ctx.lineTo(x + s * 1.04, y - s * 0.74);
+  ctx.stroke();
+  circle(x + s * 1.66, y - s * 0.6, s * 0.16, true);
+  circle(x + s * 1.05, y - s * 0.83, s * 0.16, true);
+  // shell: a logarithmic spiral seated on the back, growing by phi per FULL
+  // turn. (Per quarter turn — the textbook golden spiral — is x6.85 a turn, so
+  // only the outermost whorl would be visible at this size.) Normalised from
+  // the outer whorl inwards, because exp() runs away if you go the other way.
+  const b = Math.log(1.6180339887) / (2 * Math.PI), thMax = Math.PI * 6.2;
+  const cx = x - s * 0.12, cy = y - s * 0.12;
+  ctx.beginPath();
+  for (let i = 0; i <= 110; i++) {
+    const th = i / 110 * thMax;
+    const r = s * 1.0 * Math.exp(b * (th - thMax));
+    i ? ctx.lineTo(cx + r * Math.cos(th), cy - r * Math.sin(th))
+      : ctx.moveTo(cx + r * Math.cos(th), cy - r * Math.sin(th));
+  }
+  ctx.stroke();
+}
+// hazard triangle with an exclamation mark
+function hazard(x, y, s) {
+  const g = ctx.fillStyle;
+  ctx.beginPath();
+  ctx.moveTo(x, y - s);
+  ctx.lineTo(x + s * 0.92, y + s * 0.62);
+  ctx.lineTo(x - s * 0.92, y + s * 0.62);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = 'rgb(18,16,12)';
+  rect(x - s * 0.11, y - s * 0.46, s * 0.22, s * 0.66);
+  rect(x - s * 0.11, y + s * 0.32, s * 0.22, s * 0.16);
+  ctx.fillStyle = g;
 }
 const F9 = '9px Arial', F10 = '10px Arial', F11 = '11px Arial', F12 = '12px Arial',
   F13 = '13px Arial', F15 = 'bold 15px Arial';
@@ -2941,7 +3113,7 @@ function draw() {
     const ry = laneTop + gl * rowh;
     const gsd = m[LMODE_A + gl] ? m[SPAN_A + gl] / 16 : m[SPAN_A + gl] / m[STEPS_A + gl];
     const steps = m[STEPS_A + gl];
-    const playstep = playing ? ((Math.floor(dispBeat / gsd) % steps) + steps) % steps : -1;
+    const playstep = playing ? loopStep(dispBeat, gsd, steps) : -1;
 
     const laneReady = smpA[gl] === SMP_SYN || decoded[smpA[gl]]
       || (smpA[gl] === SMP_USR && userSmp[gl]);
@@ -3012,6 +3184,12 @@ function draw() {
       if (beatTick && gi % beatTick === 0) {
         set(0.6, 0.6, 0.65); rect(cx, ry + 2, 1, cellh + 4);
       }
+    }
+    // golden loop: gold barline showing where this pass wraps back to step 1
+    if (playing && m[GLD_TIME]) {
+      const glen = GM_STEPS[goldLoop(Math.floor(dispBeat / gsd)).i];
+      set(0.95, 0.75, 0.25);
+      rect(xGrid + Math.min(glen, steps) * cellw - 1, ry + 2, 2, cellh + 4);
     }
   }
 
@@ -3218,11 +3396,9 @@ function draw() {
       set(0.24, 0.24, 0.3); rect(882, fry, 42, 18);
       set(0.85, 0.85, 0.9); textC('↝' + Math.round(m[FRC_BEND]), 882, 924, fry + 3, F10);
       modTick(FRC_BEND, 882, 42, fry);
-      m[PHI_TUNE] ? set(0.44, 0.38, 0.2) : set(0.24, 0.24, 0.28);
-      rect(928, fry, 38, 18);
-      set(0.95, 0.9, 0.72); textC('φ', 928, 966, fry + 2, F12);
       set(0.38, 0.4, 0.42);
-      text('on · L-system · amount · bend · φ = golden tuning', HK_X, ysv + 108, F9);
+      text('φ tuning and φ loop now live in the experimental strip at the bottom',
+        HK_X, ysv + 108, F9);
       // per-part fill DENSITY cells: D0 off .. D7 radical flurry
       for (let i = 0; i < numLanes; i++) {
         const dv = m[DFILL_A + i] | 0;
@@ -3415,7 +3591,7 @@ function draw() {
     const gyr = ysv + ROLL_Y;
     const nst = m[sp + 2];
     const msd = (m[sp + 15] ? m[sp + 3] / 16 : m[sp + 3] / nst) * FEL_MULT[m[SFL_A + gsi]];
-    const mplay = playing ? ((Math.floor(dispBeat / msd) % nst) + nst) % nst : -1;
+    const mplay = playing ? loopStep(dispBeat, msd, nst) : -1;
     const mcnt = Math.max(1, SCL[effScale(gsi)][0]);
     const mspb = 1 / msd;
     const mbt = (Math.abs(mspb - Math.floor(mspb + 0.5)) < 1e-6 && mspb >= 1)
@@ -3504,15 +3680,15 @@ function draw() {
     // SENDS matrix: mini circular faders — one row per drum lane, then the
     // pitched parts (per-lane sends: every drum can take its own fx bath)
     set(0.5, 0.52, 0.56); text('SENDS', 744, fy + 6, F10);
-    const FXCOL = ['DLY', 'GLI', 'GRN', 'PNO'];
-    for (let f = 0; f < 4; f++) {
+    const FXCOL = ['DLY', 'GLI', 'GRN', 'PNO', '4B'];
+    for (let f = 0; f < SND_COLS; f++) {
       set(0.45, 0.46, 0.5);
       textC(FXCOL[f], 796 + f * 42 - 16, 796 + f * 42 + 16, fy + 6, F10);
     }
     for (let p = 0; p < numLanes + 3; p++) {
       const rl = p < numLanes ? 'L' + (p + 1) : ['BS', 'ML', 'CH'][p - numLanes];
       set(0.45, 0.46, 0.5); text(rl, 752, sndKnobXY(p, 0)[1] - 5, F10);
-      for (let f = 0; f < 4; f++) {
+      for (let f = 0; f < SND_COLS; f++) {
         const [kx, ky] = sndKnobXY(p, f);
         const off = sndOff(p, f), v = m[off] / 100;
         v > 0 ? set(0.16, 0.34, 0.36) : set(0.2, 0.21, 0.24);
@@ -3636,6 +3812,44 @@ function draw() {
     text('drag fields · ENG: osc/string/glass/splice/drone/bell/piano · right-click a drum cell for 2nd-cycle → ghost fill · sends + piano strings right of the rack', 8, yStat(), F11);
   }
 
+  // ---- experimental strip: the golden-ratio toggles, fenced off ----
+  {
+    const ey = yExp(), anyOn = m[PHI_TUNE] || m[GLD_TIME];
+    anyOn ? set(0.16, 0.13, 0.07) : set(0.11, 0.11, 0.12);
+    rect(0, ey, W, EXP_H);
+    // caution stripes along the top edge, so the band reads as a fence
+    set(anyOn ? 0.5 : 0.3, anyOn ? 0.4 : 0.26, 0.12);
+    for (let sx = -EXP_H; sx < W; sx += 14) {
+      ctx.beginPath();
+      ctx.moveTo(sx, ey + 3); ctx.lineTo(sx + 6, ey + 3);
+      ctx.lineTo(sx + 6 - 3, ey); ctx.lineTo(sx - 3, ey);
+      ctx.closePath(); ctx.fill();
+    }
+    const cy = ey + 17;
+    set(anyOn ? 0.85 : 0.5, anyOn ? 0.7 : 0.44, 0.24);
+    snail(26, cy - 1, 9);
+    hazard(58, cy, 8);
+    set(anyOn ? 0.98 : 0.62, anyOn ? 0.82 : 0.55, 0.3);
+    text('EXPERIMENTAL', 74, ey + 11, F11);
+    set(anyOn ? 0.85 : 0.5, anyOn ? 0.7 : 0.44, 0.24);
+    hazard(178, cy, 8);
+    // the two toggles
+    m[PHI_TUNE] ? set(0.55, 0.45, 0.18) : set(0.24, 0.24, 0.27);
+    rect(EXP_PHI_X, ey + 7, EXP_CHIP_W, 18);
+    set(0.97, 0.92, 0.74); textC('φ', EXP_PHI_X, EXP_PHI_X + EXP_CHIP_W, ey + 8, F12);
+    m[GLD_TIME] ? set(0.56, 0.43, 0.17) : set(0.24, 0.24, 0.27);
+    rect(EXP_GLD_X, ey + 7, EXP_CHIP_W, 18);
+    set(0.97, 0.9, 0.72); textC('φT', EXP_GLD_X, EXP_GLD_X + EXP_CHIP_W, ey + 10, F10);
+    const loopNow = m[GLD_TIME] && playing
+      ? `  ·  LOOP ${GM_STEPS[goldLoop(Math.floor(dispBeat / gridSd())).i]} steps`
+      : m[GLD_TIME] ? '  ·  loop 1·1·2·3·5·8·13·21' : '';
+    set(0.52, 0.5, 0.46);
+    text('φ = golden tuning (the octave becomes a golden sixth) · φT = golden loop '
+      + '(the loop grows 1·1·2·3·5·8·13·21 steps)' + loopNow
+      + '   —   these two retune and re-time everything; slow, strange, and liable to wander',
+      EXP_GLD_X + EXP_CHIP_W + 12, ey + 11, F9);
+  }
+
   // wake overlay until the first gesture creates the AudioContext
   if (!audioReady) {
     ctx.fillStyle = 'rgba(8,10,12,0.82)';
@@ -3722,6 +3936,9 @@ window.gnome = {
   get audioStarting() { return audioStarting; },
   get decoded() { return decoded; },
   get dispBeat() { return dispBeat; },
+  // layout seams so tests don't hardcode rack row offsets that move when the
+  // rack grows a row
+  armRect, fxCells, get fxTop() { return fxY(); },
   get wheel() { return { b: gsndB, m: gsndM, c: gsndC, cn: gsndCn }; },
 
   // state + engine plumbing shared by both layouts
@@ -3748,7 +3965,9 @@ window.gnome = {
     DFILL_A, SFILL_A, FRC_BEND,
     DRONE_OPEN_A, DVOL_A, DSND_A, DAZ_A, DFRC_A,
     PHI_TUNE, DLY_GLD, BELL_STK_A, PNO_A, PSND_A, PLSND_A,
-    PRES_ON, PRES_MIX, PRES_DEC, PRES_TONE, XSRC_A, XAMT_A, XMODE_A,
+    PRES_ON, PRES_MIX, PRES_DEC, PRES_TONE, XSRC_A, XAMT_A, XMODE_A, GLD_TIME,
+    MBR_ON, MBR_FREQ, MBR_SPRD, MBR_Q, MBR_MODE, MBR_MIX, MBR_DRV,
+    MBR_SND_A, MBR_LSND_A,
   },
   tables: { SCALE_NAMES, PROG_NAMES, SHAPE_NAMES, SYN_NAMES, FEEL_NAMES, SCL, STYLE_NAMES, FRACTAL_NAMES, XSRC_NAMES, XMODE_NAMES },
   fractalLevels, buildFractalTree, sendFillNow, sendFlick, treeBranchAt, findModTarget,

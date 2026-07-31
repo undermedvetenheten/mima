@@ -103,6 +103,20 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
   iOS. The canvas has a ♪ PDF header button; the pocket has a "Sheet music
   (PDF)" action on the KEY·MIX tab.
 
+  **A fresh gnome starts as a chill jam.** INIT (and a first-ever visit) no
+  longer deals a neutral test groove — it opens playable: **90 bpm, A#
+  Phrygian, I - IV**, with the parts generated in the **Ark** style. A **drone
+  bass** whose opening is swept by LFO1 sits under a **glass pad** on the
+  chords; the melody stays on the plain oscillator (a half-second swell with a
+  long tail) so a fresh gnome never depends on a sample nobody has loaded yet.
+  The drums swing (35/50) with the kick dragged 10% behind the grid, the rim
+  runs its own 4-step loop on the 16th grid, and the parts sit in different
+  feels — melody triplet, chords dotted. The **FX rack is already on** with a
+  slow dotted delay carrying the chords, the **piano-string resonator** is lit
+  with the kick playing into it, **fractal fills** are running, and LFO2 bends
+  the tree while LFO1 breathes the drone. The rhythms and notes are still
+  generated fresh every INIT — it's a mood, not a fixed song.
+
   **Presets** (A/B/C): full-groove slots stored in their own localStorage key,
   recallable live mid-playback (recall is a single undoable step). Canvas: tap
   A/B/C to recall, ALT/right-click to store, ⇩/⇧ save/load the current groove
@@ -277,7 +291,10 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
     without ever self-oscillating.
   - **Golden echo** (`DLY_GLD`, the GLD cell on the dub-delay row): six delay
     taps spaced by cumulative ×φ intervals, compressing (500→309→191…) or
-    expanding — ripples obeying a growth law instead of a metronome.
+    expanding — ripples obeying a growth law instead of a metronome. Each echo
+    falls by 1/φ and the taps are normalised as a group, so it sits at the same
+    level as the plain delay; the recirculation is scaled down because the six
+    taps multiply whatever feeds back (otherwise it burns out past FB 50%).
   - **Two LFO shapes**: SPL (spline drift — cosine-slewed sample-and-hold, a
     smooth wander) and GLD (golden rise — an exponential staircase whose treads
     grow ×φ; on a filter it opens 200→324→524→848…).
@@ -285,13 +302,61 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
     golden-angle walk (each pick 0.618 around the colony — sunflower coverage,
     no clumping) with a φ-bias (61.8% place / 38.2% erase).
 
+  **4-band resonator** (`MBR_*`, the 4-BAND row in the rack + the **4B** column
+  in SENDS): the input is split by **four resonant bandpass filters**, then the
+  band outputs are **summed or multiplied** according to the mode. Multiplying
+  band outputs is ring modulation by a carrier derived from the signal itself,
+  so the sidebands track the material rather than sitting at a fixed frequency
+  — gentle and vocal on a synth pad, total wreckage on an acoustic loop.
+  - `SUM` — the four bands added: a formant/resonator bank, the gentle end.
+    It is *darker* than the dry signal (it is, after all, four bandpasses).
+  - `RING` — neighbouring bands multiply each other: metallic but still pitched.
+  - `PAIR` — two independent ring pairs, one per side: wide and hollow.
+  - `MULT` — all four multiplied: intermodulation wreckage, the harsh end.
+    This mode is mono by nature (multiplication is commutative, so there is no
+    honest way to make the two sides differ); the dry path stays stereo.
+  - `FREQ` sets the lowest band, `SPRD` the spacing between bands (packed into
+    a formant, or fanned across the spectrum), `Q` the ringing, `DRV` the output
+    saturation, `MIX` the return level. All are LFO targets.
+
+  Each band is normalised by its own slow envelope before the multiply modes
+  use it. Without that, multiplying four signals that are each well under 1
+  collapses toward silence and the level swings with the *fourth power* of the
+  input; with it, the modes differ in timbre rather than loudness (measured
+  spread between the four modes: **1.45×**). The output is DC-blocked, because
+  products are not zero-mean. It is parallel and wet-only like the piano
+  strings, fed by its own per-lane and per-part sends.
+
+  **The experimental strip** runs across the very bottom of the canvas, behind
+  caution stripes: a snail (whose shell is a real logarithmic spiral, growing
+  by φ per turn), two hazard signs, the word EXPERIMENTAL, and the only two
+  controls that retune or re-time *everything* — **φ tuning** and **φ loop**.
+  They used to sit up on the fractal-fills row, where they looked like ordinary
+  per-part options; they are not. The strip lights amber when either is on, and
+  reads out the live loop length. In the pocket both toggles carry a ⚠.
+
+  **Golden loop** (`GLD_TIME`, the φT chip in the experimental strip): tempo,
+  grid and step length are all **untouched** — what changes is **how many steps the loop runs
+  before it snaps back to step 1**. The loop grows **1 · 1 · 2 · 3 · 5 · 8 ·
+  13 · 21 steps** and starts over (21 is the ceiling because the sequencer tops
+  out at 32 steps). A 16-step pattern therefore plays a one-step stutter, then a
+  fragment, then most of itself, then more than a full lap — the same hits
+  landing somewhere new every pass. It's the zoetrope idea made literal: a loop
+  that grows. Each part loops in *its own* steps, so parts on different grids
+  drift against each other in golden proportion. Fills follow the growing loop
+  (they land at the end of whatever the current loop is); the Game of Life,
+  wheel spin and the beat-synced effects stay on the real clock. A gold barline
+  in the drum grid shows where the current pass wraps, and the panel reads out
+  the loop length (`LOOP 5 steps`).
+
   **Piano-string resonator** (`PRES_*`, `PSND_A`/`PLSND_A`): a rack of strings
   with the sustain pedal down, tuned to two octaves of the chords part's key.
   It has its own **PNO column** in the SENDS matrix, so any drum lane or part
   can be played *into* the piano — the sympathetic strings ring in the key, the
   way playing into an open piano sounds. MIX / PED (decay) / TONE (string
   damping) live on the PIANO STR row of the FX box. The input is DC-blocked
-  because near-unity combs integrate DC.
+  *and* softened (~3kHz) — strings are driven through a soundboard, so a
+  transient blooms instead of clicking.
 
   **Cross-routing** (`XSRC_A`/`XAMT_A`/`XMODE_A`): each pitched part can pick
   another instrument as a modulator — **RING** (it amplitude-modulates this

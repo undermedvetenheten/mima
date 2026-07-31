@@ -69,6 +69,24 @@ const PHI_TUNE = 995, DLY_GLD = 996, BELL_STK_A = 997;
 const PNO_A = 1000, PSND_A = 1003, PLSND_A = 1007;
 const PRES_ON = 1015, PRES_MIX = 1016, PRES_DEC = 1017, PRES_TONE = 1018;
 const XSRC_A = 1019, XAMT_A = 1022, XMODE_A = 1025;
+const GLD_TIME = 1028;
+// GOLDEN TIME: bar lengths walk the Fibonacci spiral, 1,2,3,5,8,13,21,34
+// beats, then repeat. Sequencer time is WARPED so each of those bars is four
+// "musical" beats long — the pattern is identical, the clock breathes.
+const FIB_BARS = [1, 2, 3, 5, 8, 13, 21, 34];
+const FIB_CUM = [0, 1, 3, 6, 11, 19, 32, 53];
+const FIB_TOTAL = 87, FIB_WARP = 32;      // real beats / warped beats per lap
+function warpOf(beat) {
+  const lap = Math.floor(beat / FIB_TOTAL), t = beat - lap * FIB_TOTAL;
+  let i = 7;
+  for (let k = 0; k < 8; k++) if (t < FIB_CUM[k] + FIB_BARS[k]) { i = k; break; }
+  return lap * FIB_WARP + i * 4 + (t - FIB_CUM[i]) / FIB_BARS[i] * 4;
+}
+function unwarpOf(w) {
+  const lap = Math.floor(w / FIB_WARP), t = w - lap * FIB_WARP;
+  const i = Math.max(0, Math.min(7, Math.floor(t / 4)));
+  return lap * FIB_TOTAL + FIB_CUM[i] + (t - i * 4) / 4 * FIB_BARS[i];
+}
 // church-bell partial set: hum, prime, minor tierce, quint, nominal, then
 // three phi-spaced upper partials (inharmonic shimmer, the golden character)
 const BELL_R = [0.5, 1.0, 1.19, 1.5, 2.0, 3.236, 5.236, 8.472];
@@ -296,7 +314,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     this.prBuf = new Float64Array(this.PR_N * this.PR_MAX);
     this.prPos = new Int32Array(this.PR_N);
     this.prLen = new Int32Array(this.PR_N).fill(512);
-    this.prLo = F(this.PR_N); this.prDc = 0;
+    this.prLo = F(this.PR_N); this.prDc = 0; this.prIn = 0;
     // cross-routing: last frame's source values + envelope followers
     this.xSrc = F(5); this.xEnv = F(5);
     // branch-click one-shot: force this fill level until the beat passes
@@ -403,7 +421,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     } else if (d.type === 'fillNow') {
       // a tree branch was clicked: force that fill level for the next bars
       this.fillForce = Math.max(1, Math.min(3, d.level | 0));
-      this.fillForceUntil = this.gBeat + 4;
+      this.fillForceUntil = (this.m[GLD_TIME] ? warpOf(this.gBeat) : this.gBeat) + 4;
     } else if (d.type === 'flick') {
       // a dome marble was thrown: impart angular velocity (deg per block)
       const p = d.part | 0;
@@ -480,7 +498,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
   // transposed up a scale step for pitched parts = the tree's branches), so
   // the fill riffs on what's already there at a smaller time scale. FRC_AMT
   // ("fractality") scales how much of the loop fills and how many branches.
-  emitFills(blkStart, blkEnd, spb, nframes) {
+  emitFills(blkStart, blkEnd, spb, nframes, toOfs, beatScale) {
     const m = this.m;
     const forcing = this.fillForce > 0 && blkStart < this.fillForceUntil;
     if (this.fillForce > 0 && blkStart >= this.fillForceUntil) this.fillForce = -1;
@@ -519,11 +537,11 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
             let tb = k * loopBeats + endFrac * loopBeats - (cnt - h) * subdur;
             if (h & 1) tb += subdur * 0.4 * bend;   // bent trees swing
             if (tb < blkStart || tb >= blkEnd) continue;
-            const ofs = Math.min(Math.max(0, Math.floor((tb - blkStart) * spb)), nframes - 1);
+            const ofs = toOfs(tb);
             const src = active[h % active.length];
             const cyc = Math.floor(h / active.length); // motif cycle = branch up
             const velScale = 0.5 + 0.5 * (cnt < 2 ? 1 : h / (cnt - 1));
-            fire(ofs, src, cyc, subdur, velScale);
+            fire(ofs, src, cyc, subdur * beatScale, velScale);
           }
         }
       }
@@ -787,7 +805,8 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
   }
 
   render(outputs) {
-    const outL = outputs[0][0], outR = outputs[0][1];
+    // tolerate a mono output bus (some hosts / offline contexts hand us one)
+    const outL = outputs[0][0], outR = outputs[0][1] || outputs[0][0];
     const nframes = outL.length;
     if (!this.haveState) return true;
 
@@ -825,6 +844,18 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     const spb = srate / bps;
     const blkStart = this.gBeat;
     const blkEnd = blkStart + nframes / spb;
+    // GOLDEN TIME: the sequencer runs on a warped clock whose bars grow
+    // 1,2,3,5,8,13,21,34 beats. toOfs() maps a warped instant back to a real
+    // sample offset, so notes land exactly where they should either way.
+    const gtOn = m[GLD_TIME] ? 1 : 0;
+    const seqStart = gtOn ? warpOf(blkStart) : blkStart;
+    const seqEnd = gtOn ? warpOf(blkEnd) : blkEnd;
+    // how many real beats one warped beat currently lasts (gates / holds)
+    const beatScale = gtOn
+      ? FIB_BARS[Math.max(0, Math.min(7, Math.floor((seqStart % FIB_WARP) / 4)))] / 4
+      : 1;
+    const toOfs = (t) => Math.min(Math.max(0,
+      Math.floor(((gtOn ? unwarpOf(t) : t) - blkStart) * spb)), nframes - 1);
 
     // sanitize state so any blow-up recovers instead of latching NaN silence
     for (let l = 0; l < LANES_CAP; l++) {
@@ -996,26 +1027,25 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
         const steps = m[STEPS_A + l];
         const stepdur = m[LMODE_A + l] ? m[SPAN_A + l] / 16 : m[SPAN_A + l] / steps;
         // scan one step of slack either side so swing/nudge shifts stay caught
-        let n = Math.ceil((blkStart - stepdur) / stepdur - 1e-9);
+        let n = Math.ceil((seqStart - stepdur) / stepdur - 1e-9);
         let t = n * stepdur;
-        while (t < blkEnd + stepdur) {
+        while (t < seqEnd + stepdur) {
           const stepidx = ((n % steps) + steps) % steps;
           const pv = m[PAT + l * MAX_STEPS + stepidx];
           if (pv && (pv !== 2 || Math.floor(n / steps) % 2 !== 0)) {
             const tsh = t + (m[NDG_A + l] / 100 + ((stepidx & 1) ? m[SWG_A + l] / 100 : 0)) * stepdur;
-            const gate = stepdur * spb * (m[GATE_A + l] / 100) * 2;
+            const gate = stepdur * beatScale * spb * (m[GATE_A + l] / 100) * 2;
             if (pv === 3) {
               // ghost-fill cell: two grace notes rolling into a soft hit
               const gd = stepdur / 6;
               for (let g = 0; g < 3; g++) {
                 const tg = tsh - (2 - g) * gd;
-                if (tg < blkStart || tg >= blkEnd) continue;
-                const ofs = Math.min(Math.max(0, Math.floor((tg - blkStart) * spb)), nframes - 1);
-                this.fireDrum(l, ofs, Math.max(1, m[VEL_A + l] * [0.28, 0.36, 0.5][g]),
-                  Math.min(gate, gd * spb * 0.9));
+                if (tg < seqStart || tg >= seqEnd) continue;
+                this.fireDrum(l, toOfs(tg), Math.max(1, m[VEL_A + l] * [0.28, 0.36, 0.5][g]),
+                  Math.min(gate, gd * beatScale * spb * 0.9));
               }
-            } else if (tsh >= blkStart && tsh < blkEnd) {
-              const ofs = Math.min(Math.max(0, Math.floor((tsh - blkStart) * spb)), nframes - 1);
+            } else if (tsh >= seqStart && tsh < seqEnd) {
+              const ofs = toOfs(tsh);
               let hvel = m[VEL_A + l];
               if (m[VHM_A + l] > 0)
                 hvel = Math.max(1, Math.floor(hvel * (1 - Math.random() * m[VHM_A + l] / 100 * 0.7)));
@@ -1037,15 +1067,15 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
         const epr = this.effProg(si), espd = this.effSpd(si);
         const nst = m[sp + 2];
         const stepdur = (m[sp + 15] ? m[sp + 3] / 16 : m[sp + 3] / nst) * FEL_MULT[m[SFL_A + si]];
-        let n = Math.ceil((blkStart - stepdur) / stepdur - 1e-9);
+        let n = Math.ceil((seqStart - stepdur) / stepdur - 1e-9);
         let t = n * stepdur;
-        while (t < blkEnd + stepdur) {
+        while (t < seqEnd + stepdur) {
           const stepidx = ((n % nst) + nst) % nst;
           const sv2 = m[ron + stepidx];
           if (sv2 && (sv2 !== 2 || Math.floor(n / nst) % 2 !== 0)) {
             const tsh = t + (m[SND_A + si] / 100 + ((stepidx & 1) ? m[SSW_A + si] / 100 : 0)) * stepdur;
-            if (tsh >= blkStart && tsh < blkEnd) {
-              const ofs = Math.min(Math.max(0, Math.floor((tsh - blkStart) * spb)), nframes - 1);
+            if (tsh >= seqStart && tsh < seqEnd) {
+              const ofs = toOfs(tsh);
               // harmony: diatonic degree shift for 12-TET progs, exact cents for JI
               let dsh = 0, hcents = 0;
               if (epr > 0) {
@@ -1071,8 +1101,9 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
                   440 * Math.pow(2, (ebase - 69) / 12 + cents / 1200)));
                 this.svNgain[si] = m[sp + 6] / 127 * 0.3;
                 this.svDel[si] = ofs + 1;
-                this.svHold[si] = m[sp + 20] === 1 ? Math.floor(stepdur * m[sp + 7] / 100 * spb) :
-                                  m[sp + 20] === 2 ? -1 : 0;
+                this.svHold[si] = m[sp + 20] === 1
+                  ? Math.floor(stepdur * beatScale * m[sp + 7] / 100 * spb)
+                  : m[sp + 20] === 2 ? -1 : 0;
               } else {
                 // ---- chord (paraphonic): diatonic stack + voice leading ----
                 const nv = m[sp + 24] ? 4 : 3;
@@ -1097,8 +1128,9 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
                 this.chNv = nv;
                 this.svNgain[2] = m[sp + 6] / 127 * 0.3;
                 this.svDel[2] = ofs + 1;
-                this.svHold[2] = m[sp + 20] === 1 ? Math.floor(stepdur * m[sp + 7] / 100 * spb) :
-                                 m[sp + 20] === 2 ? -1 : 0;
+                this.svHold[2] = m[sp + 20] === 1
+                  ? Math.floor(stepdur * beatScale * m[sp + 7] / 100 * spb)
+                  : m[sp + 20] === 2 ? -1 : 0;
               }
             }
           }
@@ -1108,7 +1140,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
       }
 
       // fractal-fill overlay: L-system-arranged self-similar fills
-      this.emitFills(blkStart, blkEnd, spb, nframes);
+      this.emitFills(seqStart, seqEnd, spb, nframes, toOfs, beatScale);
 
       this.gBeat = blkEnd;
     }
@@ -1169,14 +1201,18 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     const gldMode = !dlyPitching && (m[DLY_GLD] | 0);
     const gldTaps = [], gldGains = [];
     if (gldMode) {
-      let acc = 0, iv = dlyTimeSamp;
-      const fbg = Math.max(0.25, m[DLY_FB] / 100);
+      // Each echo falls by 1/phi, and the six taps are normalised as a group
+      // so the golden echo sits at the same level as the plain one instead of
+      // stacking six full-gain copies (which burned out at high feedback).
+      let acc = 0, iv = dlyTimeSamp, gsum = 0;
       for (let tp = 0; tp < 6; tp++) {
         acc += iv;
         gldTaps.push(Math.min(DMAX - 4, acc));
-        gldGains.push(Math.pow(fbg, tp * 0.5 + 0.5));
+        const g = Math.pow(0.618, tp);
+        gldGains.push(g); gsum += g;
         iv = gldMode === 1 ? iv / PHI : iv * PHI;   // compress or expand
       }
+      for (let tp = 0; tp < 6; tp++) gldGains[tp] = gldGains[tp] / gsum * 1.25;
     }
     const PWIN = Math.min(6000, Math.max(512, Math.floor(dlyTimeSamp * 0.5)));
     // clouds granular reverb coefficients
@@ -1532,8 +1568,10 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
           }
           this.dlyLoL += toneCoef * (rL - this.dlyLoL);
           this.dlyLoR += toneCoef * (rR - this.dlyLoR);
-          this.dlyL[this.dlyW] = dIn + this.dlyLoL * (gldMode ? dlyFb * 0.5 : dlyFb);
-          this.dlyR[this.dlyW] = dIn + this.dlyLoR * (gldMode ? dlyFb * 0.5 : dlyFb);
+          // FB still lengthens the tail, but the six taps multiply whatever
+          // recirculates, so the loop gain is scaled to stay well under 1
+          this.dlyL[this.dlyW] = dIn + this.dlyLoL * (gldMode ? dlyFb * 0.45 : dlyFb);
+          this.dlyR[this.dlyW] = dIn + this.dlyLoR * (gldMode ? dlyFb * 0.45 : dlyFb);
           this.dlyW = this.dlyW + 1 < DMAX ? this.dlyW + 1 : 0;
           fxoL += rL; fxoR += rR;
         }
@@ -1625,7 +1663,10 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
       if (presOn && presMix > 0.001) {
         // block DC before the strings: a near-unity comb integrates it
         this.prDc += 0.0004 * (pIn - this.prDc);
-        const pAc = pIn - this.prDc;
+        // strings are driven through a soundboard, not hit directly: soften
+        // the excitation (~3kHz) so transients bloom instead of clicking
+        this.prIn += 0.35 * ((pIn - this.prDc) - this.prIn);
+        const pAc = this.prIn;
         let wL = 0, wR = 0;
         for (let i = 0; i < this.PR_N; i++) {
           const base = i * this.PR_MAX, len = this.prLen[i], pos = this.prPos[i];
@@ -1672,7 +1713,8 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
       const sc = new Float32Array(256);
       for (let i = 0; i < 256; i++) sc[i] = this.scopeBuf[(this.scopeW + 256 + i) & 511];
       this.port.postMessage({
-        type: 'tick', beat: this.gBeat, playing: this.playing,
+        type: 'tick', beat: m[GLD_TIME] ? warpOf(this.gBeat) : this.gBeat,
+        playing: this.playing,
         gsndB: this.gsndB, gsndM: this.gsndM,
         gsndC: Array.from(this.gsndC), gsndCn: this.gsndCn,
         azv: Array.from(this.azE),

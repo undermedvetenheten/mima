@@ -590,7 +590,9 @@ window.createGnomeUI = function (G) {
       stepper('Progression speed', 0.25, 16, 0.25, () => m[C.GKEY_SPD], v => m[C.GKEY_SPD] = Math.max(0.25, v), fmtBeats),
       selectRow('Generate style', T.STYLE_NAMES, () => m[C.GEN_STYLE], v => G.setStyle(v)),
       seg('φ tuning', ['off', 'on'], () => m[C.PHI_TUNE], i => m[C.PHI_TUNE] = i,
-        'the octave becomes a golden sixth — every scale leans toward golden-ratio intervals'));
+        'the octave becomes a golden sixth — every scale leans toward golden-ratio intervals'),
+      seg('φ time', ['off', 'on'], () => m[C.GLD_TIME], i => m[C.GLD_TIME] = i,
+        'bars grow 1, 2, 3, 5, 8, 13, 21, 34 beats then start over — the pattern is the same, the clock breathes'));
   }
 
   function locksSection() {

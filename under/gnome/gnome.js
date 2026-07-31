@@ -9,7 +9,7 @@
 
 // bump on every release: cache-busts the worklet module so a stale cached
 // DSP can never run against fresh UI code
-const APP_V = '21';
+const APP_V = '22';
 
 
 const LANES_CAP = 8, MAX_STEPS = 32, EUC_N = 21, NROWS = 12, NSCALES = 15,
@@ -98,6 +98,9 @@ const PSND_A = 1003, PLSND_A = 1007;
 const PRES_ON = 1015, PRES_MIX = 1016, PRES_DEC = 1017, PRES_TONE = 1018;
 // cross-routing: per-synth source / amount / mode (ring, duck, drive)
 const XSRC_A = 1019, XAMT_A = 1022, XMODE_A = 1025;
+// golden time: bar lengths walk the Fibonacci spiral (1,2,3,5,8,13,21,34)
+const GLD_TIME = 1028;
+const FIB_BARS = [1, 2, 3, 5, 8, 13, 21, 34];
 const XSRC_NAMES = ['—', 'DR', 'BS', 'ML', 'CH'];
 const XMODE_NAMES = ['RING', 'DUCK', 'DRV'];
 
@@ -841,6 +844,7 @@ function seedNewRegions(arr) {
   for (let l = 0; l < LANES_CAP; l++) a[PLSND_A + l] = 0;
   a[PRES_ON] = 0; a[PRES_MIX] = 45; a[PRES_DEC] = 70; a[PRES_TONE] = 55;
   for (let si = 0; si < NSYN; si++) { a[XSRC_A + si] = 0; a[XAMT_A + si] = 40; a[XMODE_A + si] = 0; }
+  a[GLD_TIME] = 0;
 }
 // bring a stored mem block (768 / 800 / 864) up to the current layout;
 // returns a MEM-length plain array, or null for an unknown length
@@ -2232,7 +2236,14 @@ function onDown(x, y, right) {
         if (armLfo) { tryModAssign(FRC_BEND); return; }
         dragMode = 55; dragFx = FRC_BEND; dragY = y; dragV = m[FRC_BEND]; return;
       }
-      if (x >= 928 && x < 966) {
+      if (x >= 962 && x < 992) {
+        m[GLD_TIME] = m[GLD_TIME] ? 0 : 1;
+        setStatus(m[GLD_TIME]
+          ? 'golden TIME on — each bar grows 1, 2, 3, 5, 8, 13, 21, 34 beats, then starts over. The pattern is the same; the clock breathes'
+          : 'golden time off — steady bars');
+        touchState(); return;
+      }
+      if (x >= 928 && x < 958) {
         m[PHI_TUNE] = m[PHI_TUNE] ? 0 : 1;
         setStatus(m[PHI_TUNE] ? 'φ tuning ON — the octave becomes a golden sixth; every scale leans toward φ ratios'
           : 'φ tuning off — standard octaves');
@@ -3219,10 +3230,13 @@ function draw() {
       set(0.85, 0.85, 0.9); textC('↝' + Math.round(m[FRC_BEND]), 882, 924, fry + 3, F10);
       modTick(FRC_BEND, 882, 42, fry);
       m[PHI_TUNE] ? set(0.44, 0.38, 0.2) : set(0.24, 0.24, 0.28);
-      rect(928, fry, 38, 18);
-      set(0.95, 0.9, 0.72); textC('φ', 928, 966, fry + 2, F12);
+      rect(928, fry, 30, 18);
+      set(0.95, 0.9, 0.72); textC('φ', 928, 958, fry + 2, F12);
+      m[GLD_TIME] ? set(0.46, 0.36, 0.18) : set(0.24, 0.24, 0.28);
+      rect(962, fry, 30, 18);
+      set(0.95, 0.88, 0.7); textC('φT', 962, 992, fry + 3, F10);
       set(0.38, 0.4, 0.42);
-      text('on · L-system · amount · bend · φ = golden tuning', HK_X, ysv + 108, F9);
+      text('φ = golden tuning · φT = golden time (bars 1,2,3,5,8,13,21,34)', HK_X, ysv + 108, F9);
       // per-part fill DENSITY cells: D0 off .. D7 radical flurry
       for (let i = 0; i < numLanes; i++) {
         const dv = m[DFILL_A + i] | 0;
@@ -3748,7 +3762,7 @@ window.gnome = {
     DFILL_A, SFILL_A, FRC_BEND,
     DRONE_OPEN_A, DVOL_A, DSND_A, DAZ_A, DFRC_A,
     PHI_TUNE, DLY_GLD, BELL_STK_A, PNO_A, PSND_A, PLSND_A,
-    PRES_ON, PRES_MIX, PRES_DEC, PRES_TONE, XSRC_A, XAMT_A, XMODE_A,
+    PRES_ON, PRES_MIX, PRES_DEC, PRES_TONE, XSRC_A, XAMT_A, XMODE_A, GLD_TIME,
   },
   tables: { SCALE_NAMES, PROG_NAMES, SHAPE_NAMES, SYN_NAMES, FEEL_NAMES, SCL, STYLE_NAMES, FRACTAL_NAMES, XSRC_NAMES, XMODE_NAMES },
   fractalLevels, buildFractalTree, sendFillNow, sendFlick, treeBranchAt, findModTarget,

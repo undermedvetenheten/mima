@@ -277,7 +277,10 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
     without ever self-oscillating.
   - **Golden echo** (`DLY_GLD`, the GLD cell on the dub-delay row): six delay
     taps spaced by cumulative ×φ intervals, compressing (500→309→191…) or
-    expanding — ripples obeying a growth law instead of a metronome.
+    expanding — ripples obeying a growth law instead of a metronome. Each echo
+    falls by 1/φ and the taps are normalised as a group, so it sits at the same
+    level as the plain delay; the recirculation is scaled down because the six
+    taps multiply whatever feeds back (otherwise it burns out past FB 50%).
   - **Two LFO shapes**: SPL (spline drift — cosine-slewed sample-and-hold, a
     smooth wander) and GLD (golden rise — an exponential staircase whose treads
     grow ×φ; on a filter it opens 200→324→524→848…).
@@ -285,13 +288,23 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
     golden-angle walk (each pick 0.618 around the colony — sunflower coverage,
     no clumping) with a φ-bias (61.8% place / 38.2% erase).
 
+  **Golden time** (`GLD_TIME`, the φT chip beside φ): the sequencer runs on a
+  warped clock whose bars walk the Fibonacci spiral — 1, 2, 3, 5, 8, 13, 21, 34
+  beats — then starts over. Each of those bars holds the same four "musical"
+  beats, so the pattern is unchanged while the clock breathes: it races through
+  the short opening bars and stretches enormously by the long ones. Note
+  offsets are mapped back through the inverse warp, so hits stay sample-exact,
+  and the UI clock is sent warped so playheads, the fill map, the Game of Life
+  and the wheel spin all follow. Delay/glitch timing stays in real time.
+
   **Piano-string resonator** (`PRES_*`, `PSND_A`/`PLSND_A`): a rack of strings
   with the sustain pedal down, tuned to two octaves of the chords part's key.
   It has its own **PNO column** in the SENDS matrix, so any drum lane or part
   can be played *into* the piano — the sympathetic strings ring in the key, the
   way playing into an open piano sounds. MIX / PED (decay) / TONE (string
   damping) live on the PIANO STR row of the FX box. The input is DC-blocked
-  because near-unity combs integrate DC.
+  *and* softened (~3kHz) — strings are driven through a soundboard, so a
+  transient blooms instead of clicking.
 
   **Cross-routing** (`XSRC_A`/`XAMT_A`/`XMODE_A`): each pitched part can pick
   another instrument as a modulator — **RING** (it amplitude-modulates this

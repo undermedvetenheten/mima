@@ -100,7 +100,11 @@ const PRES_ON = 1015, PRES_MIX = 1016, PRES_DEC = 1017, PRES_TONE = 1018;
 const XSRC_A = 1019, XAMT_A = 1022, XMODE_A = 1025;
 // golden time: bar lengths walk the Fibonacci spiral (1,2,3,5,8,13,21,34)
 const GLD_TIME = 1028;
-const FIB_BARS = [1, 2, 3, 5, 8, 13, 21, 34];
+// golden METER: constant tempo, moving barline. 1/4 1/4 2/4 3/4 5/4 8/8
+// 13/16 21/16 — the pattern restarts on each downbeat, so bars that don't
+// divide its span cut it short and the rhythm lands somewhere new each time.
+const GM_NUM = [1, 1, 2, 3, 5, 8, 13, 21];
+const GM_DEN = [4, 4, 4, 4, 4, 8, 16, 16];
 const XSRC_NAMES = ['—', 'DR', 'BS', 'ML', 'CH'];
 const XMODE_NAMES = ['RING', 'DUCK', 'DRV'];
 
@@ -1247,7 +1251,7 @@ function recallPresetState(p, label) {
 
 // ---- audio ----
 let actx = null, node = null, audioReady = false, audioStarting = false;
-let dispBeat = 0, gsndB = -1, gsndM = -1, gsndC = [0, 0, 0, 0], gsndCn = 0;
+let dispBeat = 0, dispSeq = 0, dispBar = -1, gsndB = -1, gsndM = -1, gsndC = [0, 0, 0, 0], gsndCn = 0;
 let azv = [0, 0, 0, 0], enerArr = [0, 0, 0, 0], scopeArr = null;
 
 function pushState() {
@@ -1547,6 +1551,8 @@ async function initAudio() {
     const d = e.data;
     if (d.type === 'tick') {
       dispBeat = d.beat;
+      dispSeq = d.seq !== undefined ? d.seq : d.beat;
+      dispBar = d.bar !== undefined ? d.bar : -1;
       gsndB = d.gsndB; gsndM = d.gsndM; gsndC = d.gsndC; gsndCn = d.gsndCn;
       if (d.azv) azv = d.azv;
       if (d.ener) enerArr = d.ener;
@@ -1892,7 +1898,7 @@ function golFrame() {
   if (b !== golLastBeat) { golLastBeat = b; golStep(); }
   const steps = Math.max(1, Math.round(sget(1, 2)));
   const msd = (sget(1, 15) ? sget(1, 3) / 16 : sget(1, 3) / steps) * FEL_MULT[m[SFL_A + 1]];
-  const st = ((Math.floor(dispBeat / msd) % steps) + steps) % steps;
+  const st = ((Math.floor(dispSeq / msd) % steps) + steps) % steps;
   if (st !== golLastStep) {
     golLastStep = st;
     if (m[ronOff(1) + st]) {
@@ -2239,8 +2245,8 @@ function onDown(x, y, right) {
       if (x >= 962 && x < 992) {
         m[GLD_TIME] = m[GLD_TIME] ? 0 : 1;
         setStatus(m[GLD_TIME]
-          ? 'golden TIME on — each bar grows 1, 2, 3, 5, 8, 13, 21, 34 beats, then starts over. The pattern is the same; the clock breathes'
-          : 'golden time off — steady bars');
+          ? 'golden METER on — same tempo, moving barline: 1/4 1/4 2/4 3/4 5/4 8/8 13/16 21/16, then round again. The pattern restarts each downbeat, so it lands somewhere new'
+          : 'golden meter off — steady bars');
         touchState(); return;
       }
       if (x >= 928 && x < 958) {
@@ -2952,7 +2958,7 @@ function draw() {
     const ry = laneTop + gl * rowh;
     const gsd = m[LMODE_A + gl] ? m[SPAN_A + gl] / 16 : m[SPAN_A + gl] / m[STEPS_A + gl];
     const steps = m[STEPS_A + gl];
-    const playstep = playing ? ((Math.floor(dispBeat / gsd) % steps) + steps) % steps : -1;
+    const playstep = playing ? ((Math.floor(dispSeq / gsd) % steps) + steps) % steps : -1;
 
     const laneReady = smpA[gl] === SMP_SYN || decoded[smpA[gl]]
       || (smpA[gl] === SMP_USR && userSmp[gl]);
@@ -3236,7 +3242,10 @@ function draw() {
       rect(962, fry, 30, 18);
       set(0.95, 0.88, 0.7); textC('φT', 962, 992, fry + 3, F10);
       set(0.38, 0.4, 0.42);
-      text('φ = golden tuning · φT = golden time (bars 1,2,3,5,8,13,21,34)', HK_X, ysv + 108, F9);
+      const meterNow = m[GLD_TIME]
+        ? (dispBar >= 0 ? `  ·  METER ${GM_NUM[dispBar]}/${GM_DEN[dispBar]}` : '  ·  meter 1·1·2·3·5·8·13·21')
+        : '';
+      text('φ = golden tuning · φT = golden meter' + meterNow, HK_X, ysv + 108, F9);
       // per-part fill DENSITY cells: D0 off .. D7 radical flurry
       for (let i = 0; i < numLanes; i++) {
         const dv = m[DFILL_A + i] | 0;
@@ -3429,7 +3438,7 @@ function draw() {
     const gyr = ysv + ROLL_Y;
     const nst = m[sp + 2];
     const msd = (m[sp + 15] ? m[sp + 3] / 16 : m[sp + 3] / nst) * FEL_MULT[m[SFL_A + gsi]];
-    const mplay = playing ? ((Math.floor(dispBeat / msd) % nst) + nst) % nst : -1;
+    const mplay = playing ? ((Math.floor(dispSeq / msd) % nst) + nst) % nst : -1;
     const mcnt = Math.max(1, SCL[effScale(gsi)][0]);
     const mspb = 1 / msd;
     const mbt = (Math.abs(mspb - Math.floor(mspb + 0.5)) < 1e-6 && mspb >= 1)

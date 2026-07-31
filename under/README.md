@@ -288,14 +288,17 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
     golden-angle walk (each pick 0.618 around the colony — sunflower coverage,
     no clumping) with a φ-bias (61.8% place / 38.2% erase).
 
-  **Golden time** (`GLD_TIME`, the φT chip beside φ): the sequencer runs on a
-  warped clock whose bars walk the Fibonacci spiral — 1, 2, 3, 5, 8, 13, 21, 34
-  beats — then starts over. Each of those bars holds the same four "musical"
-  beats, so the pattern is unchanged while the clock breathes: it races through
-  the short opening bars and stretches enormously by the long ones. Note
-  offsets are mapped back through the inverse warp, so hits stay sample-exact,
-  and the UI clock is sent warped so playheads, the fill map, the Game of Life
-  and the wheel spin all follow. Delay/glitch timing stays in real time.
+  **Golden meter** (`GLD_TIME`, the φT chip beside φ): the **tempo never
+  changes — the barline moves.** Bar lengths walk the Fibonacci numerators
+  **1/4 · 1/4 · 2/4 · 3/4 · 5/4 · 8/8 · 13/16 · 21/16** (the last three
+  subdivide so the bars stay playable), then round again. The pattern restarts
+  on every downbeat, so bars that don't divide its span cut it short and the
+  rhythm lands somewhere new each time — metric modulation, not a tempo
+  fluctuation. Each audio block is split at the barline into bar-local
+  segments, so note offsets stay sample-exact; the worklet ships bar-local
+  time alongside the real beat, and playheads follow it while the Game of
+  Life, fill map and wheel spin stay on the real clock. The panel shows the
+  meter you're in (`METER 5/4`).
 
   **Piano-string resonator** (`PRES_*`, `PSND_A`/`PLSND_A`): a rack of strings
   with the sustain pedal down, tuned to two octaves of the chords part's key.

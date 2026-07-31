@@ -9,7 +9,7 @@
 
 // bump on every release: cache-busts the worklet module so a stale cached
 // DSP can never run against fresh UI code
-const APP_V = '25';
+const APP_V = '26';
 
 
 const LANES_CAP = 8, MAX_STEPS = 32, EUC_N = 21, NROWS = 12, NSCALES = 15,
@@ -1717,7 +1717,12 @@ const RC_X = 744;                       // right-hand column (text + visuals)
 const HK_X = 744;                       // HARMONY panel (chords right column)
 function fxY() { return ys(2) + 184; }
 function yStat() { return fxY() + fxH + 2; }
-function totalH() { return yStat() + 22; }
+// the experimental strip lives below the status line, at the very bottom
+function yExp() { return yStat() + 20; }
+const EXP_H = 30;
+// φ tuning / φ loop chips inside that strip
+const EXP_PHI_X = 250, EXP_GLD_X = 292, EXP_CHIP_W = 34;
+function totalH() { return yExp() + EXP_H + 4; }
 
 // KEY row layout
 const kxKey = 156, kxScl = 204, kxPrg = 252, kxSpd = 298;
@@ -2057,6 +2062,25 @@ function onDown(x, y, right) {
   dragMode = 0; dragMoved = false; rotApplied = 0;
   dragX = x; dragY = y;   // tap-vs-drag baseline for every mode
 
+  // experimental strip (very bottom): the two golden-ratio toggles
+  if (y >= yExp() && y < yExp() + EXP_H) {
+    if (x >= EXP_PHI_X && x < EXP_PHI_X + EXP_CHIP_W) {
+      m[PHI_TUNE] = m[PHI_TUNE] ? 0 : 1;
+      setStatus(m[PHI_TUNE]
+        ? 'φ tuning ON (experimental) — the octave becomes a golden sixth; every scale leans toward φ ratios'
+        : 'φ tuning off — standard octaves');
+      touchState(); return;
+    }
+    if (x >= EXP_GLD_X && x < EXP_GLD_X + EXP_CHIP_W) {
+      m[GLD_TIME] = m[GLD_TIME] ? 0 : 1;
+      setStatus(m[GLD_TIME]
+        ? 'golden LOOP on (experimental) — same tempo, same grid: the loop runs 1, 1, 2, 3, 5, 8, 13 then 21 steps before snapping back to step 1. The pattern grows, so it lands somewhere new every pass'
+        : 'golden loop off — every loop is the full pattern');
+      touchState(); return;
+    }
+    return;
+  }
+
   // header
   if (y < 28) {
     if (inRect(x, y, PLAY_R)) { togglePlay(); return; }
@@ -2294,19 +2318,6 @@ function onDown(x, y, right) {
       if (x >= 882 && x < 924) {
         if (armLfo) { tryModAssign(FRC_BEND); return; }
         dragMode = 55; dragFx = FRC_BEND; dragY = y; dragV = m[FRC_BEND]; return;
-      }
-      if (x >= 962 && x < 992) {
-        m[GLD_TIME] = m[GLD_TIME] ? 0 : 1;
-        setStatus(m[GLD_TIME]
-          ? 'golden LOOP on — same tempo, same grid: the loop runs 1, 1, 2, 3, 5, 8, 13 then 21 steps before snapping back to step 1. The pattern grows, so it lands somewhere new every pass'
-          : 'golden loop off — every loop is the full pattern');
-        touchState(); return;
-      }
-      if (x >= 928 && x < 958) {
-        m[PHI_TUNE] = m[PHI_TUNE] ? 0 : 1;
-        setStatus(m[PHI_TUNE] ? 'φ tuning ON — the octave becomes a golden sixth; every scale leans toward φ ratios'
-          : 'φ tuning off — standard octaves');
-        touchState(); return;
       }
     }
     // fill DENSITY cells: one per drum lane, then bass / melody / chords.
@@ -2903,6 +2914,57 @@ function circle(x, y, r, fill) {
   ctx.beginPath(); ctx.arc(x, y, r, 0, 2 * Math.PI);
   if (fill) ctx.fill(); else { ctx.strokeStyle = ctx.fillStyle; ctx.stroke(); }
 }
+// A snail, drawn rather than loaded: foot, head, two eye stalks, and a shell
+// that is a real logarithmic spiral — r grows by phi every quarter turn, which
+// is the same golden growth the chips beside it apply to tuning and to the loop.
+function snail(x, y, s) {
+  ctx.strokeStyle = ctx.fillStyle;
+  ctx.lineWidth = Math.max(1.1, s * 0.13);
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  // body: flat sole, tapering tail at the left, head rising at the right
+  ctx.beginPath();
+  ctx.moveTo(x - s * 1.45, y + s * 0.78);
+  ctx.quadraticCurveTo(x - s * 0.1, y + s * 0.96, x + s * 1.12, y + s * 0.72);
+  ctx.quadraticCurveTo(x + s * 1.56, y + s * 0.58, x + s * 1.38, y + s * 0.14);
+  ctx.quadraticCurveTo(x + s * 1.0, y + s * 0.34, x + s * 0.3, y + s * 0.48);
+  ctx.quadraticCurveTo(x - s * 0.8, y + s * 0.56, x - s * 1.45, y + s * 0.78);
+  ctx.fill();
+  // eye stalks off the head, with knobs on the ends
+  ctx.beginPath();
+  ctx.moveTo(x + s * 1.18, y + s * 0.3); ctx.lineTo(x + s * 1.62, y - s * 0.52);
+  ctx.moveTo(x + s * 0.94, y + s * 0.36); ctx.lineTo(x + s * 1.04, y - s * 0.74);
+  ctx.stroke();
+  circle(x + s * 1.66, y - s * 0.6, s * 0.16, true);
+  circle(x + s * 1.05, y - s * 0.83, s * 0.16, true);
+  // shell: a logarithmic spiral seated on the back, growing by phi per FULL
+  // turn. (Per quarter turn — the textbook golden spiral — is x6.85 a turn, so
+  // only the outermost whorl would be visible at this size.) Normalised from
+  // the outer whorl inwards, because exp() runs away if you go the other way.
+  const b = Math.log(1.6180339887) / (2 * Math.PI), thMax = Math.PI * 6.2;
+  const cx = x - s * 0.12, cy = y - s * 0.12;
+  ctx.beginPath();
+  for (let i = 0; i <= 110; i++) {
+    const th = i / 110 * thMax;
+    const r = s * 1.0 * Math.exp(b * (th - thMax));
+    i ? ctx.lineTo(cx + r * Math.cos(th), cy - r * Math.sin(th))
+      : ctx.moveTo(cx + r * Math.cos(th), cy - r * Math.sin(th));
+  }
+  ctx.stroke();
+}
+// hazard triangle with an exclamation mark
+function hazard(x, y, s) {
+  const g = ctx.fillStyle;
+  ctx.beginPath();
+  ctx.moveTo(x, y - s);
+  ctx.lineTo(x + s * 0.92, y + s * 0.62);
+  ctx.lineTo(x - s * 0.92, y + s * 0.62);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = 'rgb(18,16,12)';
+  rect(x - s * 0.11, y - s * 0.46, s * 0.22, s * 0.66);
+  rect(x - s * 0.11, y + s * 0.32, s * 0.22, s * 0.16);
+  ctx.fillStyle = g;
+}
 const F9 = '9px Arial', F10 = '10px Arial', F11 = '11px Arial', F12 = '12px Arial',
   F13 = '13px Arial', F15 = 'bold 15px Arial';
 
@@ -3294,17 +3356,9 @@ function draw() {
       set(0.24, 0.24, 0.3); rect(882, fry, 42, 18);
       set(0.85, 0.85, 0.9); textC('↝' + Math.round(m[FRC_BEND]), 882, 924, fry + 3, F10);
       modTick(FRC_BEND, 882, 42, fry);
-      m[PHI_TUNE] ? set(0.44, 0.38, 0.2) : set(0.24, 0.24, 0.28);
-      rect(928, fry, 30, 18);
-      set(0.95, 0.9, 0.72); textC('φ', 928, 958, fry + 2, F12);
-      m[GLD_TIME] ? set(0.46, 0.36, 0.18) : set(0.24, 0.24, 0.28);
-      rect(962, fry, 30, 18);
-      set(0.95, 0.88, 0.7); textC('φT', 962, 992, fry + 3, F10);
       set(0.38, 0.4, 0.42);
-      const meterNow = m[GLD_TIME] && playing
-        ? `  ·  LOOP ${GM_STEPS[goldLoop(Math.floor(dispBeat / gridSd())).i]} steps`
-        : m[GLD_TIME] ? '  ·  loop 1·1·2·3·5·8·13·21' : '';
-      text('φ = golden tuning · φT = golden loop' + meterNow, HK_X, ysv + 108, F9);
+      text('φ tuning and φ loop now live in the experimental strip at the bottom',
+        HK_X, ysv + 108, F9);
       // per-part fill DENSITY cells: D0 off .. D7 radical flurry
       for (let i = 0; i < numLanes; i++) {
         const dv = m[DFILL_A + i] | 0;
@@ -3716,6 +3770,44 @@ function draw() {
   else {
     set(0.45, 0.45, 0.5);
     text('drag fields · ENG: osc/string/glass/splice/drone/bell/piano · right-click a drum cell for 2nd-cycle → ghost fill · sends + piano strings right of the rack', 8, yStat(), F11);
+  }
+
+  // ---- experimental strip: the golden-ratio toggles, fenced off ----
+  {
+    const ey = yExp(), anyOn = m[PHI_TUNE] || m[GLD_TIME];
+    anyOn ? set(0.16, 0.13, 0.07) : set(0.11, 0.11, 0.12);
+    rect(0, ey, W, EXP_H);
+    // caution stripes along the top edge, so the band reads as a fence
+    set(anyOn ? 0.5 : 0.3, anyOn ? 0.4 : 0.26, 0.12);
+    for (let sx = -EXP_H; sx < W; sx += 14) {
+      ctx.beginPath();
+      ctx.moveTo(sx, ey + 3); ctx.lineTo(sx + 6, ey + 3);
+      ctx.lineTo(sx + 6 - 3, ey); ctx.lineTo(sx - 3, ey);
+      ctx.closePath(); ctx.fill();
+    }
+    const cy = ey + 17;
+    set(anyOn ? 0.85 : 0.5, anyOn ? 0.7 : 0.44, 0.24);
+    snail(26, cy - 1, 9);
+    hazard(58, cy, 8);
+    set(anyOn ? 0.98 : 0.62, anyOn ? 0.82 : 0.55, 0.3);
+    text('EXPERIMENTAL', 74, ey + 11, F11);
+    set(anyOn ? 0.85 : 0.5, anyOn ? 0.7 : 0.44, 0.24);
+    hazard(178, cy, 8);
+    // the two toggles
+    m[PHI_TUNE] ? set(0.55, 0.45, 0.18) : set(0.24, 0.24, 0.27);
+    rect(EXP_PHI_X, ey + 7, EXP_CHIP_W, 18);
+    set(0.97, 0.92, 0.74); textC('φ', EXP_PHI_X, EXP_PHI_X + EXP_CHIP_W, ey + 8, F12);
+    m[GLD_TIME] ? set(0.56, 0.43, 0.17) : set(0.24, 0.24, 0.27);
+    rect(EXP_GLD_X, ey + 7, EXP_CHIP_W, 18);
+    set(0.97, 0.9, 0.72); textC('φT', EXP_GLD_X, EXP_GLD_X + EXP_CHIP_W, ey + 10, F10);
+    const loopNow = m[GLD_TIME] && playing
+      ? `  ·  LOOP ${GM_STEPS[goldLoop(Math.floor(dispBeat / gridSd())).i]} steps`
+      : m[GLD_TIME] ? '  ·  loop 1·1·2·3·5·8·13·21' : '';
+    set(0.52, 0.5, 0.46);
+    text('φ = golden tuning (the octave becomes a golden sixth) · φT = golden loop '
+      + '(the loop grows 1·1·2·3·5·8·13·21 steps)' + loopNow
+      + '   —   these two retune and re-time everything; slow, strange, and liable to wander',
+      EXP_GLD_X + EXP_CHIP_W + 12, ey + 11, F9);
   }
 
   // wake overlay until the first gesture creates the AudioContext

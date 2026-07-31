@@ -302,8 +302,16 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
     golden-angle walk (each pick 0.618 around the colony — sunflower coverage,
     no clumping) with a φ-bias (61.8% place / 38.2% erase).
 
-  **Golden loop** (`GLD_TIME`, the φT chip beside φ): tempo, grid and step
-  length are all **untouched** — what changes is **how many steps the loop runs
+  **The experimental strip** runs across the very bottom of the canvas, behind
+  caution stripes: a snail (whose shell is a real logarithmic spiral, growing
+  by φ per turn), two hazard signs, the word EXPERIMENTAL, and the only two
+  controls that retune or re-time *everything* — **φ tuning** and **φ loop**.
+  They used to sit up on the fractal-fills row, where they looked like ordinary
+  per-part options; they are not. The strip lights amber when either is on, and
+  reads out the live loop length. In the pocket both toggles carry a ⚠.
+
+  **Golden loop** (`GLD_TIME`, the φT chip in the experimental strip): tempo,
+  grid and step length are all **untouched** — what changes is **how many steps the loop runs
   before it snaps back to step 1**. The loop grows **1 · 1 · 2 · 3 · 5 · 8 ·
   13 · 21 steps** and starts over (21 is the ceiling because the sequencer tops
   out at 32 steps). A 16-step pattern therefore plays a one-step stutter, then a

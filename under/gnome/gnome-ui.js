@@ -589,10 +589,10 @@ window.createGnomeUI = function (G) {
       selectRow('Progression', T.PROG_NAMES, () => m[C.GKEY_PROG], v => m[C.GKEY_PROG] = v),
       stepper('Progression speed', 0.25, 16, 0.25, () => m[C.GKEY_SPD], v => m[C.GKEY_SPD] = Math.max(0.25, v), fmtBeats),
       selectRow('Generate style', T.STYLE_NAMES, () => m[C.GEN_STYLE], v => G.setStyle(v)),
-      seg('φ tuning', ['off', 'on'], () => m[C.PHI_TUNE], i => m[C.PHI_TUNE] = i,
-        'the octave becomes a golden sixth — every scale leans toward golden-ratio intervals'),
-      seg('φ loop', ['off', 'on'], () => m[C.GLD_TIME], i => m[C.GLD_TIME] = i,
-        'same tempo, same grid — the loop runs 1, 1, 2, 3, 5, 8, 13 then 21 steps before snapping back to step 1'));
+      seg('\u26a0 \u03c6 tuning', ['off', 'on'], () => m[C.PHI_TUNE], i => m[C.PHI_TUNE] = i,
+        'EXPERIMENTAL \u2014 the octave becomes a golden sixth; every scale leans toward golden-ratio intervals'),
+      seg('\u26a0 \u03c6 loop', ['off', 'on'], () => m[C.GLD_TIME], i => m[C.GLD_TIME] = i,
+        'EXPERIMENTAL \u2014 same tempo, same grid; the loop runs 1, 1, 2, 3, 5, 8, 13 then 21 steps before snapping back to step 1'));
   }
 
   function locksSection() {

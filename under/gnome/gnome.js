@@ -9,7 +9,7 @@
 
 // bump on every release: cache-busts the worklet module so a stale cached
 // DSP can never run against fresh UI code
-const APP_V = '24';
+const APP_V = '25';
 
 
 const LANES_CAP = 8, MAX_STEPS = 32, EUC_N = 21, NROWS = 12, NSCALES = 15,
@@ -988,6 +988,9 @@ function resetAll() {
   initState();
   seedGroove();
   touchState();
+  // INIT resets the tempo and the mixer too, and touchState only ships the mem
+  // block — without these the worklet keeps the old bpm and the old faders.
+  pushGains(); pushTransport();
   for (let l = 0; l < LANES_CAP; l++) pushSample(l);
 }
 

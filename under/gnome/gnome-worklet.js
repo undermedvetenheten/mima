@@ -70,21 +70,20 @@ const PNO_A = 1000, PSND_A = 1003, PLSND_A = 1007;
 const PRES_ON = 1015, PRES_MIX = 1016, PRES_DEC = 1017, PRES_TONE = 1018;
 const XSRC_A = 1019, XAMT_A = 1022, XMODE_A = 1025;
 const GLD_TIME = 1028;
-// GOLDEN METER: the tempo never changes — the BARLINE moves. Bar lengths walk
-// the Fibonacci numerators 1,1,2,3,5,8,13,21 (the last three subdivide so the
-// bars stay playable: 8/8, 13/16, 21/16), and the pattern restarts on every
-// downbeat. Bars that don't divide the pattern's span cut it short, which is
-// the point — the rhythm lands somewhere new instead of speeding up.
-const GM_NUM = [1, 1, 2, 3, 5, 8, 13, 21];
-const GM_DEN = [4, 4, 4, 4, 4, 8, 16, 16];
-const GM_BEATS = [1, 1, 2, 3, 5, 4, 3.25, 5.25];   // num * 4 / den
-const GM_CUM = [0, 1, 2, 4, 7, 12, 16, 19.25];
-const GM_TOTAL = 24.5;
-function goldBar(beat) {
-  const lap = Math.floor(beat / GM_TOTAL), t = beat - lap * GM_TOTAL;
+// GOLDEN METER: tempo, grid and step length are all untouched — what changes
+// is HOW MANY STEPS the loop runs before it snaps back to step 0. The loop
+// grows 1,1,2,3,5,8,13,21 steps and starts over (21 is the ceiling because the
+// sequencer tops out at 32). A 16-step pattern therefore plays a fragment, then
+// a longer fragment, then more than one lap of itself — same hits, landing in a
+// different place every pass. n is a step counter, not a beat.
+const GM_STEPS = [1, 1, 2, 3, 5, 8, 13, 21];
+const GM_CUM = [0, 1, 2, 4, 7, 12, 20, 33];
+const GM_TOTAL = 54;
+function goldLoop(n) {
+  const lap = Math.floor(n / GM_TOTAL), t = n - lap * GM_TOTAL;
   let i = 7;
-  for (let k = 0; k < 8; k++) if (t < GM_CUM[k] + GM_BEATS[k]) { i = k; break; }
-  return { i, local: t - GM_CUM[i], len: GM_BEATS[i], startReal: lap * GM_TOTAL + GM_CUM[i] };
+  for (let k = 0; k < 8; k++) if (t < GM_CUM[k] + GM_STEPS[k]) { i = k; break; }
+  return { i, local: t - GM_CUM[i], pass: lap * 8 + i };
 }
 // church-bell partial set: hum, prime, minor tierce, quint, nominal, then
 // three phi-spaced upper partials (inharmonic shimmer, the golden character)
@@ -497,7 +496,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
   // transposed up a scale step for pitched parts = the tree's branches), so
   // the fill riffs on what's already there at a smaller time scale. FRC_AMT
   // ("fractality") scales how much of the loop fills and how many branches.
-  emitFills(blkStart, blkEnd, spb, nframes, toOfs, beatScale) {
+  emitFills(blkStart, blkEnd, spb, nframes, toOfs) {
     const m = this.m;
     const forcing = this.fillForce > 0 && blkStart < this.fillForceUntil;
     if (this.fillForce > 0 && blkStart >= this.fillForceUntil) this.fillForce = -1;
@@ -518,10 +517,30 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     //   D7 -> up to 4x subdivision and a long crescendo run (radical flurry)
     // Hits walk the part's own active steps in order (self-similar), rising
     // a scale degree per motif cycle; BEND swings every 2nd sub-slot.
-    const fillPart = (D, loopBeats, stepdur, active, fire) => {
-      if (!D || loopBeats <= 0 || !active.length) return;
-      const k0 = Math.floor(blkStart / loopBeats), k1 = Math.floor(blkEnd / loopBeats);
-      for (let k = k0; k <= k1; k++) {
+    // Loop windows overlapping this block. Normally every loop is the pattern's
+    // full span; under the golden meter the loop grows 1,1,2,3,5,8,13,21 steps,
+    // so the fill lands at the end of whatever the current loop happens to be.
+    const loopWins = (steps, stepdur) => {
+      const w = [];
+      if (m[GLD_TIME]) {
+        let n0 = Math.floor(blkStart / stepdur);
+        n0 -= goldLoop(n0).local;                 // back up to this loop's step 0
+        while (n0 * stepdur < blkEnd) {
+          const g = goldLoop(n0);
+          w.push({ start: n0 * stepdur, len: GM_STEPS[g.i] * stepdur, k: g.pass });
+          n0 += GM_STEPS[g.i];
+        }
+      } else {
+        const lb = steps * stepdur;
+        for (let k = Math.floor(blkStart / lb); k <= Math.floor(blkEnd / lb); k++)
+          w.push({ start: k * lb, len: lb, k });
+      }
+      return w;
+    };
+    const fillPart = (D, steps, stepdur, active, fire) => {
+      if (!D || steps <= 0 || stepdur <= 0 || !active.length) return;
+      for (const win of loopWins(steps, stepdur)) {
+        const k = win.k, loopBeats = win.len;
         const L = forcing ? this.fillForce : lev[((k % llen) + llen) % llen];
         const F = L * amt * (0.25 + D * 0.18);
         if (F < 0.1) continue;
@@ -533,14 +552,14 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
         const runs = L >= 2 ? [[1, nH], [0.5, Math.max(1, nH >> 1)]] : [[1, nH]];
         for (const [endFrac, cnt] of runs) {
           for (let h = 0; h < cnt; h++) {
-            let tb = k * loopBeats + endFrac * loopBeats - (cnt - h) * subdur;
+            let tb = win.start + endFrac * loopBeats - (cnt - h) * subdur;
             if (h & 1) tb += subdur * 0.4 * bend;   // bent trees swing
             if (tb < blkStart || tb >= blkEnd) continue;
             const ofs = toOfs(tb);
             const src = active[h % active.length];
             const cyc = Math.floor(h / active.length); // motif cycle = branch up
             const velScale = 0.5 + 0.5 * (cnt < 2 ? 1 : h / (cnt - 1));
-            fire(ofs, src, cyc, subdur * beatScale, velScale);
+            fire(ofs, src, cyc, subdur, velScale);
           }
         }
       }
@@ -555,7 +574,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
       const active = [];
       for (let i = 0; i < steps; i++) if (m[PAT + l * MAX_STEPS + i]) active.push({ p: i / steps });
       const vel = m[VEL_A + l];
-      fillPart(D, steps * stepdur, stepdur, active, (ofs, st, cyc, subdur, vs) =>
+      fillPart(D, steps, stepdur, active, (ofs, st, cyc, subdur, vs) =>
         this.fireDrum(l, ofs, Math.max(1, vel * vs * 0.9), subdur * spb * 0.9));
     }
     // pitched parts: replay the loop's degrees, each motif cycle a step up
@@ -570,7 +589,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
       const active = [];
       for (let i = 0; i < nst; i++) if (m[ron + i]) active.push({ p: i / nst, dg: m[rdg + i] });
       const gain = m[sp + 6] / 127 * 0.3 * 0.85;   // fills a touch softer
-      fillPart(D, nst * stepdur, stepdur, active, (ofs, st, cyc, subdur, vs) => {
+      fillPart(D, nst, stepdur, active, (ofs, st, cyc, subdur, vs) => {
         const hold = Math.floor(subdur * spb * 0.5);
         if (si < 2) {
           const cents = degCents(st.dg + cyc, escale);
@@ -843,27 +862,8 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     const spb = srate / bps;
     const blkStart = this.gBeat;
     const blkEnd = blkStart + nframes / spb;
-    // GOLDEN METER: split this block wherever a barline falls. Each segment
-    // carries bar-LOCAL sequencer time plus the real beat it starts at, so the
-    // tempo is untouched and note offsets stay sample-exact.
-    const segs = [];
-    if (m[GLD_TIME]) {
-      let cursor = blkStart, bar = goldBar(blkStart);
-      while (cursor < blkEnd - 1e-12) {
-        const segEnd = Math.min(blkEnd, bar.startReal + bar.len);
-        // snap to an exact 0 on a downbeat, or step 0 of the pattern lands
-        // an epsilon before the segment and never fires
-        let from = cursor - bar.startReal;
-        if (from < 1e-9) from = 0;
-        segs.push({ from, to: from + (segEnd - cursor), real: cursor });
-        cursor = segEnd;
-        if (cursor < blkEnd - 1e-12) bar = goldBar(cursor + 1e-9);
-      }
-      if (!segs.length) segs.push({ from: bar.local, to: bar.local, real: blkStart });
-    } else segs.push({ from: blkStart, to: blkEnd, real: blkStart });
-    const beatScale = 1;   // constant tempo: only the barline moves
-    const mkOfs = (sg) => (t) => Math.min(Math.max(0,
-      Math.floor((sg.real + (t - sg.from) - blkStart) * spb)), nframes - 1);
+    const toOfs = (t) => Math.min(Math.max(0,
+      Math.floor((t - blkStart) * spb)), nframes - 1);
 
     // sanitize state so any blow-up recovers instead of latching NaN silence
     for (let l = 0; l < LANES_CAP; l++) {
@@ -1034,17 +1034,18 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
         if (m[MUTE_A + l]) continue;
         const steps = m[STEPS_A + l];
         const stepdur = m[LMODE_A + l] ? m[SPAN_A + l] / 16 : m[SPAN_A + l] / steps;
-        for (const sg of segs) {
-        const seqStart = sg.from, seqEnd = sg.to, toOfs = mkOfs(sg);
+        const seqStart = blkStart, seqEnd = blkEnd;
         // scan one step of slack either side so swing/nudge shifts stay caught
         let n = Math.ceil((seqStart - stepdur) / stepdur - 1e-9);
         let t = n * stepdur;
         while (t < seqEnd + stepdur) {
-          const stepidx = ((n % steps) + steps) % steps;
+          const gl = m[GLD_TIME] ? goldLoop(n) : null;
+          const stepidx = gl ? gl.local % steps : ((n % steps) + steps) % steps;
+          const pass = gl ? gl.pass : Math.floor(n / steps);
           const pv = m[PAT + l * MAX_STEPS + stepidx];
-          if (pv && (pv !== 2 || Math.floor(n / steps) % 2 !== 0)) {
+          if (pv && (pv !== 2 || pass % 2 !== 0)) {
             const tsh = t + (m[NDG_A + l] / 100 + ((stepidx & 1) ? m[SWG_A + l] / 100 : 0)) * stepdur;
-            const gate = stepdur * beatScale * spb * (m[GATE_A + l] / 100) * 2;
+            const gate = stepdur * spb * (m[GATE_A + l] / 100) * 2;
             if (pv === 3) {
               // ghost-fill cell: two grace notes rolling into a soft hit
               const gd = stepdur / 6;
@@ -1052,7 +1053,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
                 const tg = tsh - (2 - g) * gd;
                 if (tg < seqStart || tg >= seqEnd) continue;
                 this.fireDrum(l, toOfs(tg), Math.max(1, m[VEL_A + l] * [0.28, 0.36, 0.5][g]),
-                  Math.min(gate, gd * beatScale * spb * 0.9));
+                  Math.min(gate, gd * spb * 0.9));
               }
             } else if (tsh >= seqStart && tsh < seqEnd) {
               const ofs = toOfs(tsh);
@@ -1066,7 +1067,6 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
           n += 1;
           t = n * stepdur;
         }
-        }
       }
 
       // ---- synth sections: 0 bass, 1 melody, 2 chords (always internal) ----
@@ -1078,14 +1078,15 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
         const epr = this.effProg(si), espd = this.effSpd(si);
         const nst = m[sp + 2];
         const stepdur = (m[sp + 15] ? m[sp + 3] / 16 : m[sp + 3] / nst) * FEL_MULT[m[SFL_A + si]];
-        for (const sg of segs) {
-        const seqStart = sg.from, seqEnd = sg.to, toOfs = mkOfs(sg);
+        const seqStart = blkStart, seqEnd = blkEnd;
         let n = Math.ceil((seqStart - stepdur) / stepdur - 1e-9);
         let t = n * stepdur;
         while (t < seqEnd + stepdur) {
-          const stepidx = ((n % nst) + nst) % nst;
+          const gl = m[GLD_TIME] ? goldLoop(n) : null;
+          const stepidx = gl ? gl.local % nst : ((n % nst) + nst) % nst;
+          const pass = gl ? gl.pass : Math.floor(n / nst);
           const sv2 = m[ron + stepidx];
-          if (sv2 && (sv2 !== 2 || Math.floor(n / nst) % 2 !== 0)) {
+          if (sv2 && (sv2 !== 2 || pass % 2 !== 0)) {
             const tsh = t + (m[SND_A + si] / 100 + ((stepidx & 1) ? m[SSW_A + si] / 100 : 0)) * stepdur;
             if (tsh >= seqStart && tsh < seqEnd) {
               const ofs = toOfs(tsh);
@@ -1115,7 +1116,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
                 this.svNgain[si] = m[sp + 6] / 127 * 0.3;
                 this.svDel[si] = ofs + 1;
                 this.svHold[si] = m[sp + 20] === 1
-                  ? Math.floor(stepdur * beatScale * m[sp + 7] / 100 * spb)
+                  ? Math.floor(stepdur * m[sp + 7] / 100 * spb)
                   : m[sp + 20] === 2 ? -1 : 0;
               } else {
                 // ---- chord (paraphonic): diatonic stack + voice leading ----
@@ -1142,7 +1143,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
                 this.svNgain[2] = m[sp + 6] / 127 * 0.3;
                 this.svDel[2] = ofs + 1;
                 this.svHold[2] = m[sp + 20] === 1
-                  ? Math.floor(stepdur * beatScale * m[sp + 7] / 100 * spb)
+                  ? Math.floor(stepdur * m[sp + 7] / 100 * spb)
                   : m[sp + 20] === 2 ? -1 : 0;
               }
             }
@@ -1150,12 +1151,10 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
           n += 1;
           t = n * stepdur;
         }
-        }
       }
 
       // fractal-fill overlay: L-system-arranged self-similar fills
-      for (const sg of segs)
-        this.emitFills(sg.from, sg.to, spb, nframes, mkOfs(sg), beatScale);
+      this.emitFills(blkStart, blkEnd, spb, nframes, toOfs);
 
       this.gBeat = blkEnd;
     }
@@ -1729,8 +1728,6 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
       for (let i = 0; i < 256; i++) sc[i] = this.scopeBuf[(this.scopeW + 256 + i) & 511];
       this.port.postMessage({
         type: 'tick', beat: this.gBeat, playing: this.playing,
-        seq: m[GLD_TIME] ? goldBar(this.gBeat).local : this.gBeat,
-        bar: m[GLD_TIME] ? goldBar(this.gBeat).i : -1,
         gsndB: this.gsndB, gsndM: this.gsndM,
         gsndC: Array.from(this.gsndC), gsndCn: this.gsndCn,
         azv: Array.from(this.azE),

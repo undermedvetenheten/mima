@@ -591,8 +591,8 @@ window.createGnomeUI = function (G) {
       selectRow('Generate style', T.STYLE_NAMES, () => m[C.GEN_STYLE], v => G.setStyle(v)),
       seg('φ tuning', ['off', 'on'], () => m[C.PHI_TUNE], i => m[C.PHI_TUNE] = i,
         'the octave becomes a golden sixth — every scale leans toward golden-ratio intervals'),
-      seg('φ meter', ['off', 'on'], () => m[C.GLD_TIME], i => m[C.GLD_TIME] = i,
-        'same tempo, moving barline: 1/4 1/4 2/4 3/4 5/4 8/8 13/16 21/16 — the pattern restarts each downbeat so the rhythm lands somewhere new'));
+      seg('φ loop', ['off', 'on'], () => m[C.GLD_TIME], i => m[C.GLD_TIME] = i,
+        'same tempo, same grid — the loop runs 1, 1, 2, 3, 5, 8, 13 then 21 steps before snapping back to step 1'));
   }
 
   function locksSection() {

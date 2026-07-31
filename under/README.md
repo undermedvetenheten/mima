@@ -288,17 +288,19 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
     golden-angle walk (each pick 0.618 around the colony — sunflower coverage,
     no clumping) with a φ-bias (61.8% place / 38.2% erase).
 
-  **Golden meter** (`GLD_TIME`, the φT chip beside φ): the **tempo never
-  changes — the barline moves.** Bar lengths walk the Fibonacci numerators
-  **1/4 · 1/4 · 2/4 · 3/4 · 5/4 · 8/8 · 13/16 · 21/16** (the last three
-  subdivide so the bars stay playable), then round again. The pattern restarts
-  on every downbeat, so bars that don't divide its span cut it short and the
-  rhythm lands somewhere new each time — metric modulation, not a tempo
-  fluctuation. Each audio block is split at the barline into bar-local
-  segments, so note offsets stay sample-exact; the worklet ships bar-local
-  time alongside the real beat, and playheads follow it while the Game of
-  Life, fill map and wheel spin stay on the real clock. The panel shows the
-  meter you're in (`METER 5/4`).
+  **Golden loop** (`GLD_TIME`, the φT chip beside φ): tempo, grid and step
+  length are all **untouched** — what changes is **how many steps the loop runs
+  before it snaps back to step 1**. The loop grows **1 · 1 · 2 · 3 · 5 · 8 ·
+  13 · 21 steps** and starts over (21 is the ceiling because the sequencer tops
+  out at 32 steps). A 16-step pattern therefore plays a one-step stutter, then a
+  fragment, then most of itself, then more than a full lap — the same hits
+  landing somewhere new every pass. It's the zoetrope idea made literal: a loop
+  that grows. Each part loops in *its own* steps, so parts on different grids
+  drift against each other in golden proportion. Fills follow the growing loop
+  (they land at the end of whatever the current loop is); the Game of Life,
+  wheel spin and the beat-synced effects stay on the real clock. A gold barline
+  in the drum grid shows where the current pass wraps, and the panel reads out
+  the loop length (`LOOP 5 steps`).
 
   **Piano-string resonator** (`PRES_*`, `PSND_A`/`PLSND_A`): a rack of strings
   with the sustain pedal down, tuned to two octaves of the chords part's key.

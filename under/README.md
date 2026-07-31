@@ -302,6 +302,31 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
     golden-angle walk (each pick 0.618 around the colony — sunflower coverage,
     no clumping) with a φ-bias (61.8% place / 38.2% erase).
 
+  **4-band resonator** (`MBR_*`, the 4-BAND row in the rack + the **4B** column
+  in SENDS): the input is split by **four resonant bandpass filters**, then the
+  band outputs are **summed or multiplied** according to the mode. Multiplying
+  band outputs is ring modulation by a carrier derived from the signal itself,
+  so the sidebands track the material rather than sitting at a fixed frequency
+  — gentle and vocal on a synth pad, total wreckage on an acoustic loop.
+  - `SUM` — the four bands added: a formant/resonator bank, the gentle end.
+    It is *darker* than the dry signal (it is, after all, four bandpasses).
+  - `RING` — neighbouring bands multiply each other: metallic but still pitched.
+  - `PAIR` — two independent ring pairs, one per side: wide and hollow.
+  - `MULT` — all four multiplied: intermodulation wreckage, the harsh end.
+    This mode is mono by nature (multiplication is commutative, so there is no
+    honest way to make the two sides differ); the dry path stays stereo.
+  - `FREQ` sets the lowest band, `SPRD` the spacing between bands (packed into
+    a formant, or fanned across the spectrum), `Q` the ringing, `DRV` the output
+    saturation, `MIX` the return level. All are LFO targets.
+
+  Each band is normalised by its own slow envelope before the multiply modes
+  use it. Without that, multiplying four signals that are each well under 1
+  collapses toward silence and the level swings with the *fourth power* of the
+  input; with it, the modes differ in timbre rather than loudness (measured
+  spread between the four modes: **1.45×**). The output is DC-blocked, because
+  products are not zero-mean. It is parallel and wet-only like the piano
+  strings, fed by its own per-lane and per-part sends.
+
   **The experimental strip** runs across the very bottom of the canvas, behind
   caution stripes: a snail (whose shell is a real logarithmic spiral, growing
   by φ per turn), two hazard signs, the word EXPERIMENTAL, and the only two

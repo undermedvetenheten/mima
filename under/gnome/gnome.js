@@ -9,7 +9,7 @@
 
 // bump on every release: cache-busts the worklet module so a stale cached
 // DSP can never run against fresh UI code
-const APP_V = '26';
+const APP_V = '27';
 
 
 const LANES_CAP = 8, MAX_STEPS = 32, EUC_N = 21, NROWS = 12, NSCALES = 15,
@@ -99,6 +99,9 @@ const PRES_ON = 1015, PRES_MIX = 1016, PRES_DEC = 1017, PRES_TONE = 1018;
 // cross-routing: per-synth source / amount / mode (ring, duck, drive)
 const XSRC_A = 1019, XAMT_A = 1022, XMODE_A = 1025;
 const GLD_TIME = 1028;
+const MBR_ON = 1029, MBR_FREQ = 1030, MBR_SPRD = 1031, MBR_Q = 1032;
+const MBR_MODE = 1033, MBR_MIX = 1034, MBR_DRV = 1035;
+const MBR_SND_A = 1036, MBR_LSND_A = 1040;   // 4 parts, then 8 drum lanes
 // GOLDEN METER: tempo and grid are untouched — the LOOP LENGTH grows
 // 1,1,2,3,5,8,13,21 steps and snaps back. Mirrors goldLoop() in the worklet.
 const GM_STEPS = [1, 1, 2, 3, 5, 8, 13, 21];
@@ -899,6 +902,10 @@ function seedNewRegions(arr) {
   a[PRES_ON] = 0; a[PRES_MIX] = 45; a[PRES_DEC] = 70; a[PRES_TONE] = 55;
   for (let si = 0; si < NSYN; si++) { a[XSRC_A + si] = 0; a[XAMT_A + si] = 40; a[XMODE_A + si] = 0; }
   a[GLD_TIME] = 0;
+  a[MBR_ON] = 0; a[MBR_FREQ] = 180; a[MBR_SPRD] = 50; a[MBR_Q] = 45;
+  a[MBR_MODE] = 0; a[MBR_MIX] = 60; a[MBR_DRV] = 30;
+  for (let i = 0; i < 4; i++) a[MBR_SND_A + i] = 0;
+  for (let l = 0; l < LANES_CAP; l++) a[MBR_LSND_A + l] = 0;
 }
 // bring a stored mem block (768 / 800 / 864) up to the current layout;
 // returns a MEM-length plain array, or null for an unknown length
@@ -918,6 +925,12 @@ function migrateMem(arr) {
     if (!o[PRES_MIX]) { o[PRES_MIX] = 45; o[PRES_DEC] = 70; o[PRES_TONE] = 55; }
     if (!o[XAMT_A] && !o[XAMT_A + 1] && !o[XAMT_A + 2])
       for (let si = 0; si < 3; si++) o[XAMT_A + si] = 40;
+    // the 4-band resonator region reads all-zero on saves that predate it,
+    // and a zero frequency / zero Q would be a dead filter if switched on
+    if (!o[MBR_FREQ]) {
+      o[MBR_FREQ] = 180; o[MBR_SPRD] = 50; o[MBR_Q] = 45;
+      o[MBR_MIX] = 60; o[MBR_DRV] = 30;
+    }
     // densities predate some saves: derive from the legacy part bitmask so an
     // already-enabled fill setup keeps making sound (moderate defaults)
     let anyD = 0;
@@ -1119,6 +1132,9 @@ function modRange(off) {
   if (within(DFRC_A, 8)) return [0, 100];
   if (within(BELL_STK_A, 3) || within(PNO_A, 3)) return [0, 100];
   if (within(PSND_A, 4) || within(PLSND_A, 8)) return [0, 100];
+  if (within(MBR_SND_A, 4) || within(MBR_LSND_A, 8)) return [0, 100];
+  if (off === MBR_FREQ) return [40, 4000];
+  if (off === MBR_SPRD || off === MBR_Q || off === MBR_MIX || off === MBR_DRV) return [0, 100];
   if (off === PRES_MIX || off === PRES_DEC || off === PRES_TONE) return [0, 100];
   if (within(XAMT_A, 3)) return [0, 100];
   return null;
@@ -1711,7 +1727,9 @@ const xEuc = xSolo + 22, xMode = xEuc + 36, xGrid = xMode + 30;
 const cellw = 16, cellh = 28, rollrh = 8;
 function yBtn() { return laneTop + numLanes * rowh + 2; }
 function ys(si) { return yBtn() + 28 + si * 208; }
-const fxH = 300;                        // demarcated FX box at the bottom
+const fxH = 336;                        // demarcated FX box at the bottom
+// FX rack row offsets from fxY(); armRect must track the LFO rows
+const FXR_MBR = 204, FXR_L1 = 250, FXR_L2 = 286;
 const ROLL_X = 8, ROLL_Y = 88;          // rolls sit UNDER the control rows
 const RC_X = 744;                       // right-hand column (text + visuals)
 const HK_X = 744;                       // HARMONY panel (chords right column)
@@ -1762,6 +1780,7 @@ function fxFmt(kind, v) {
     : kind === 'beats' ? fmtG(v)
     : kind === 'shp' ? ['SIN', 'TRI', 'SW\u2193', 'S&H', 'SW\u2191', 'SPL', 'GLD'][Math.round(v)] || 'SIN'
     : kind === 'deg' ? Math.round(v) + '\u00b0'
+    : kind === 'hz' ? (v >= 1000 ? (v / 1000).toFixed(1) + 'k' : Math.round(v) + '')
     : String(Math.round(v));
 }
 function fxCells() {
@@ -1776,7 +1795,7 @@ function fxCells() {
   tog(x, y, 34, 'FX', FX_ON); x += 40;
   val(x, y, 44, 'FEED', FX_FEED, 0, 100, 5, 'pct'); x += 50;
   tog(x, y, 40, 'PRE', SND_PRE); x += 48;
-  lbl(x + 8, y + 9, 'per-ENG cells sit beside each ENG button · PNO column in SENDS feeds the piano strings');
+  lbl(x + 8, y + 9, 'per-ENG cells sit beside each ENG button · PNO + 4B columns in SENDS feed the two resonators');
   y = fy + 60; x = 12;
   lbl(x, y + 9, 'DUB DLY'); x += 52;
   tog(x, y, 34, '', DLY_ON); x += 40;
@@ -1819,13 +1838,25 @@ function fxCells() {
     tri(x, y, 44, XMODE_A + si, XMODE_NAMES); x += 46;
   }
 
+  // 4-band resonator: bandpass bank, summed or multiplied
+  y = fy + FXR_MBR; x = 12;
+  lbl(x, y + 9, '4-BAND'); x += 52;
+  tog(x, y, 34, '', MBR_ON); x += 38;
+  tri(x, y, 50, MBR_MODE, ['SUM', 'RING', 'PAIR', 'MULT']); x += 54;
+  val(x, y, 46, 'FREQ', MBR_FREQ, 40, 4000, 10, 'hz'); x += 50;
+  val(x, y, 44, 'SPRD', MBR_SPRD, 0, 100, 5, 'pct'); x += 48;
+  val(x, y, 36, 'Q', MBR_Q, 0, 100, 5, 'pct'); x += 40;
+  val(x, y, 40, 'DRV', MBR_DRV, 0, 100, 5, 'pct'); x += 44;
+  val(x, y, 40, 'MIX', MBR_MIX, 0, 100, 5, 'pct'); x += 48;
+  lbl(x, y + 9, 'summed = formant · multiplied = wreckage · 4B sends →');
+
   // mod LFOs: L1 / L2 rate + depth + shape; ARM chips drawn apart
-  y = fy + 214; x = 58;
+  y = fy + FXR_L1; x = 58;
   val(x, y, 46, 'RATE', MLFO_A, 0.25, 64, 0.25, 'beats'); x += 50;
   val(x, y, 42, 'DEP', MLFO_A + 1, 0, 100, 5, 'pct'); x += 46;
   val(x, y, 40, 'SHP', MLFO_A + 2, 0, 6, 1, 'shp'); x += 44;
   lbl(x + 4, y + 9, 'drag ARM onto a field (or tap to arm)');
-  y = fy + 250; x = 58;
+  y = fy + FXR_L2; x = 58;
   val(x, y, 46, 'RATE', MLFO_A + 3, 0.25, 64, 0.25, 'beats'); x += 50;
   val(x, y, 42, 'DEP', MLFO_A + 4, 0, 100, 5, 'pct'); x += 46;
   val(x, y, 40, 'SHP', MLFO_A + 5, 0, 6, 1, 'shp'); x += 44;
@@ -1834,19 +1865,23 @@ function fxCells() {
 }
 
 // SENDS matrix mini-knob centers: one row per drum lane, then BS/ML/CH
-// (row index runs 0..numLanes+2), inside the FX band's right column
+// (row index runs 0..numLanes+2), inside the FX band's right column.
+// Columns: delay, glitch, grain, piano strings, 4-band resonator.
+const SND_COLS = 5;
 function sndKnobXY(row, fxi) {
   return [796 + fxi * 42, fxY() + 30 + row * sndPitch()];
 }
 // the mem offset behind a sends-matrix row/column
 function sndOff(row, fxi) {
+  if (fxi === 4)   // the 4-band resonator column
+    return row < numLanes ? MBR_LSND_A + row : MBR_SND_A + (row - numLanes + 1);
   if (fxi === 3)   // the piano-string resonator column
     return row < numLanes ? PLSND_A + row : PSND_A + (row - numLanes + 1);
   return row < numLanes ? DSND_A + row * 3 + fxi
     : SND_MTX + (row - numLanes + 1) * 3 + fxi;
 }
 // ARM button rects for the two mod LFOs (draw + hit share these)
-function armRect(n) { return [12, fxY() + (n === 1 ? 214 : 250), 40, 30]; }
+function armRect(n) { return [12, fxY() + (n === 1 ? FXR_L1 : FXR_L2), 40, 30]; }
 // 3D dome center x (right-aligned with the other visualizers)
 const DOME_CX = 1124;
 // 3D-space entities: 0..7 drum lanes, 8..10 bass/melody/chords
@@ -2017,7 +2052,7 @@ function findModTarget(x, y) {
     }
   }
   if (y >= fxY() && y < fxY() + fxH) {
-    for (let p = 0; p < numLanes + 3; p++) for (let f = 0; f < 4; f++) {
+    for (let p = 0; p < numLanes + 3; p++) for (let f = 0; f < SND_COLS; f++) {
       const [kx, ky] = sndKnobXY(p, f);
       if ((x - kx) * (x - kx) + (y - ky) * (y - ky) <= 121) return sndOff(p, f);
     }
@@ -2144,7 +2179,7 @@ function onDown(x, y, right) {
     }
     // SENDS matrix mini-knobs (vertical drag; armed tap assigns) —
     // one row per drum lane, then the three pitched parts
-    for (let p = 0; p < numLanes + 3; p++) for (let f = 0; f < 4; f++) {
+    for (let p = 0; p < numLanes + 3; p++) for (let f = 0; f < SND_COLS; f++) {
       const [kx, ky] = sndKnobXY(p, f);
       if ((x - kx) * (x - kx) + (y - ky) * (y - ky) <= 121) {
         const off = sndOff(p, f);
@@ -2822,7 +2857,12 @@ function onUp() {
     if (dragMode === 31) {
       if (dragFx.t === 'tri') {
         m[dragFx.off] = ((m[dragFx.off] | 0) + 1) % dragFx.labels.length;
-        setStatus(dragFx.off === DLY_GLD
+        setStatus(dragFx.off === MBR_MODE
+          ? ['4-band SUM — the four resonant bands are added: a formant bank, the gentle end',
+             '4-band RING — neighbouring bands multiply each other: metallic, still pitched',
+             '4-band PAIR — two independent ring pairs, one per side: wide and hollow',
+             '4-band MULT — all four multiplied: intermodulation wreckage, the harsh end'][m[dragFx.off]]
+          : dragFx.off === DLY_GLD
           ? ['golden echo off', 'golden echo: repeats compress ×0.618 (500→309→191…)', 'golden echo: repeats expand ×φ'][m[dragFx.off]]
           : dragFx.off >= XSRC_A && dragFx.off < XSRC_A + 3
           ? `${SYN_NAMES[dragFx.off - XSRC_A]} cross source: ${XSRC_NAMES[m[dragFx.off]]}${m[dragFx.off] ? ' — set AMT and pick RING / DUCK / DRV' : ' (off)'}`
@@ -3640,15 +3680,15 @@ function draw() {
     // SENDS matrix: mini circular faders — one row per drum lane, then the
     // pitched parts (per-lane sends: every drum can take its own fx bath)
     set(0.5, 0.52, 0.56); text('SENDS', 744, fy + 6, F10);
-    const FXCOL = ['DLY', 'GLI', 'GRN', 'PNO'];
-    for (let f = 0; f < 4; f++) {
+    const FXCOL = ['DLY', 'GLI', 'GRN', 'PNO', '4B'];
+    for (let f = 0; f < SND_COLS; f++) {
       set(0.45, 0.46, 0.5);
       textC(FXCOL[f], 796 + f * 42 - 16, 796 + f * 42 + 16, fy + 6, F10);
     }
     for (let p = 0; p < numLanes + 3; p++) {
       const rl = p < numLanes ? 'L' + (p + 1) : ['BS', 'ML', 'CH'][p - numLanes];
       set(0.45, 0.46, 0.5); text(rl, 752, sndKnobXY(p, 0)[1] - 5, F10);
-      for (let f = 0; f < 4; f++) {
+      for (let f = 0; f < SND_COLS; f++) {
         const [kx, ky] = sndKnobXY(p, f);
         const off = sndOff(p, f), v = m[off] / 100;
         v > 0 ? set(0.16, 0.34, 0.36) : set(0.2, 0.21, 0.24);
@@ -3896,6 +3936,9 @@ window.gnome = {
   get audioStarting() { return audioStarting; },
   get decoded() { return decoded; },
   get dispBeat() { return dispBeat; },
+  // layout seams so tests don't hardcode rack row offsets that move when the
+  // rack grows a row
+  armRect, fxCells, get fxTop() { return fxY(); },
   get wheel() { return { b: gsndB, m: gsndM, c: gsndC, cn: gsndCn }; },
 
   // state + engine plumbing shared by both layouts
@@ -3923,6 +3966,8 @@ window.gnome = {
     DRONE_OPEN_A, DVOL_A, DSND_A, DAZ_A, DFRC_A,
     PHI_TUNE, DLY_GLD, BELL_STK_A, PNO_A, PSND_A, PLSND_A,
     PRES_ON, PRES_MIX, PRES_DEC, PRES_TONE, XSRC_A, XAMT_A, XMODE_A, GLD_TIME,
+    MBR_ON, MBR_FREQ, MBR_SPRD, MBR_Q, MBR_MODE, MBR_MIX, MBR_DRV,
+    MBR_SND_A, MBR_LSND_A,
   },
   tables: { SCALE_NAMES, PROG_NAMES, SHAPE_NAMES, SYN_NAMES, FEEL_NAMES, SCL, STYLE_NAMES, FRACTAL_NAMES, XSRC_NAMES, XMODE_NAMES },
   fractalLevels, buildFractalTree, sendFillNow, sendFlick, treeBranchAt, findModTarget,

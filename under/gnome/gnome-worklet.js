@@ -70,6 +70,9 @@ const PNO_A = 1000, PSND_A = 1003, PLSND_A = 1007;
 const PRES_ON = 1015, PRES_MIX = 1016, PRES_DEC = 1017, PRES_TONE = 1018;
 const XSRC_A = 1019, XAMT_A = 1022, XMODE_A = 1025;
 const GLD_TIME = 1028;
+const MBR_ON = 1029, MBR_FREQ = 1030, MBR_SPRD = 1031, MBR_Q = 1032;
+const MBR_MODE = 1033, MBR_MIX = 1034, MBR_DRV = 1035;
+const MBR_SND_A = 1036, MBR_LSND_A = 1040;   // 4 parts, then 8 drum lanes
 // GOLDEN METER: tempo, grid and step length are all untouched — what changes
 // is HOW MANY STEPS the loop runs before it snaps back to step 0. The loop
 // grows 1,1,2,3,5,8,13,21 steps and starts over (21 is the ceiling because the
@@ -221,6 +224,9 @@ function modRange(off) {
   if (within(DFRC_A, 8)) return [0, 100];
   if (within(BELL_STK_A, 3) || within(PNO_A, 3)) return [0, 100];
   if (within(PSND_A, 4) || within(PLSND_A, 8)) return [0, 100];
+  if (within(MBR_SND_A, 4) || within(MBR_LSND_A, 8)) return [0, 100];
+  if (off === MBR_FREQ) return [40, 4000];
+  if (off === MBR_SPRD || off === MBR_Q || off === MBR_MIX || off === MBR_DRV) return [0, 100];
   if (off === PRES_MIX || off === PRES_DEC || off === PRES_TONE) return [0, 100];
   if (within(XAMT_A, 3)) return [0, 100];
   return null;
@@ -277,6 +283,11 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     this.scopeBuf = new Float32Array(512); // bass waveform tap for the XY scope
     this.scopeW = 0;
     this.xyDc = 0;                         // DC tracker for the XY waveshaper
+    // 4-band resonator: one state-variable filter per band, plus a slow
+    // envelope per band (the multiply modes normalise by it) and output DC
+    this.mbLo = F(4); this.mbBp = F(4);
+    this.mbEnv = F(4); this.mbBnd = F(4); this.mbNrm = F(4); this.mbCoef = F(4);
+    this.mbDcL = 0; this.mbDcR = 0;
     this.spSt = F(NSYN); this.spEnWin = F(NSYN);
     this.spFix = F(NSYN); this.spTrk = F(NSYN);
     this.fltLo = F(LANES_CAP); this.fltBp = F(LANES_CAP);
@@ -1278,13 +1289,33 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
         if (this.prPos[i] >= this.prLen[i]) this.prPos[i] = 0;
       }
     }
+    // ---- 4-band resonator: bandpass bank whose outputs are summed or
+    // multiplied. Multiplying band outputs is ring modulation by a signal
+    // derived from the source itself, so the sidebands track the material:
+    // gentle and formant-like on the SUM, wrecked on the MULT.
+    const mbrOn = m[MBR_ON] ? 1 : 0;
+    const mbrMix = m[MBR_MIX] / 100;
+    const mbrMode = m[MBR_MODE] | 0;
+    const mbrDrv = m[MBR_DRV] / 100;
+    const mbrDamp = 1 / (0.7 + m[MBR_Q] / 100 * 29);       // Q 0.7 .. 29.7
+    const mbrRatio = 1.25 + m[MBR_SPRD] / 100 * 2.75;      // band spacing
+    const mbrF = this.mbCoef;
+    {
+      let fc = Math.max(20, Math.min(8000, m[MBR_FREQ] || 180));
+      for (let k = 0; k < 4; k++) {
+        mbrF[k] = 2 * Math.sin(Math.PI * Math.min(fc, srate * 0.44) / srate);
+        fc *= mbrRatio;
+      }
+    }
+    const mbrG = 1 + mbrDrv * 8, mbrNg = 1 / (1 + mbrDrv * 2);
+
     // cross-routing per synth (source, amount, mode) read once per block
     const xSrcI = [m[XSRC_A] | 0, m[XSRC_A + 1] | 0, m[XSRC_A + 2] | 0];
     const xAmtI = [m[XAMT_A] / 100, m[XAMT_A + 1] / 100, m[XAMT_A + 2] / 100];
     const xModeI = [m[XMODE_A] | 0, m[XMODE_A + 1] | 0, m[XMODE_A + 2] | 0];
 
     for (let f = 0; f < nframes; f++) {
-      let spl0 = 0, spl1 = 0, dIn = 0, aIn = 0, cIn = 0, pIn = 0;
+      let spl0 = 0, spl1 = 0, dIn = 0, aIn = 0, cIn = 0, pIn = 0, mbIn = 0;
       const pm = this.emTmp;
       pm.fill(0);
 
@@ -1365,6 +1396,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
           const sb = DSND_A + c * 3;
           dIn += dc * m[sb] / 100; aIn += dc * m[sb + 1] / 100; cIn += dc * m[sb + 2] / 100;
           pIn += dc * m[PLSND_A + c] / 100;      // this lane -> piano strings
+          mbIn += dc * m[MBR_LSND_A + c] / 100;  // this lane -> 4-band resonator
         }
       }
 
@@ -1523,6 +1555,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
         const px = so * (sndPre ? PRE_G : gS[si2]) * synAud[si2];
         dIn += px * mtx[pt][0]; aIn += px * mtx[pt][1]; cIn += px * mtx[pt][2];
         pIn += px * m[PSND_A + pt] / 100;         // this part -> piano strings
+        mbIn += px * m[MBR_SND_A + pt] / 100;     // this part -> 4-band resonator
       }
 
       if (xyOn) {
@@ -1702,6 +1735,46 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
         wL = sane(wL) * 0.3; wR = sane(wR) * 0.3;
         spl0 += Math.tanh(wL) * presMix;
         spl1 += Math.tanh(wR) * presMix;
+      }
+
+      // ---- 4-band resonator (parallel, wet-only) ----
+      if (mbrOn && mbrMix > 0.001) {
+        const bnd = this.mbBnd, nrm = this.mbNrm, env = this.mbEnv;
+        let E = 0;
+        for (let k = 0; k < 4; k++) {
+          // state-variable filter; we keep the bandpass leg
+          const hp = mbIn - this.mbLo[k] - mbrDamp * this.mbBp[k];
+          this.mbBp[k] = sane(this.mbBp[k] + mbrF[k] * hp);
+          this.mbLo[k] = sane(this.mbLo[k] + mbrF[k] * this.mbBp[k]);
+          const b = this.mbBp[k];
+          bnd[k] = b;
+          // Multiplying raw bands collapses toward silence (each is well under
+          // 1), and the product's level would swing with the square/fourth
+          // power of the input. Normalise each band to roughly unit amplitude
+          // first, so the modes differ in TIMBRE, not in loudness, then scale
+          // the result by the bank's own energy so dynamics still track.
+          env[k] += (Math.abs(b) - env[k]) * 0.002;
+          nrm[k] = Math.max(-3, Math.min(3, b / Math.max(1e-4, env[k] * 1.4)));
+          E += env[k];
+        }
+        let wL2, wR2;
+        if (mbrMode === 0) {              // SUM: parallel bank, formant-ish
+          wL2 = (bnd[0] + bnd[2]) * 0.7; wR2 = (bnd[1] + bnd[3]) * 0.7;
+        } else if (mbrMode === 1) {       // RING: adjacent bands modulate
+          wL2 = (nrm[0] * nrm[1] + nrm[2] * nrm[3]) * E * 0.5;
+          wR2 = (nrm[1] * nrm[2] + nrm[2] * nrm[3]) * E * 0.5;
+        } else if (mbrMode === 2) {       // PAIR: two independent ring pairs
+          wL2 = nrm[0] * nrm[1] * E; wR2 = nrm[2] * nrm[3] * E;
+        } else {                          // MULT: all four, the wrecking mode
+          wL2 = wR2 = nrm[0] * nrm[1] * nrm[2] * nrm[3] * E;
+        }
+        wL2 = Math.tanh(sane(wL2) * mbrG) * mbrNg;
+        wR2 = Math.tanh(sane(wR2) * mbrG) * mbrNg;
+        // products are not zero-mean: block the DC they leave behind
+        this.mbDcL = sane(this.mbDcL + 0.0004 * (wL2 - this.mbDcL));
+        this.mbDcR = sane(this.mbDcR + 0.0004 * (wR2 - this.mbDcR));
+        spl0 += (wL2 - this.mbDcL) * mbrMix;
+        spl1 += (wR2 - this.mbDcR) * mbrMix;
       }
 
       // cross-routing sources: this frame's buses feed the next frame, so a

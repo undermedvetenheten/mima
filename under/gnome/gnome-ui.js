@@ -506,6 +506,19 @@ window.createGnomeUI = function (G) {
       });
       return rows;
     };
+    // sends into the 4-band resonator: one row per lane, then the parts
+    const mbrRoute = () => {
+      const rows = [];
+      for (let l = 0; l < G.numLanes; l++) {
+        const off = C.MBR_LSND_A + l;
+        rows.push(stepper('Lane ' + (l + 1) + ' \u2192', 0, 100, 5, () => m[off], v => m[off] = v, fmtPct));
+      }
+      ['Bass', 'Melody', 'Chords'].forEach((nm, p2) => {
+        const off = C.MBR_SND_A + 1 + p2;
+        rows.push(stepper(nm + ' \u2192', 0, 100, 5, () => m[off], v => m[off] = v, fmtPct));
+      });
+      return rows;
+    };
     const fmtDens = v => v ? 'D' + Math.round(v) : 'off';
     const fracParts = [];
     for (let l = 0; l < G.numLanes; l++)
@@ -555,6 +568,19 @@ window.createGnomeUI = function (G) {
         stepper('Tone', 0, 100, 5, () => m[C.PRES_TONE], v => m[C.PRES_TONE] = v, fmtPct,
           'string damping — low is felted, high is bright and open'),
         ...pnoRoute()),
+      group('4-band resonator', 'four resonant bandpass filters, then summed or MULTIPLIED together \u2014 summing gives a formant bank, multiplying is ring modulation by the signal\u2019s own bands (send anything in via the 4B sends)',
+        seg('4-band', ['off', 'on'], () => m[C.MBR_ON], i => m[C.MBR_ON] = i),
+        seg('Mode', ['sum', 'ring', 'pair', 'mult'], () => m[C.MBR_MODE], i => m[C.MBR_MODE] = i,
+          'sum = resonant/formant, gentle \u00b7 ring = neighbours multiply, metallic \u00b7 pair = two ring pairs, wide \u00b7 mult = all four, wreckage'),
+        stepper('Base freq', 40, 4000, 10, () => m[C.MBR_FREQ], v => m[C.MBR_FREQ] = v,
+          v => Math.round(v) + ' Hz', 'where the lowest band sits'),
+        stepper('Spread', 0, 100, 5, () => m[C.MBR_SPRD], v => m[C.MBR_SPRD] = v, fmtPct,
+          'spacing between the four bands \u2014 low packs them into a formant, high fans them across the spectrum'),
+        stepper('Resonance', 0, 100, 5, () => m[C.MBR_Q], v => m[C.MBR_Q] = v, fmtPct,
+          'band Q \u2014 high is narrow and ringing, and makes the multiply modes sing'),
+        stepper('Drive', 0, 100, 5, () => m[C.MBR_DRV], v => m[C.MBR_DRV] = v, fmtPct),
+        stepper('Mix', 0, 100, 5, () => m[C.MBR_MIX], v => m[C.MBR_MIX] = v, fmtPct),
+        ...mbrRoute()),
       group('cross-routing', 'let one instrument work on another — ring-modulate it, sidechain-duck it, or drive it into distortion',
         ...['Bass', 'Melody', 'Chords'].map((nm, si) => [
           seg(nm + ' source', T.XSRC_NAMES, () => m[C.XSRC_A + si], i => m[C.XSRC_A + si] = i),

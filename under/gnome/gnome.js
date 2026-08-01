@@ -9,7 +9,7 @@
 
 // bump on every release: cache-busts the worklet module so a stale cached
 // DSP can never run against fresh UI code
-const APP_V = '30';
+const APP_V = '31';
 
 
 const LANES_CAP = 8, MAX_STEPS = 32, EUC_N = 21, NROWS = 12, NSCALES = 15,
@@ -1690,7 +1690,7 @@ async function initAudio() {
     } else if (d.type === 'rec') {
       recChunks.push(d); recFrames += d.l.length;
     } else if (d.type === 'recdone') {
-      finalizeRecording(d.sr);
+      finalizeRecording(d.sr, d.stems);
     }
   };
   pushState(); pushGains(); pushTransport();
@@ -1710,7 +1710,20 @@ function togglePlay() {
 // encode a 16-bit WAV on stop. lastRec keeps the finished take so the UI can
 // offer a save button (a fresh user gesture, which iOS/Safari needs).
 let recording = false, recChunks = [], recFrames = 0, recSampleRate = 44100;
-let lastRec = null; // { url, name, blob }
+let lastRec = null;      // { url, name, blob, stems: [{name, data}], comp }
+let armStems = false;    // capture per-instrument stems on the next take
+let hadStems = false;
+// Browsers cannot encode MP3: MediaRecorder offers AAC (audio/mp4) and Opus
+// (audio/webm), never audio/mpeg. We record a compressed copy in PARALLEL with
+// the raw capture rather than re-encoding afterwards, which would otherwise
+// cost a second of wall clock per second of audio.
+const COMP_TYPES = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'];
+function compType() {
+  if (typeof MediaRecorder === 'undefined') return null;
+  return COMP_TYPES.find(t => { try { return MediaRecorder.isTypeSupported(t); } catch (e) { return false; } }) || null;
+}
+function compExt(t) { return t && t.indexOf('mp4') >= 0 ? 'm4a' : 'webm'; }
+let mediaRec = null, mediaDest = null, compChunks = [], compBlob = null;
 
 async function startRecording() {
   if (recording) return;
@@ -1718,29 +1731,142 @@ async function startRecording() {
   if (actx.state === 'suspended') actx.resume();
   recSampleRate = actx.sampleRate;
   recChunks = []; recFrames = 0; recording = true;
-  node.port.postMessage({ type: 'record', on: true });
+  hadStems = armStems; compBlob = null; compChunks = [];
+  const ct = compType();
+  if (ct) {
+    try {
+      mediaDest = actx.createMediaStreamDestination();
+      node.connect(mediaDest);
+      mediaRec = new MediaRecorder(mediaDest.stream, { mimeType: ct, audioBitsPerSecond: 192000 });
+      mediaRec.ondataavailable = e => { if (e.data && e.data.size) compChunks.push(e.data); };
+      mediaRec.onstop = () => { compBlob = new Blob(compChunks, { type: ct }); };
+      mediaRec.start();
+    } catch (e) { mediaRec = null; mediaDest = null; }
+  }
+  node.port.postMessage({ type: 'record', on: true, stems: armStems });
 }
 function stopRecording() {
   if (!recording) return;
   recording = false;
+  if (mediaRec && mediaRec.state !== 'inactive') {
+    try { mediaRec.stop(); } catch (e) { /* ignore */ }
+  }
+  if (mediaDest) { try { node.disconnect(mediaDest); } catch (e) { /* ignore */ } mediaDest = null; }
   node.port.postMessage({ type: 'record', on: false }); // -> flush + recdone
 }
 function toggleRecording() { recording ? stopRecording() : startRecording(); }
 
-function finalizeRecording(sr) {
+function finalizeRecording(sr, withStems) {
   recSampleRate = sr || (actx ? actx.sampleRate : 44100);
   if (!recChunks.length) return;
   const blob = encodeWav(recChunks, recSampleRate);
-  recChunks = [];
-  if (lastRec && lastRec.url) URL.revokeObjectURL(lastRec.url);
   const d = new Date();
   const p = n => String(n).padStart(2, '0');
-  const name = `supergnome-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}` +
-    `-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.wav`;
-  lastRec = { url: URL.createObjectURL(blob), name, blob };
+  const stamp = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}` +
+    `-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+  const stems = [];
+  if (withStems || hadStems) {
+    for (let k = 0; k < STEM_NAMES.length; k++) {
+      const pr = stemPairs(recChunks, k);
+      if (pr.length) stems.push({ name: `${STEM_NAMES[k]}.wav`, data: encodeWavBytes(pr, recSampleRate) });
+    }
+  }
+  recChunks = [];
+  if (lastRec && lastRec.url) URL.revokeObjectURL(lastRec.url);
+  lastRec = { url: URL.createObjectURL(blob), name: `supergnome-${stamp}.wav`,
+    blob, stamp, stems, get comp() { return compBlob; } };
+  setStatus(`take saved: ${(blob.size / 1048576).toFixed(1)} MB wav`
+    + (stems.length ? ` + ${stems.length} stems` : '')
+    + (compBlob ? ` + ${compExt(compType())}` : '') + ' — tap SAVE or ZIP');
+}
+
+// everything from the take in one archive: master wav, the compressed copy,
+// and a wav per stem when they were captured
+function buildTakeZip() {
+  if (!lastRec) return null;
+  const files = [];
+  return lastRec.blob.arrayBuffer().then(async (mb) => {
+    files.push({ name: `supergnome-${lastRec.stamp}/master.wav`, data: new Uint8Array(mb) });
+    for (const st of lastRec.stems)
+      files.push({ name: `supergnome-${lastRec.stamp}/${st.name}`, data: st.data });
+    if (lastRec.comp) {
+      const cb = await lastRec.comp.arrayBuffer();
+      files.push({ name: `supergnome-${lastRec.stamp}/master.${compExt(compType())}`,
+        data: new Uint8Array(cb) });
+    }
+    return { blob: zipStore(files), name: `supergnome-${lastRec.stamp}.zip`, count: files.length };
+  });
+}
+async function saveTakeZip() {
+  const z = await buildTakeZip();
+  if (!z) return;
+  const file = new File([z.blob], z.name, { type: 'application/zip' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: z.name }); return; } catch (e) { /* fall through */ }
+  }
+  const url = URL.createObjectURL(z.blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = z.name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 20000);
+  setStatus(`${z.count} files saved as ${z.name}`);
+}
+
+// ---- stems + packaging ----------------------------------------------------
+const STEM_NAMES = ['drums', 'bass', 'melody', 'chords', 'fx'];
+// CRC32, for the zip's file records
+let CRCT = null;
+function crc32(u8) {
+  if (!CRCT) {
+    CRCT = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      CRCT[n] = c >>> 0;
+    }
+  }
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < u8.length; i++) c = CRCT[(c ^ u8[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+// A zip with no compression (method 0 = store). WAV barely deflates anyway, and
+// storing keeps this to a few dozen lines instead of a vendored library.
+function zipStore(files) {
+  const enc = new TextEncoder(), parts = [], central = [];
+  let offset = 0;
+  for (const f of files) {
+    const name = enc.encode(f.name), crc = crc32(f.data), len = f.data.length;
+    const lh = new Uint8Array(30 + name.length), dv = new DataView(lh.buffer);
+    dv.setUint32(0, 0x04034b50, true); dv.setUint16(4, 20, true);
+    dv.setUint32(14, crc, true); dv.setUint32(18, len, true);
+    dv.setUint32(22, len, true); dv.setUint16(26, name.length, true);
+    lh.set(name, 30);
+    parts.push(lh, f.data);
+    const ch = new Uint8Array(46 + name.length), cv = new DataView(ch.buffer);
+    cv.setUint32(0, 0x02014b50, true); cv.setUint16(4, 20, true); cv.setUint16(6, 20, true);
+    cv.setUint32(16, crc, true); cv.setUint32(20, len, true); cv.setUint32(24, len, true);
+    cv.setUint16(28, name.length, true); cv.setUint32(42, offset, true);
+    ch.set(name, 46);
+    central.push(ch);
+    offset += lh.length + len;
+  }
+  let cdSize = 0;
+  for (const c of central) cdSize += c.length;
+  const eocd = new Uint8Array(22), ev = new DataView(eocd.buffer);
+  ev.setUint32(0, 0x06054b50, true);
+  ev.setUint16(8, files.length, true); ev.setUint16(10, files.length, true);
+  ev.setUint32(12, cdSize, true); ev.setUint32(16, offset, true);
+  return new Blob([...parts, ...central, eocd], { type: 'application/zip' });
+}
+// pull one stem out of the captured chunks as {l, r} pairs
+function stemPairs(chunks, k) {
+  return chunks.filter(c => c.st).map(c => ({ l: c.st[k * 2], r: c.st[k * 2 + 1] }));
 }
 
 function encodeWav(chunks, sr) {
+  return new Blob([encodeWavBytes(chunks, sr)], { type: 'audio/wav' });
+}
+function encodeWavBytes(chunks, sr) {
   let n = 0;
   for (const c of chunks) n += c.l.length;
   const buf = new ArrayBuffer(44 + n * 4);      // 16-bit stereo
@@ -1761,7 +1887,7 @@ function encodeWav(chunks, sr) {
       v.setInt16(o, r < 0 ? r * 0x8000 : r * 0x7fff, true); o += 2;
     }
   }
-  return new Blob([buf], { type: 'audio/wav' });
+  return new Uint8Array(buf);
 }
 
 // save the finished take. Called from a user tap so the share sheet /
@@ -1816,6 +1942,7 @@ const PLAY_R = [130, 4, 44, 22], BPM_R = [180, 4, 52, 22],
   REC_R = [330, 4, 52, 22], SAVE_R = [388, 4, 52, 22],
   UNDO_R = [446, 4, 34, 22], REDO_R = [484, 4, 34, 22],
   SHEET_R = [524, 4, 56, 22],
+  STEM_R = [584, 4, 52, 22], ZIP_R = [640, 4, 40, 22],
   // preset slots: tap = recall live, ALT/right-click = store; ⇩⇧ = file io
   PRE_RS = [[590, 4, 26, 22], [620, 4, 26, 22], [650, 4, 26, 22]],
   PEXP_R = [684, 4, 26, 22], PIMP_R = [714, 4, 26, 22];
@@ -2212,6 +2339,14 @@ function onDown(x, y, right) {
       return;
     }
     if (lastRec && inRect(x, y, SAVE_R)) { saveLastRecording(); return; }
+    if (inRect(x, y, STEM_R)) {
+      armStems = !armStems;
+      setStatus(armStems
+        ? 'stems armed — the next take also captures drums / bass / melody / chords / fx separately; save with ZIP'
+        : 'stems off — takes capture the master only');
+      return;
+    }
+    if (lastRec && inRect(x, y, ZIP_R)) { saveTakeZip(); return; }
     if (inRect(x, y, UNDO_R)) { undo(); return; }
     if (inRect(x, y, REDO_R)) { redo(); return; }
     if (inRect(x, y, SHEET_R)) { if (window.gnome.exportScore) window.gnome.exportScore(); return; }
@@ -3128,6 +3263,14 @@ function draw() {
   textC('⤼', REDO_R[0], REDO_R[0] + REDO_R[2], 8, '14px Arial');
   set(0.24, 0.3, 0.36); rect(...SHEET_R);
   set(0.82, 0.9, 0.95); textC('♪ PDF', SHEET_R[0], SHEET_R[0] + SHEET_R[2], 9, F11);
+  armStems ? set(0.3, 0.36, 0.26) : set(0.2, 0.2, 0.23);
+  rect(...STEM_R);
+  set(armStems ? 0.75 : 0.45, armStems ? 0.95 : 0.45, armStems ? 0.7 : 0.5);
+  textC('STEMS', STEM_R[0], STEM_R[0] + STEM_R[2], 9, F11);
+  lastRec ? set(0.26, 0.3, 0.34) : set(0.17, 0.17, 0.19);
+  rect(...ZIP_R);
+  set(lastRec ? 0.85 : 0.35, lastRec ? 0.9 : 0.35, lastRec ? 0.95 : 0.4);
+  textC('ZIP', ZIP_R[0], ZIP_R[0] + ZIP_R[2], 9, F11);
   // preset slots: lit when stored; tap recalls, ALT/right-click stores
   for (let i = 0; i < 3; i++) {
     const r = PRE_RS[i], used = !!presets[PRESET_IDS[i]];
@@ -4019,6 +4162,10 @@ window.gnome = {
   storePreset, recallPreset, downloadPreset, importToPreset, importCurrent,
   presetUsed(id) { return !!presets[id]; },
   startRecording, stopRecording, toggleRecording, saveLastRecording,
+  saveTakeZip, buildTakeZip,
+  get armStems() { return armStems; },
+  setArmStems(v) { armStems = !!v; },
+  get compFormat() { return compExt(compType()); },
   get recording() { return recording; },
   get recSeconds() { return recFrames / (recSampleRate || 44100); },
   get lastRecording() { return lastRec; },

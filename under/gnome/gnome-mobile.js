@@ -36,7 +36,7 @@
   root.append(
     h('div', 'pk-head',
       h('div', 'pk-topbar',
-        h('div', 'pk-topctl', T.play, T.bpmBox, T.undoBox, T.rec, T.save),
+        h('div', 'pk-topctl', T.play, T.bpmBox, T.undoBox, T.rec, T.stems, T.save, T.zip),
         statusEl),
       tabBar),
     view);

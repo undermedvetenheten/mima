@@ -395,6 +395,15 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     this.rec = false; this.REC_CHUNK = 4096;
     this.recBufL = new Float32Array(this.REC_CHUNK);
     this.recBufR = new Float32Array(this.REC_CHUNK);
+    // stems: drums / bass / melody / chords / fx, interleaved L,R per stem.
+    // The four instrument stems are tapped after panning; the fx stem is
+    // whatever the master has that they do not, so it needs no tapping at all
+    // and can never drift out of sync with the rack.
+    this.STEMS = 5;
+    this.recStems = false;
+    this.stemBuf = [];
+    for (let i = 0; i < this.STEMS * 2; i++)
+      this.stemBuf.push(new Float32Array(this.REC_CHUNK));
     this.recPos = 0;
 
     this.tickN = 0;
@@ -441,7 +450,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
       // per-synth splice sample (mono)
       this.spl[d.si] = d.data ? { data: d.data, sr: d.sr, len: d.len } : null;
     } else if (d.type === 'record') {
-      if (d.on) { this.rec = true; this.recPos = 0; }
+      if (d.on) { this.rec = true; this.recPos = 0; this.recStems = !!d.stems; }
       else { this.rec = false; this.flushRec(true); }
     } else if (d.type === 'fillNow') {
       // a tree branch was clicked: force that fill level for the next bars
@@ -460,10 +469,16 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     if (this.recPos > 0) {
       const l = this.recBufL.slice(0, this.recPos);
       const r = this.recBufR.slice(0, this.recPos);
-      this.port.postMessage({ type: 'rec', l, r }, [l.buffer, r.buffer]);
+      const xfer = [l.buffer, r.buffer];
+      let st = null;
+      if (this.recStems) {
+        st = this.stemBuf.map(b2 => b2.slice(0, this.recPos));
+        for (const b2 of st) xfer.push(b2.buffer);
+      }
+      this.port.postMessage({ type: 'rec', l, r, st }, xfer);
       this.recPos = 0;
     }
-    if (done) this.port.postMessage({ type: 'recdone', sr: sampleRate });
+    if (done) this.port.postMessage({ type: 'recdone', sr: sampleRate, stems: this.recStems });
   }
 
   sget(si, k) {
@@ -1620,13 +1635,20 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
       this.scopeW = (this.scopeW + 1) & 511;
 
       // ---- 3D space: position each entity (lanes + synths), sum to master ----
+      let stD0 = 0, stD1 = 0, stB0 = 0, stB1 = 0, stM0 = 0, stM1 = 0, stC0 = 0, stC1 = 0;
       for (let p = 0; p < NE; p++) {
         if (p < 8 && p >= this.numLanes) continue;
         let s = pm[p];
         this.pLp[p] += this.panK[p] * (s - this.pLp[p]);
         s = s + (this.pLp[p] - s) * this.panBack[p];
-        spl0 += s * this.panGL[p];
-        spl1 += s * this.panGR[p];
+        const gl = s * this.panGL[p], gr = s * this.panGR[p];
+        spl0 += gl; spl1 += gr;
+        if (this.recStems) {
+          if (p < 8) { stD0 += gl; stD1 += gr; }
+          else if (p === 8) { stB0 += gl; stB1 += gr; }
+          else if (p === 9) { stM0 += gl; stM1 += gr; }
+          else { stC0 += gl; stC1 += gr; }
+        }
         this.pEner[p] += s < 0 ? -s : s;
       }
 
@@ -1844,6 +1866,17 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
       if (this.rec) {
         this.recBufL[this.recPos] = oL;
         this.recBufR[this.recPos] = oR;
+        if (this.recStems) {
+          const sb = this.stemBuf, i = this.recPos;
+          sb[0][i] = stD0; sb[1][i] = stD1;
+          sb[2][i] = stB0; sb[3][i] = stB1;
+          sb[4][i] = stM0; sb[5][i] = stM1;
+          sb[6][i] = stC0; sb[7][i] = stC1;
+          // everything the master carries that the parts do not: the whole fx
+          // rack, the piano strings and the 4-band, taken pre-limiter
+          sb[8][i] = spl0 - (stD0 + stB0 + stM0 + stC0);
+          sb[9][i] = spl1 - (stD1 + stB1 + stM1 + stC1);
+        }
         if (++this.recPos >= this.REC_CHUNK) this.flushRec(false);
       }
     }

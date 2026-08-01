@@ -704,6 +704,18 @@ window.createGnomeUI = function (G) {
     const save = h('button', 'pk-save', '⬇ save .wav');
     save.style.display = 'none';
     save.addEventListener('click', () => G.saveLastRecording());
+    // stems arm before the take; the zip carries master + stems + the
+    // compressed copy in one file
+    const stems = h('button', 'pk-chip', '\u2699 stems');
+    stems.addEventListener('click', () => {
+      G.setArmStems(!G.armStems);
+      say(G.armStems
+        ? 'stems armed \u2014 the next take captures drums / bass / melody / chords / fx separately'
+        : 'stems off \u2014 master only');
+    });
+    const zip = h('button', 'pk-save', '\u2b07 save all (zip)');
+    zip.style.display = 'none';
+    zip.addEventListener('click', () => G.saveTakeZip());
     const undo = h('button', 'pk-chip', '⤺');
     const redo = h('button', 'pk-chip', '⤼');
     undo.addEventListener('click', () => { G.undo(); say('undo'); });
@@ -718,9 +730,11 @@ window.createGnomeUI = function (G) {
       rec.classList.toggle('on', G.recording);
       rec.textContent = G.recording ? '⏹ ' + fmtTime(G.recSeconds) : '⏺ REC';
       save.style.display = G.lastRecording ? '' : 'none';
+      zip.style.display = G.lastRecording ? '' : 'none';
+      stems.classList.toggle('on', G.armStems);
       undo.disabled = !G.canUndo; redo.disabled = !G.canRedo;
     }
-    return { play, bpmBox, rec, save, undoBox, upd };
+    return { play, bpmBox, rec, save, stems, zip, undoBox, upd };
   }
 
   return {

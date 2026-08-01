@@ -143,6 +143,26 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
   canvas has a ♪ PDF header button; the pocket has a "Sheet music (PDF)"
   action on the KEY·MIX tab.
 
+  **Stems + packaging.** Arming **STEMS** (header button, or the ⚙ chip in the
+  pocket transport) makes a take capture five extra stereo buses alongside the
+  master: **drums / bass / melody / chords / fx**. The four instrument stems are
+  tapped after panning; the fx stem is *derived by subtraction* — whatever the
+  master carries that the parts do not — so the whole rack (delay, glitch,
+  grain, piano strings, 4-band) lands in it and it can never drift out of sync
+  with the routing. Stems are **pre master limiter**, which is what a DAW wants:
+  `tanh(sum of stems) == master` to within 16-bit quantisation (measured 0.02%).
+
+  **ZIP** packs the take into one archive — master.wav, a wav per stem, and the
+  compressed copy — using a store-only zip writer (~40 lines with a CRC32
+  table) rather than a vendored library, since WAV barely deflates anyway.
+
+  **A compressed copy is recorded in parallel**, not re-encoded afterwards
+  (re-encoding costs a second of wall clock per second of audio). Note:
+  **browsers cannot encode MP3** — `MediaRecorder` supports AAC (`audio/mp4`)
+  and Opus (`audio/webm`), never `audio/mpeg`, so takes come out as **.m4a**
+  where AAC is available and .webm otherwise. A true .mp3 would need a
+  JavaScript encoder vendored into the repo.
+
   **Tempo wobble** (`BPM_WOB` amount, `BPM_WRT` period, `BPM_WSH` shape) sits in
   the experimental strip with the golden-ratio toggles, because it moves the
   clock under everything. It takes **any of the seven LFO shapes**, not just a

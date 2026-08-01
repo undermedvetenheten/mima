@@ -9,7 +9,7 @@
 
 // bump on every release: cache-busts the worklet module so a stale cached
 // DSP can never run against fresh UI code
-const APP_V = '28';
+const APP_V = '29';
 
 
 const LANES_CAP = 8, MAX_STEPS = 32, EUC_N = 21, NROWS = 12, NSCALES = 15,
@@ -3933,8 +3933,25 @@ document.addEventListener('keydown', e => {
 ['pointerdown', 'touchend'].forEach(ev => document.addEventListener(ev, () => {
   if (actx && actx.state === 'suspended') actx.resume().catch(() => { });
 }, { passive: true }));
+// Backgrounding the tab (or switching apps) starves the audio thread, and the
+// browser then tries to make the time up in a burst when you come back: the
+// sequence races and the buffers crackle. Park the context on the way out
+// instead of letting it fall behind, and pick it up cleanly on the way in.
+let bgParked = false;
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && playing && actx && actx.state === 'suspended') actx.resume().catch(() => { });
+  if (!actx) return;
+  if (document.hidden) {
+    if (playing && actx.state === 'running') {
+      bgParked = true;
+      actx.suspend().catch(() => { bgParked = false; });
+    }
+  } else if (playing && (bgParked || actx.state === 'suspended')) {
+    bgParked = false;
+    actx.resume().catch(() => { });
+    // the clock stood still while we were away; re-send transport so the
+    // worklet is running against the tempo and play state the UI shows
+    pushTransport();
+  }
 });
 
 // exposed for the pocket UI (gnome-mobile.js), the tests, and the console

@@ -321,7 +321,8 @@ window.createGnomeUI = function (G) {
         stepper('LFO → pitch (semis)', 0, 24, 1, () => G.getParam(l, 14), v => G.setParam(l, 14, v))),
       group('groove', null,
         stepper('Swing', 0, 75, 5, () => G.getParam(l, 15), v => G.setParam(l, 15, v), fmtPct),
-        stepper('Nudge', -50, 50, 5, () => G.getParam(l, 16), v => G.setParam(l, 16, v), fmtPct),
+        stepper('Nudge range', -50, 50, 5, () => G.getParam(l, 16), v => G.setParam(l, 16, v), fmtPct,
+          'how far off the grid a hit may land — each hit picks its own amount up to this, so the lane breathes instead of sitting exactly late'),
         stepper('Humanize velocity', 0, 100, 5, () => G.getParam(l, 17), v => G.setParam(l, 17, v), fmtPct)),
     ];
   }
@@ -433,7 +434,8 @@ window.createGnomeUI = function (G) {
         stepper('Velocity', 1, 127, 1, () => G.sget(si, 6), v => G.sset(si, 6, v)),
         stepper('Gate length', 5, 200, 5, () => G.sget(si, 7), v => G.sset(si, 7, v), fmtPct),
         stepper('Swing', 0, 75, 5, () => G.sget(si, 25), v => G.sset(si, 25, v), fmtPct),
-        stepper('Nudge', -50, 50, 5, () => G.sget(si, 26), v => G.sset(si, 26, v), fmtPct)),
+        stepper('Nudge range', -50, 50, 5, () => G.sget(si, 26), v => G.sset(si, 26, v), fmtPct,
+          'how far off the grid a note may land — each note picks its own amount up to this')),
     ];
   }
 

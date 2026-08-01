@@ -127,6 +127,32 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
   canvas has a ♪ PDF header button; the pocket has a "Sheet music (PDF)"
   action on the KEY·MIX tab.
 
+  **Timing robustness.** The beat clock is the one piece of state that, if it
+  ever goes wrong, takes everything with it, so it is defended: `bpm` is pinned
+  to 20-400 on arrival, `gBeat` and the wobble phase are checked for
+  non-finiteness, and the wobble's phase advances off the **base** tempo rather
+  than the wobbled one (feeding `effBpm` back into its own phase made it
+  self-referential — one bad value would have latched forever). Each scheduler
+  loop is capped at `SCHED_MAX` steps per render quantum, so a stalled or
+  resumed audio thread cannot dump a whole pattern into one block.
+  Backgrounding the tab **parks the context** rather than letting the audio
+  thread fall behind and then race to catch up, and re-sends transport on the
+  way back in.
+
+  **FX timings run off the base tempo, not the wobbled one.** The delay line's
+  length used to be `DLY_TIME × spb` with `spb` taken from the wobbled tempo —
+  and a delay line whose length is moving is a pitch shifter, so tempo wobble
+  was detuning the echoes and jolting the read pointer every block. The groove
+  breathes; the effects hold still. Delay length also glides toward its target
+  now, so changing TIME no longer snaps the read pointer.
+
+  **NUDGE is a range, not a fixed offset** (`NDG_A`, `SND_A`): each hit picks
+  its own amount between the grid and the full nudge, so a lane breathes instead
+  of sitting exactly late. The amount is a deterministic hash of the absolute
+  step index, *not* `Math.random()` — the scheduler scans a step of slack either
+  side of each block, so a hit near a boundary is evaluated twice, and two
+  different random values would make it double-fire or vanish.
+
   **A fresh gnome starts as a chill jam.** INIT (and a first-ever visit) no
   longer deals a neutral test groove — it opens playable: **90 bpm, A#
   Phrygian, I - IV**, with the parts generated in the **Ark** style. A **drone

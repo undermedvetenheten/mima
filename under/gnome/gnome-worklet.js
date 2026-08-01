@@ -10,6 +10,18 @@
 'use strict';
 
 const LANES_CAP = 8, MAX_STEPS = 32, NROWS = 12, NSYN = 3;
+// most steps one render quantum may schedule; a stalled/resumed audio thread
+// must not be able to dump an entire pattern into a single block
+const SCHED_MAX = 64;
+// NUDGE is a range, not a fixed offset: each hit lands somewhere between the
+// grid and the full nudge. This must be DETERMINISTIC per step occurrence --
+// the scheduler scans a step of slack either side of the block, so a hit near a
+// boundary is evaluated in two adjacent blocks. With Math.random() the two
+// evaluations would disagree and the hit would double-fire or vanish.
+function stepRand(n, seed) {
+  const h = Math.sin(n * 127.1 + seed * 311.7) * 43758.5453;
+  return h - Math.floor(h);
+}
 
 // ---- mem offsets (mirror of the JSFX block; keep in sync with gnome.js) ----
 const PAT = 0, STEPS_A = 272, SPAN_A = 280, PUL_A = 288,
@@ -283,6 +295,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     this.scopeBuf = new Float32Array(512); // bass waveform tap for the XY scope
     this.scopeW = 0;
     this.xyDc = 0;                         // DC tracker for the XY waveshaper
+    this.dlyLenS = 0;                      // smoothed delay length in samples
     // 4-band resonator: one state-variable filter per band, plus a slow
     // envelope per band (the multiply modes normalise by it) and output DC
     this.mbLo = F(4); this.mbBp = F(4);
@@ -862,16 +875,30 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
       m[t] = v;
     }
 
+    // A bad bpm poisons every downstream time, so pin it to something sane
+    // before anything reads it.
+    if (!(this.bpm > 0) || !isFinite(this.bpm)) this.bpm = 120;
+    this.bpm = Math.max(20, Math.min(400, this.bpm));
     // tempo wobble: a slow sine breathes the effective bpm up and down
-    // (depth up to ±12%, period in beats). Phase advances in musical time.
+    // (depth up to ±12%, period in beats). The phase advances off the BASE
+    // tempo, not the wobbled one — feeding effBpm back into its own phase made
+    // the wobble self-referential, so a single non-finite value latched forever.
     let effBpm = this.bpm;
     if (m[BPM_WOB] > 0) {
-      effBpm = this.bpm * (1 + m[BPM_WOB] / 100 * 0.12 * Math.sin(2 * Math.PI * this.wobPh));
-      this.wobPh += (nframes / (srate * 60 / effBpm)) / Math.max(4, m[BPM_WRT]);
+      this.wobPh = sane(this.wobPh)
+        + (nframes / (srate * 60 / this.bpm)) / Math.max(4, m[BPM_WRT]);
       if (this.wobPh >= 1) this.wobPh -= 1;
+      effBpm = this.bpm * (1 + m[BPM_WOB] / 100 * 0.12 * Math.sin(2 * Math.PI * this.wobPh));
     }
+    if (!(effBpm > 0) || !isFinite(effBpm)) effBpm = this.bpm;
     const bps = effBpm / 60;
     const spb = srate / bps;
+    // FX timings stay on the BASE tempo. Deriving them from the wobbled tempo
+    // modulated the delay line's length, and a delay line whose length moves is
+    // a pitch shifter — the wobble was detuning the echoes and clicking the
+    // read pointer every block. The groove breathes; the effects hold still.
+    const spbFx = srate / (this.bpm / 60);
+    if (!isFinite(this.gBeat)) this.gBeat = 0;
     const blkStart = this.gBeat;
     const blkEnd = blkStart + nframes / spb;
     const toOfs = (t) => Math.min(Math.max(0,
@@ -1050,13 +1077,19 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
         // scan one step of slack either side so swing/nudge shifts stay caught
         let n = Math.ceil((seqStart - stepdur) / stepdur - 1e-9);
         let t = n * stepdur;
-        while (t < seqEnd + stepdur) {
+        // One render quantum is a handful of steps at any sane tempo. If the
+        // clock ever jumps -- a stalled audio thread, a resumed context -- this
+        // stops the block from firing the whole pattern at once, which is what
+        // "zipping through the sequence" sounds like.
+        let guard = SCHED_MAX;
+        while (t < seqEnd + stepdur && guard-- > 0) {
           const gl = m[GLD_TIME] ? goldLoop(n) : null;
           const stepidx = gl ? gl.local % steps : ((n % steps) + steps) % steps;
           const pass = gl ? gl.pass : Math.floor(n / steps);
           const pv = m[PAT + l * MAX_STEPS + stepidx];
           if (pv && (pv !== 2 || pass % 2 !== 0)) {
-            const tsh = t + (m[NDG_A + l] / 100 + ((stepidx & 1) ? m[SWG_A + l] / 100 : 0)) * stepdur;
+            const tsh = t + (m[NDG_A + l] / 100 * stepRand(n, l + 1)
+              + ((stepidx & 1) ? m[SWG_A + l] / 100 : 0)) * stepdur;
             const gate = stepdur * spb * (m[GATE_A + l] / 100) * 2;
             if (pv === 3) {
               // ghost-fill cell: two grace notes rolling into a soft hit
@@ -1093,13 +1126,15 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
         const seqStart = blkStart, seqEnd = blkEnd;
         let n = Math.ceil((seqStart - stepdur) / stepdur - 1e-9);
         let t = n * stepdur;
-        while (t < seqEnd + stepdur) {
+        let guard = SCHED_MAX;
+        while (t < seqEnd + stepdur && guard-- > 0) {
           const gl = m[GLD_TIME] ? goldLoop(n) : null;
           const stepidx = gl ? gl.local % nst : ((n % nst) + nst) % nst;
           const pass = gl ? gl.pass : Math.floor(n / nst);
           const sv2 = m[ron + stepidx];
           if (sv2 && (sv2 !== 2 || pass % 2 !== 0)) {
-            const tsh = t + (m[SND_A + si] / 100 + ((stepidx & 1) ? m[SSW_A + si] / 100 : 0)) * stepdur;
+            const tsh = t + (m[SND_A + si] / 100 * stepRand(n, si + 17)
+              + ((stepidx & 1) ? m[SSW_A + si] / 100 : 0)) * stepdur;
             if (tsh >= seqStart && tsh < seqEnd) {
               const ofs = toOfs(tsh);
               // harmony: diatonic degree shift for 12-TET progs, exact cents for JI
@@ -1182,7 +1217,11 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     const dlyOn = m[DLY_ON] ? 1 : 0;
     const avoOn = m[AVO_ON] ? 1 : 0;
     const DMAX = this.FX_DLY_MAX;
-    const dlyTimeSamp = Math.min(DMAX - 4, Math.max(2, m[DLY_TIME] * spb));
+    const dlyTarget = Math.min(DMAX - 4, Math.max(2, m[DLY_TIME] * spbFx));
+    // glide toward the target: a jump in delay length is a click and a pitch jolt
+    if (!isFinite(this.dlyLenS) || this.dlyLenS <= 0) this.dlyLenS = dlyTarget;
+    this.dlyLenS += (dlyTarget - this.dlyLenS) * 0.05;
+    const dlyTimeSamp = this.dlyLenS;
     const dlyFb = Math.min(0.98, m[DLY_FB] / 100 * 0.98);
     const toneCoef = 0.04 + m[DLY_TONE] / 100 * 0.9;   // one-pole: higher = brighter
     const wowDepth = m[DLY_WOW] / 100 * 45;             // samples of pitch drift
@@ -1640,7 +1679,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
             this.avoSlice = slice;
             if (Math.random() < avoAmt) {
               this.avoStut = 1;
-              const sliceSamp = avoRate * spb;
+              const sliceSamp = avoRate * spbFx;
               let rl = Math.floor(sliceSamp * (0.5 - 0.4 * avoAmt));
               if (rl < 64) rl = 64; if (rl > AMAX - 1) rl = AMAX - 1;
               this.avoLen = rl;

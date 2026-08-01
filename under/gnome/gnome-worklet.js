@@ -85,6 +85,7 @@ const GLD_TIME = 1028;
 const MBR_ON = 1029, MBR_FREQ = 1030, MBR_SPRD = 1031, MBR_Q = 1032;
 const MBR_MODE = 1033, MBR_MIX = 1034, MBR_DRV = 1035;
 const MBR_SND_A = 1036, MBR_LSND_A = 1040;   // 4 parts, then 8 drum lanes
+const BPM_WSH = 1048;                       // tempo-wobble LFO shape
 // GOLDEN METER: tempo, grid and step length are all untouched — what changes
 // is HOW MANY STEPS the loop runs before it snaps back to step 0. The loop
 // grows 1,1,2,3,5,8,13,21 steps and starts over (21 is the ceiling because the
@@ -257,6 +258,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     this.bpm = 120;
     this.gBeat = 0;
     this.wobPh = 0;   // tempo-wobble LFO phase
+    this.wobCy = 0;   // ...and its cycle count, for S&H / spline / golden
 
     // part gains: drums, bass, melody, chords + master (0..1)
     this.gPart = [1, 1, 1, 1];
@@ -306,7 +308,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     this.fltLo = F(LANES_CAP); this.fltBp = F(LANES_CAP);
     this.fltLo2 = F(LANES_CAP); this.fltBp2 = F(LANES_CAP);
     this.fltF = F(LANES_CAP); this.fenv = F(LANES_CAP);
-    this.shc = F(14); this.shv = F(14); this.shn = F(14);
+    this.shc = F(16); this.shv = F(16); this.shn = F(16);
 
     this.svDel = F(NSYN); this.svNfreq = F(NSYN); this.svNgain = F(NSYN);
     this.svFreq = F(NSYN); this.svGain = F(NSYN); this.svStage = F(NSYN);
@@ -632,7 +634,12 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
   // beat-synced LFO, phase-locked to beat 0. si = S&H state slot.
   lfoVal(rt, shp, si) {
     const phv = this.gBeat / Math.max(0.25, rt);
-    const cy = Math.floor(phv), fr = phv - cy;
+    return this.shapeAt(Math.floor(phv), phv - Math.floor(phv), shp, si);
+  }
+  // one LFO cycle's worth of shape, given the cycle index and phase. Split out
+  // of lfoVal so the tempo wobble can drive it from its OWN phase — the wobble
+  // must not read gBeat, which advances at the wobbled rate it is producing.
+  shapeAt(cy, fr, shp, si) {
     if (shp === 3) {
       if (cy !== this.shc[si]) { this.shc[si] = cy; this.shv[si] = Math.random() * 2 - 1; }
       return this.shv[si];
@@ -887,8 +894,11 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     if (m[BPM_WOB] > 0) {
       this.wobPh = sane(this.wobPh)
         + (nframes / (srate * 60 / this.bpm)) / Math.max(4, m[BPM_WRT]);
-      if (this.wobPh >= 1) this.wobPh -= 1;
-      effBpm = this.bpm * (1 + m[BPM_WOB] / 100 * 0.12 * Math.sin(2 * Math.PI * this.wobPh));
+      if (this.wobPh >= 1) { this.wobPh -= 1; this.wobCy++; }
+      // a real player's push and drag is not a tidy sine: S&H lurches, the saws
+      // ramp and snap back, spline wanders, golden steps out by phi
+      const wv = this.shapeAt(this.wobCy, this.wobPh, m[BPM_WSH] | 0, 14);
+      effBpm = this.bpm * (1 + m[BPM_WOB] / 100 * 0.12 * sane(wv));
     }
     if (!(effBpm > 0) || !isFinite(effBpm)) effBpm = this.bpm;
     const bps = effBpm / 60;

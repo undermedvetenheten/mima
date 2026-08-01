@@ -100,6 +100,22 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
       d = 4 / stepdur        (the note value of one step)
       n = the step count
 
+  This matches how you would work a signature out by ear: tap the pulse, find
+  where the downbeat resets, count the beats between. **Reduction supplies the
+  pulse** (halving until the quarter note is the beat, unless the numerator is
+  odd or the meter is compound) and **the loop supplies the measure** — in a
+  step sequencer the pattern restarting *is* the downbeat reset. A loop that is
+  an exact multiple of the main pulse's bar is split into that many bars rather
+  than printed as one enormous one: a 32-step sixteenth loop is **two bars of
+  4/4**, not one bar of 8/4. A loop that doesn't divide by the reference keeps
+  its own signature — that is real polymeter, not a mistake.
+
+  What the rule does *not* do is read accents: it never inspects which hits are
+  loud to find the downbeat, only the grid's geometry. In this sequencer that is
+  almost always right, because the loop boundary is the strongest downbeat there
+  is, but a pattern that internally groups against its own loop length will be
+  barred by the loop rather than by the accent.
+
   SPAN never appears directly — it is what *sets* stepdur, and therefore the
   denominator. 16 steps on a sixteenth grid is 16/16, written **4/4**; 7 steps
   on an eighth grid is **7/8**; 8 steps of sixteenths (PM mode) is **2/4** —
@@ -126,6 +142,13 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
   print-to-PDF (`window.print`), so it works the same on desktop and iOS. The
   canvas has a ♪ PDF header button; the pocket has a "Sheet music (PDF)"
   action on the KEY·MIX tab.
+
+  **Tempo wobble** (`BPM_WOB` amount, `BPM_WRT` period, `BPM_WSH` shape) sits in
+  the experimental strip with the golden-ratio toggles, because it moves the
+  clock under everything. It takes **any of the seven LFO shapes**, not just a
+  sine: a real player's push and drag is not a tidy period, so S&H lurches, the
+  saws ramp and snap back, spline wanders and golden steps out by φ. The
+  wobble's phase advances off the **base** tempo, never off its own output.
 
   **Timing robustness.** The beat clock is the one piece of state that, if it
   ever goes wrong, takes everything with it, so it is defended: `bpm` is pinned

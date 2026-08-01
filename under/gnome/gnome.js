@@ -9,7 +9,7 @@
 
 // bump on every release: cache-busts the worklet module so a stale cached
 // DSP can never run against fresh UI code
-const APP_V = '29';
+const APP_V = '30';
 
 
 const LANES_CAP = 8, MAX_STEPS = 32, EUC_N = 21, NROWS = 12, NSCALES = 15,
@@ -102,6 +102,7 @@ const GLD_TIME = 1028;
 const MBR_ON = 1029, MBR_FREQ = 1030, MBR_SPRD = 1031, MBR_Q = 1032;
 const MBR_MODE = 1033, MBR_MIX = 1034, MBR_DRV = 1035;
 const MBR_SND_A = 1036, MBR_LSND_A = 1040;   // 4 parts, then 8 drum lanes
+const BPM_WSH = 1048;                       // tempo-wobble LFO shape
 // GOLDEN METER: tempo and grid are untouched — the LOOP LENGTH grows
 // 1,1,2,3,5,8,13,21 steps and snaps back. Mirrors goldLoop() in the worklet.
 const GM_STEPS = [1, 1, 2, 3, 5, 8, 13, 21];
@@ -279,10 +280,14 @@ function stepSig(steps, stepdur) {
   const d0 = 4 / stepdur, p = Math.round(Math.log2(d0));
   if (stepdur > 0 && p >= 0 && p <= 6 && Math.abs(d0 - Math.pow(2, p)) < 1e-9) {
     let n = steps, d = Math.pow(2, p);
-    // 16/16 is how a 16-step sixteenth-note loop falls out, but it is written
-    // 4/4. Halving n and d keeps the bar exactly as long (n*4/d is unchanged).
-    // Compound meters keep their eighth: 6/8, 9/8 and 12/8 are not 3/4 and 6/4.
-    while (n % 2 === 0 && d > 4 && !(d >= 8 && n % 3 === 0 && n > 3)) { n /= 2; d /= 2; }
+    // Decide compound ONCE, on the grid as written: 6, 9 or 12 on an eighth or
+    // sixteenth grid is 6/8, 9/8, 12/8 and stays that way. Testing this during
+    // reduction instead made any numerator divisible by three stick — a 24-step
+    // sixteenth loop froze at 24/16 rather than reducing to 6/4.
+    const compound = (d === 8 || d === 16) && (n === 6 || n === 9 || n === 12);
+    // 16/16 is how a 16-step sixteenth loop falls out, but it is written 4/4.
+    // Halving n and d together keeps the bar exactly as long (n*4/d unchanged).
+    if (!compound) while (n % 2 === 0 && d > 4) { n /= 2; d /= 2; }
     return { n, d, exact: true };
   }
   // The grid does not divide into note values — a triplet feel, or a step
@@ -302,10 +307,16 @@ function referenceSig() {
   }
   return stepSig(sget(0, 2), partStepDur(0));
 }
-// The bars of one part. Normally every bar is the whole loop and they are all
-// the same; under the golden loop the bar walks 1,1,2,3,5,8,13,21 STEPS, so the
-// signature changes bar to bar and the notated cycle is all 54 steps long.
-function barPlan(steps, stepdur) {
+// The bars of one part. Normally every bar is the whole loop; under the golden
+// loop the bar walks 1,1,2,3,5,8,13,21 STEPS, so the signature changes bar to
+// bar and the notated cycle is all 54 steps long.
+//
+// refBeats is the main pulse's bar length. A loop that is an exact multiple of
+// it is split into that many bars rather than printed as one enormous one: tap
+// the pulse, and the downbeat resets every refBeats -- a 32-step sixteenth loop
+// is two bars of 4/4, not a single bar of 8/4. A loop that does NOT divide by
+// the reference keeps its own signature; that is real polymeter, not a mistake.
+function barPlan(steps, stepdur, refBeats) {
   steps = Math.max(1, Math.round(steps));
   const bars = [];
   if (m[GLD_TIME]) {
@@ -315,6 +326,17 @@ function barPlan(steps, stepdur) {
       n += GM_STEPS[k];
     }
     return { bars, cycleSteps: n, stepOf: (i) => goldLoop(i).local % steps };
+  }
+  const loopBeats = steps * stepdur;
+  if (refBeats > 0 && stepdur > 0) {
+    const nb = loopBeats / refBeats, sb = refBeats / stepdur;
+    if (nb >= 2 && Math.abs(nb - Math.round(nb)) < 1e-6
+      && Math.abs(sb - Math.round(sb)) < 1e-6) {
+      const per = Math.round(sb), sig = stepSig(per, stepdur);
+      for (let k = 0; k < Math.round(nb); k++)
+        bars.push({ beat: k * refBeats, steps: per, sig });
+      return { bars, cycleSteps: steps, stepOf: (i) => i };
+    }
   }
   bars.push({ beat: 0, steps, sig: stepSig(steps, stepdur) });
   return { bars, cycleSteps: steps, stepOf: (i) => i };
@@ -329,12 +351,13 @@ function buildScoreModel() {
   const has7 = sget(2, 24) > 0;
   const chordDegs = has7 ? [0, 2, 4, 6] : [0, 2, 4];
   const refSig = referenceSig();
+  const refBeats = refSig.n * 4 / refSig.d;
   let microtonal = false, approx = false;
   for (let si = 0; si < NSYN; si++) {
     const ron = ronOff(si), rdg = rdgOff(si);
     const steps = Math.max(1, Math.round(sget(si, 2)));
     const bps = partStepDur(si);
-    const plan = barPlan(steps, bps);
+    const plan = barPlan(steps, bps, refBeats);
     const notes = [];
     for (let i = 0; i < plan.cycleSteps; i++) {
       const st = plan.stepOf(i);
@@ -363,7 +386,7 @@ function buildScoreModel() {
     if (!smpA[l]) continue;   // '---' lane is silent: don't notate phantom hits
     const steps = Math.max(1, Math.round(m[STEPS_A + l]));
     const bps = laneStepDur(l);
-    const plan = barPlan(steps, bps);
+    const plan = barPlan(steps, bps, refBeats);
     const hits = [];
     let any = false;
     for (let i = 0; i < plan.cycleSteps; i++) {
@@ -915,7 +938,7 @@ function seedNewRegions(arr) {
   for (let l = 0; l < LANES_CAP; l++) {
     a[DNSE_A + l] = 20; a[DSWP_A + l] = 55; a[DSUB_A + l] = 25; a[DCLK_A + l] = 25;
   }
-  a[BPM_WOB] = 0; a[BPM_WRT] = 32;
+  a[BPM_WOB] = 0; a[BPM_WRT] = 32; a[BPM_WSH] = 0;
   a[MLFO_A] = 8; a[MLFO_A + 1] = 50; a[MLFO_A + 2] = 0;      // L1: 8 beats, 50%
   a[MLFO_A + 3] = 16; a[MLFO_A + 4] = 50; a[MLFO_A + 5] = 0; // L2: 16 beats
   for (let k = 0; k < MOD_SLOTS; k++) { a[MOD_TGT_A + k] = 0; a[MOD_MSK_A + k] = 0; }
@@ -1778,6 +1801,8 @@ function yExp() { return yStat() + 20; }
 const EXP_H = 30;
 // φ tuning / φ loop chips inside that strip
 const EXP_PHI_X = 250, EXP_GLD_X = 292, EXP_CHIP_W = 34;
+// tempo wobble lives in the strip too: amount / period / shape
+const EXP_WOB_X = 372, EXP_WRT_X = 416, EXP_WSH_X = 466;
 function totalH() { return yExp() + EXP_H + 4; }
 
 // KEY row layout
@@ -2051,8 +2076,7 @@ function tryModAssign(off) {
 // which LFO-able mem offset sits under (x, y) — powers the ARM chip's
 // drag-and-drop assignment (mirrors the armed-tap hit zones)
 function findModTarget(x, y) {
-  if (y < 28) {   // header: tempo wobble + the per-lane mini mixer knobs
-    if (x >= 744 && x < 788) return BPM_WOB;
+  if (y < 28) {   // header: the per-lane mini mixer knobs
     for (let l = 0; l < numLanes; l++)
       if (x >= 840 + l * 19 && x < 858 + l * 19) return DVOL_A + l;
     return null;
@@ -2135,8 +2159,21 @@ function onDown(x, y, right) {
   dragMode = 0; dragMoved = false; rotApplied = 0;
   dragX = x; dragY = y;   // tap-vs-drag baseline for every mode
 
-  // experimental strip (very bottom): the two golden-ratio toggles
+  // experimental strip (very bottom): golden-ratio toggles + tempo wobble
   if (y >= yExp() && y < yExp() + EXP_H) {
+    if (x >= EXP_WOB_X && x < EXP_WOB_X + 40) {
+      if (armLfo) { tryModAssign(BPM_WOB); return; }
+      dragMode = 55; dragFx = BPM_WOB; dragY = y; dragV = m[BPM_WOB]; return;
+    }
+    if (x >= EXP_WRT_X && x < EXP_WRT_X + 46) {
+      dragMode = 57; dragY = y; dragV = m[BPM_WRT]; return;
+    }
+    if (x >= EXP_WSH_X && x < EXP_WSH_X + 44) {
+      m[BPM_WSH] = ((m[BPM_WSH] | 0) + 1) % SHAPE_NAMES.length;
+      setStatus('tempo wobble shape: ' + SHAPE_NAMES[m[BPM_WSH]]
+        + ' — a player\u2019s push and drag is not a tidy sine; S&H lurches, the saws ramp and snap');
+      touchState(); return;
+    }
     if (x >= EXP_PHI_X && x < EXP_PHI_X + EXP_CHIP_W) {
       m[PHI_TUNE] = m[PHI_TUNE] ? 0 : 1;
       setStatus(m[PHI_TUNE]
@@ -2182,13 +2219,6 @@ function onDown(x, y, right) {
       if (inRect(x, y, PRE_RS[i])) { recallPreset(PRESET_IDS[i]); return; }
     if (inRect(x, y, PEXP_R)) { downloadPreset('now'); setStatus('current groove saved as a .json file'); return; }
     if (inRect(x, y, PIMP_R)) { importCurrent(); return; }
-    // tempo wobble beside the mixer (drag amount / period)
-    if (x >= 744 && x < 788) {
-      if (armLfo) { tryModAssign(BPM_WOB); return; }
-      dragMode = 55; dragFx = BPM_WOB; dragY = y; dragV = m[BPM_WOB];
-      return;
-    }
-    if (x >= 792 && x < 836) { dragMode = 57; dragY = y; dragV = m[BPM_WRT]; return; }
     // per-lane mini mixer knobs (LFO-able)
     for (let l = 0; l < numLanes; l++) {
       if (x >= 840 + l * 19 && x < 858 + l * 19) {
@@ -3111,14 +3141,6 @@ function draw() {
   set(0.24, 0.28, 0.34); rect(...PIMP_R);
   set(0.8, 0.85, 0.9); textC('⇧', PIMP_R[0], PIMP_R[0] + PIMP_R[2], 8, '14px Arial');
 
-  // tempo wobble beside the mixer (AMT drag / period drag)
-  m[BPM_WOB] > 0 ? set(0.3, 0.27, 0.34) : set(0.22, 0.22, 0.26);
-  rect(744, 4, 44, 22);
-  set(0.85, 0.8, 0.95); textC('W ' + Math.round(m[BPM_WOB]) + '%', 744, 788, 8, F10);
-  modTick(BPM_WOB, 744, 44, 4);
-  set(0.22, 0.22, 0.26); rect(792, 4, 44, 22);
-  set(0.75, 0.78, 0.85); textC(fmtG(m[BPM_WRT]) + 'b', 792, 836, 8, F10);
-  set(0.45, 0.45, 0.5); text('WOBBLE', 746, 27, '8px Arial');
   // per-lane mini mixer knobs
   for (let l = 0; l < numLanes; l++) {
     const kx = 840 + l * 19 + 9, v = m[DVOL_A + l] / 100;
@@ -3878,14 +3900,27 @@ function draw() {
     m[GLD_TIME] ? set(0.56, 0.43, 0.17) : set(0.24, 0.24, 0.27);
     rect(EXP_GLD_X, ey + 7, EXP_CHIP_W, 18);
     set(0.97, 0.9, 0.72); textC('φT', EXP_GLD_X, EXP_GLD_X + EXP_CHIP_W, ey + 10, F10);
+    // tempo wobble: amount / period / shape
+    set(0.42, 0.4, 0.36); text('WOB', 340, ey + 12, F9);
+    m[BPM_WOB] > 0 ? set(0.5, 0.42, 0.2) : set(0.24, 0.24, 0.27);
+    rect(EXP_WOB_X, ey + 7, 40, 18);
+    set(0.95, 0.9, 0.78); textC(Math.round(m[BPM_WOB]) + '%', EXP_WOB_X, EXP_WOB_X + 40, ey + 10, F10);
+    modTick(BPM_WOB, EXP_WOB_X, 40, ey + 7);
+    set(0.24, 0.24, 0.27); rect(EXP_WRT_X, ey + 7, 46, 18);
+    set(0.82, 0.82, 0.86); textC(fmtG(m[BPM_WRT]) + 'b', EXP_WRT_X, EXP_WRT_X + 46, ey + 10, F10);
+    m[BPM_WSH] ? set(0.4, 0.36, 0.22) : set(0.24, 0.24, 0.27);
+    rect(EXP_WSH_X, ey + 7, 44, 18);
+    set(0.88, 0.86, 0.8);
+    textC(['SIN', 'TRI', 'SW\u2193', 'S&H', 'SW\u2191', 'SPL', 'GLD'][m[BPM_WSH] | 0] || 'SIN',
+      EXP_WSH_X, EXP_WSH_X + 44, ey + 10, F10);
     const loopNow = m[GLD_TIME] && playing
       ? `  ·  LOOP ${GM_STEPS[goldLoop(Math.floor(dispBeat / gridSd())).i]} steps`
       : m[GLD_TIME] ? '  ·  loop 1·1·2·3·5·8·13·21' : '';
     set(0.52, 0.5, 0.46);
-    text('φ = golden tuning (the octave becomes a golden sixth) · φT = golden loop '
-      + '(the loop grows 1·1·2·3·5·8·13·21 steps)' + loopNow
-      + '   —   these two retune and re-time everything; slow, strange, and liable to wander',
-      EXP_GLD_X + EXP_CHIP_W + 12, ey + 11, F9);
+    text('φ tuning · φT golden loop' + loopNow
+      + '  ·  WOB drags the tempo about (amount / period / shape)'
+      + '   —   these retune and re-time everything; slow, strange, liable to wander',
+      EXP_WSH_X + 52, ey + 11, F9);
   }
 
   // wake overlay until the first gesture creates the AudioContext
@@ -4022,7 +4057,7 @@ window.gnome = {
     PHI_TUNE, DLY_GLD, BELL_STK_A, PNO_A, PSND_A, PLSND_A,
     PRES_ON, PRES_MIX, PRES_DEC, PRES_TONE, XSRC_A, XAMT_A, XMODE_A, GLD_TIME,
     MBR_ON, MBR_FREQ, MBR_SPRD, MBR_Q, MBR_MODE, MBR_MIX, MBR_DRV,
-    MBR_SND_A, MBR_LSND_A,
+    MBR_SND_A, MBR_LSND_A, BPM_WSH,
   },
   tables: { SCALE_NAMES, PROG_NAMES, SHAPE_NAMES, SYN_NAMES, FEEL_NAMES, SCL, STYLE_NAMES, FRACTAL_NAMES, XSRC_NAMES, XMODE_NAMES },
   fractalLevels, buildFractalTree, sendFillNow, sendFlick, treeBranchAt, findModTarget,

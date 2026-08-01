@@ -91,17 +91,41 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
   **Sheet music (PDF)**: `gnome-score.js` renders the current pattern as staff
   notation — one system per pitched part (clef auto-picked from each part's
   pitch range so notes land on the staff, not stacks of ledger lines), plus a
-  drum grid (x = hit, ◆ = accent). `buildScoreModel` in gnome.js does the
-  musical mapping (pitches match playback at the nearest semitone — microtonal
-  scales are labelled as approximated; rhythm is the step grid, beats per step
-  = span ÷ steps). The **time signature is guessed** (`guessMeter`) from where
-  the kick and bass put their weight — candidate meters that divide the spans
-  are scored by average downbeat emphasis — and parts whose span disagrees
-  with the global meter carry their own signature (polymeter notated as-is).
-  It's drawn as inline SVG into an on-screen preview and saved via the
-  browser's print-to-PDF (`window.print`), so it works the same on desktop and
-  iOS. The canvas has a ♪ PDF header button; the pocket has a "Sheet music
-  (PDF)" action on the KEY·MIX tab.
+  drum grid (x = hit, ◆ = accent).
+
+  **The meter is derived, not guessed.** A signature `n/d` says: n notes of
+  value 1/d to the bar, and a 1/d note lasts 4/d quarter notes. So let **one
+  step be one unit of the signature**:
+
+      d = 4 / stepdur        (the note value of one step)
+      n = the step count
+
+  SPAN never appears directly — it is what *sets* stepdur, and therefore the
+  denominator. 16 steps on a sixteenth grid is 16/16, written **4/4**; 7 steps
+  on an eighth grid is **7/8**; 8 steps of sixteenths (PM mode) is **2/4** —
+  half a bar, which is what it really is. Reduction halves n and d together, so
+  the bar length never changes; compound meters keep their eighth (**6/8**,
+  **9/8**, **12/8** are not 3/4, 4½/4 and 6/4). The heading shows the **main
+  pulse** — the first sounding drum lane, else the bass — and any part on a
+  different grid carries its own signature, so genuine polymeter is notated as
+  polymeter instead of being flattened to 4/4.
+
+  Under the **golden loop** every part is written out over its whole 54-step
+  cycle and the signature changes bar to bar — with a sixteenth grid that reads
+  `1/16 · 1/16 · 1/8 · 3/16 · 5/16 · 2/4 · 13/16 · 21/16`. Parts on different
+  grids reach the end of that cycle at different times, which is exactly what
+  you hear. Long cycles get dense on the page: the renderer draws one
+  unwrapped system per part, so a 54-beat melody is a very wide staff.
+
+  A grid that doesn't divide into note values (a triplet feel, or a step count
+  that doesn't divide the span) can't be given an honest simple signature, so
+  the loop length is approximated and the page says so. `buildScoreModel` in
+  gnome.js does the musical mapping (pitches match playback at the nearest
+  semitone — microtonal scales are labelled as approximated). It's drawn as
+  inline SVG into an on-screen preview and saved via the browser's
+  print-to-PDF (`window.print`), so it works the same on desktop and iOS. The
+  canvas has a ♪ PDF header button; the pocket has a "Sheet music (PDF)"
+  action on the KEY·MIX tab.
 
   **A fresh gnome starts as a chill jam.** INIT (and a first-ever visit) no
   longer deals a neutral test groove — it opens playable: **90 bpm, A#

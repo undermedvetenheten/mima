@@ -80,6 +80,27 @@
   const sigBeats = sig => sig.n * 4 / sig.d;
   const ACC_W = 9, CLEF_W = 46, TSIG_W = 26, NAME_W = 8;
 
+  // barlines for a part. Every bar start gets a line; a bar whose signature
+  // differs from the one before it also gets a small n/d over the line, which
+  // is how the golden loop's 1,1,2,3,5,8,13,21 reads on the page.
+  function barLines(bars, labelW, pxPerBeat, y1, y2, colour, labelY) {
+    let g = '', prev = null;
+    for (let i = 0; i < bars.length; i++) {
+      const bx = labelW + bars[i].beat * pxPerBeat;
+      if (i > 0) g += el('line', { x1: bx, y1, x2: bx, y2, stroke: colour, 'stroke-width': 1 });
+      const sg = bars[i].sig;
+      // only label a change when the bar is wide enough to hold the text —
+      // a 1/16 bar is a few pixels across and the labels would overlap
+      const wide = i + 1 < bars.length
+        ? (bars[i + 1].beat - bars[i].beat) * pxPerBeat >= 26 : true;
+      if (prev && wide && (sg.n !== prev.n || sg.d !== prev.d))
+        g += el('text', { x: bx + 3, y: labelY, 'font-size': 11, fill: '#111',
+          'font-family': 'Georgia,serif', 'font-weight': 700 }, `${sg.n}/${sg.d}`);
+      prev = sg;
+    }
+    return g;
+  }
+
   function sigGlyph(x, staffTop, sig) {
     const f = { 'font-size': 19, fill: '#111', 'font-family': 'Georgia,serif',
       'font-weight': 700, 'text-anchor': 'middle' };
@@ -120,7 +141,7 @@
     const yOf = s => staffTop + (topLine - s) / 2 * SP;
 
     const labelW = lay.labelW;
-    const staffW = part.span * lay.pxPerBeat;
+    const staffW = part.totalBeats * lay.pxPerBeat;
     const stepW = part.bps * lay.pxPerBeat;
     const W = lay.maxW, H = padTop + padBot + SP * 4;
     let svg = '';
@@ -146,14 +167,12 @@
       'font-family': 'Nunito,Arial,sans-serif', 'font-weight': 700 }, esc(part.name));
 
     const dur = nearestDur(part.bps), filled = dur[1], stem = dur[2], flags = dur[3];
-    const mb = sigBeats(part.sig);
     svg += el('line', { x1: labelW, y1: staffTop, x2: labelW, y2: staffTop + 4 * SP, stroke: '#111', 'stroke-width': 1.4 });
+    svg += barLines(part.bars, labelW, lay.pxPerBeat, staffTop, staffTop + 4 * SP,
+      '#111', staffTop - 3);
     for (let i = 0; i < part.steps; i++) {
       const beat = i * part.bps;
       const x = labelW + beat * lay.pxPerBeat + stepW / 2;
-      if (i > 0 && Math.abs(beat / mb - Math.round(beat / mb)) < 1e-6)
-        svg += el('line', { x1: labelW + beat * lay.pxPerBeat, y1: staffTop,
-          x2: labelW + beat * lay.pxPerBeat, y2: staffTop + 4 * SP, stroke: '#111', 'stroke-width': 1 });
       const ns = spelled[i];
       if (!ns) {
         svg += el('rect', { x: x - 5, y: yOf(midLine) - 2, width: 10, height: 4, fill: '#bbb' });
@@ -187,7 +206,7 @@
   // global beat scale and shows its own sig when it departs from the meter
   function drumSystem(lane, globalSig, lay) {
     const labelW = lay.labelW, pad = 16;
-    const staffW = lane.span * lay.pxPerBeat, stepW = lane.bps * lay.pxPerBeat;
+    const staffW = lane.totalBeats * lay.pxPerBeat, stepW = lane.bps * lay.pxPerBeat;
     const W = lay.maxW, H = pad * 2 + 12;
     const y = pad + 6;
     let svg = el('line', { x1: labelW, y1: y, x2: labelW + staffW, y2: y, stroke: '#111', 'stroke-width': 1 });
@@ -197,12 +216,10 @@
       svg += el('text', { x: labelW - 8, y: y + 4, 'font-size': 12, fill: '#111', 'text-anchor': 'end',
         'font-family': 'Georgia,serif', 'font-weight': 700 }, `${lane.sig.n}/${lane.sig.d}`);
     svg += el('line', { x1: labelW, y1: y - 8, x2: labelW, y2: y + 8, stroke: '#111', 'stroke-width': 1.4 });
-    const mb = sigBeats(lane.sig);
+    svg += barLines(lane.bars, labelW, lay.pxPerBeat, y - 8, y + 8, '#999', y - 11);
     for (let i = 0; i < lane.steps; i++) {
       const beat = i * lane.bps;
       const x = labelW + beat * lay.pxPerBeat + stepW / 2;
-      if (i > 0 && Math.abs(beat / mb - Math.round(beat / mb)) < 1e-6)
-        svg += el('line', { x1: labelW + beat * lay.pxPerBeat, y1: y - 8, x2: labelW + beat * lay.pxPerBeat, y2: y + 8, stroke: '#ccc', 'stroke-width': 1 });
       if (lane.hits[i] === 2)
         svg += el('path', { d: `M ${x} ${y - 6} L ${x + 6} ${y} L ${x} ${y + 6} L ${x - 6} ${y} Z`, fill: '#111' });
       else if (lane.hits[i] === 1) {
@@ -261,8 +278,8 @@
     for (const p of model.parts) maxAcc = Math.max(maxAcc, Math.abs(keySig(p.keyPc, p.scix)));
     const labelW = NAME_W + 30 + CLEF_W + maxAcc * ACC_W + TSIG_W;
     let maxSpan = 1;
-    for (const p of model.parts) maxSpan = Math.max(maxSpan, p.span);
-    for (const d of model.drums) maxSpan = Math.max(maxSpan, d.span);
+    for (const p of model.parts) maxSpan = Math.max(maxSpan, p.totalBeats);
+    for (const d of model.drums) maxSpan = Math.max(maxSpan, d.totalBeats);
     const pxPerBeat = Math.max(28, Math.min(110, (860 - labelW) / maxSpan));
     const lay = { pxPerBeat, labelW, maxW: labelW + maxSpan * pxPerBeat + 16 };
 
@@ -273,9 +290,18 @@
       body += el('h3', {}, 'Drums');
       for (const d of model.drums) body += drumSystem(d, model.meter, lay);
     }
-    let note = 'Notation follows the step grid (beats per step = span ÷ steps). '
-      + 'The time signature is guessed from the kick/bass emphasis; parts in '
-      + 'another meter carry their own signature. ';
+    let note = 'One step is one unit of the time signature: a step lasting a '
+      + 'sixteenth gives /16, an eighth gives /8, and the step count is the top '
+      + 'number — so 7 steps on an eighth grid is 7/8. The heading shows the '
+      + 'main pulse (the first sounding drum lane, else the bass); parts on a '
+      + 'different grid carry their own signature. ';
+    if (model.golden) note += 'The golden loop is on, so each part is written out '
+      + 'over its whole 54-step cycle and the signature changes bar to bar '
+      + '(1, 1, 2, 3, 5, 8, 13, 21 steps). Parts on different grids reach the end '
+      + 'of that cycle at different times — that is what you hear. ';
+    if (model.approxRhythm) note += 'A part\u2019s grid does not divide into note '
+      + 'values (a triplet feel, or a step count that does not divide the span), '
+      + 'so its bar length is approximated. ';
     if (model.microtonal) note += 'A scale in use is microtonal — pitches are rounded to the nearest semitone. ';
     body += `<p class="sc-note">${esc(note)}</p>`;
 

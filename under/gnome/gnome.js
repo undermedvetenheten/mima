@@ -9,7 +9,7 @@
 
 // bump on every release: cache-busts the worklet module so a stale cached
 // DSP can never run against fresh UI code
-const APP_V = '27';
+const APP_V = '28';
 
 
 const LANES_CAP = 8, MAX_STEPS = 32, EUC_N = 21, NROWS = 12, NSCALES = 15,
@@ -252,64 +252,94 @@ function rollLabel(si, deg) {
 // part's span, score the average accent weight landing on its downbeats —
 // a four-on-the-floor kick ties everything and the prior picks 4/4, but a
 // kick on 1 & 4 of a 6-beat span makes 3 win (waltz feel), etc.
-function guessMeter() {
-  const on = [];   // onsets: { b: beat position, w: weight }
+// ---- meter -------------------------------------------------------------
+// A time signature n/d says: n notes of value 1/d to the bar. A 1/d note lasts
+// 4/d quarter notes. So if we let ONE STEP be one unit of the signature:
+//
+//     d = 4 / stepdur      (the note value of a step)
+//     n = the step count
+//
+// SPAN never appears directly — it is what SETS stepdur, and therefore the
+// denominator. A lane of 7 steps on an eighth-note grid is 7/8; the same 7
+// steps on a sixteenth grid is 7/16. That is the whole rule.
+const FEL_MULT_S = [1, 2 / 3, 1.5];
+// step length in quarter notes, for a drum lane / for a pitched part
+function laneStepDur(l) {
+  const steps = Math.max(1, Math.round(m[STEPS_A + l]));
+  return m[LMODE_A + l] ? m[SPAN_A + l] / 16 : m[SPAN_A + l] / steps;
+}
+function partStepDur(si) {
+  const steps = Math.max(1, Math.round(sget(si, 2)));
+  return (sget(si, 15) ? sget(si, 3) / 16 : sget(si, 3) / steps)
+    * FEL_MULT_S[m[SFL_A + si] | 0];
+}
+// n/d for `steps` steps of `stepdur` quarter notes each.
+function stepSig(steps, stepdur) {
+  steps = Math.max(1, Math.round(steps));
+  const d0 = 4 / stepdur, p = Math.round(Math.log2(d0));
+  if (stepdur > 0 && p >= 0 && p <= 6 && Math.abs(d0 - Math.pow(2, p)) < 1e-9) {
+    let n = steps, d = Math.pow(2, p);
+    // 16/16 is how a 16-step sixteenth-note loop falls out, but it is written
+    // 4/4. Halving n and d keeps the bar exactly as long (n*4/d is unchanged).
+    // Compound meters keep their eighth: 6/8, 9/8 and 12/8 are not 3/4 and 6/4.
+    while (n % 2 === 0 && d > 4 && !(d >= 8 && n % 3 === 0 && n > 3)) { n /= 2; d /= 2; }
+    return { n, d, exact: true };
+  }
+  // The grid does not divide into note values — a triplet feel, or a step
+  // count that doesn't divide the span. There is no honest simple signature,
+  // so notate the LOOP LENGTH and let the caller disclose the approximation.
+  let b = steps * stepdur, d = 4;
+  while (Math.abs(b - Math.round(b)) > 1e-6 && d < 32) { b *= 2; d *= 2; }
+  return { n: Math.max(1, Math.round(b)), d, exact: false };
+}
+// The main pulse: the first sounding drum lane, else the bass. Everything else
+// is compared against this one to decide what counts as "the" meter.
+function referenceSig() {
   for (let l = 0; l < numLanes; l++) {
     if (!smpA[l]) continue;
-    const steps = m[STEPS_A + l], bps = m[SPAN_A + l] / steps;
-    const w = SAMPLE_DEFS[smpA[l]].label === 'BD' ? 3 : 1;   // the kick leads
-    for (let i = 0; i < steps; i++)
-      if (m[PAT + l * MAX_STEPS + i]) on.push({ b: i * bps, w });
+    for (let i = 0; i < Math.round(m[STEPS_A + l]); i++)
+      if (m[PAT + l * MAX_STEPS + i]) return stepSig(m[STEPS_A + l], laneStepDur(l));
   }
-  const bron = ronOff(0), bsteps = sget(0, 2), bbps = sget(0, 3) / bsteps;
-  for (let i = 0; i < bsteps; i++)
-    if (m[bron + i]) on.push({ b: i * bbps, w: 2 });         // bass emphasis
-  if (!on.length) return 4;
-  const spans = [];
-  for (let l = 0; l < numLanes; l++) if (smpA[l]) spans.push(m[SPAN_A + l]);
-  spans.push(sget(0, 3));
-  let best = 4, bestScore = -1;
-  for (const M of [4, 3, 2, 6, 5, 7]) {
-    if (!spans.some(sp => Math.abs(sp / M - Math.round(sp / M)) < 1e-6)) continue;
-    let hit = 0, down = 0;
-    for (const o of on) {
-      const r = o.b % M;
-      if (r < 1e-6 || M - r < 1e-6) hit += o.w;
-    }
-    for (const sp of spans) down += Math.max(1, Math.round(sp / M));
-    const score = hit / down + (M === 4 ? 0.02 : M === 3 ? 0.01 : 0);
-    if (score > bestScore + 1e-9) { bestScore = score; best = M; }
-  }
-  return best;
+  return stepSig(sget(0, 2), partStepDur(0));
 }
-// time signature {n, d} for a span, preferring the global meter; parts whose
-// span the global meter doesn't divide get their own (polymeter shown as-is)
-function spanSig(span, meterM) {
-  let b = Math.abs(span / meterM - Math.round(span / meterM)) < 1e-6 ? meterM
-    : span % 4 === 0 ? 4 : span % 3 === 0 ? 3 : span;
-  let d = 4;
-  while (b !== Math.round(b) && d <= 16) { b *= 2; d *= 2; }   // 3.5 -> 7/8
-  return { n: Math.round(b), d };
+// The bars of one part. Normally every bar is the whole loop and they are all
+// the same; under the golden loop the bar walks 1,1,2,3,5,8,13,21 STEPS, so the
+// signature changes bar to bar and the notated cycle is all 54 steps long.
+function barPlan(steps, stepdur) {
+  steps = Math.max(1, Math.round(steps));
+  const bars = [];
+  if (m[GLD_TIME]) {
+    let n = 0;
+    for (let k = 0; k < 8; k++) {
+      bars.push({ beat: n * stepdur, steps: GM_STEPS[k], sig: stepSig(GM_STEPS[k], stepdur) });
+      n += GM_STEPS[k];
+    }
+    return { bars, cycleSteps: n, stepOf: (i) => goldLoop(i).local % steps };
+  }
+  bars.push({ beat: 0, steps, sig: stepSig(steps, stepdur) });
+  return { bars, cycleSteps: steps, stepOf: (i) => i };
 }
 const sigBeats = sig => sig.n * 4 / sig.d;
 
 // A musical model of the current pattern, for the score export. Pitches match
 // what plays (nearest semitone — microtonal scales are approximated); timing
-// is the step grid (beats per step = span / steps).
+// is the step grid: one step is one unit of the time signature (see stepSig).
 function buildScoreModel() {
   const parts = [];
   const has7 = sget(2, 24) > 0;
   const chordDegs = has7 ? [0, 2, 4, 6] : [0, 2, 4];
-  const meterM = guessMeter();
-  let microtonal = false;
+  const refSig = referenceSig();
+  let microtonal = false, approx = false;
   for (let si = 0; si < NSYN; si++) {
     const ron = ronOff(si), rdg = rdgOff(si);
-    const steps = Math.round(sget(si, 2)), span = sget(si, 3);
-    const bps = span / steps;
+    const steps = Math.max(1, Math.round(sget(si, 2)));
+    const bps = partStepDur(si);
+    const plan = barPlan(steps, bps);
     const notes = [];
-    for (let i = 0; i < steps; i++) {
-      if (!m[ron + i]) { notes.push(null); continue; }
-      const deg = m[rdg + i], accent = m[ron + i] === 2;
+    for (let i = 0; i < plan.cycleSteps; i++) {
+      const st = plan.stepOf(i);
+      if (!m[ron + st]) { notes.push(null); continue; }
+      const deg = m[rdg + st], accent = m[ron + st] === 2;
       const midis = si === 2 ? chordDegs.map(dd => degMidi(2, deg + dd)) : [degMidi(si, deg)];
       notes.push({ midis, accent });
     }
@@ -317,35 +347,43 @@ function buildScoreModel() {
       // the disclaimer covers every part that actually sounds, using the
       // scale that part plays in (unlocked parts have their own scale)
       if (scaleIsMicro(effScale(si))) microtonal = true;
+      if (!plan.bars[0].sig.exact) approx = true;
       // pick the clef from the part's pitch range so notes sit on the staff
       // instead of stacks of ledger lines (chords/low parts go to bass clef).
       const allMidi = notes.filter(Boolean).flatMap(n => n.midis).sort((a, b) => a - b);
       const median = allMidi[Math.floor(allMidi.length / 2)];
       parts.push({ name: SYN_NAMES[si].toUpperCase(), clef: median < 59 ? 'bass' : 'treble',
-        steps, span, bps, notes, sig: spanSig(span, meterM),
+        steps: plan.cycleSteps, bps, notes, bars: plan.bars,
+        totalBeats: plan.cycleSteps * bps, sig: plan.bars[0].sig,
         keyPc: ((effBase(si) % 12) + 12) % 12, scix: effScale(si) });
     }
   }
   const drums = [];
   for (let l = 0; l < numLanes; l++) {
     if (!smpA[l]) continue;   // '---' lane is silent: don't notate phantom hits
-    const steps = Math.round(m[STEPS_A + l]), span = m[SPAN_A + l];
+    const steps = Math.max(1, Math.round(m[STEPS_A + l]));
+    const bps = laneStepDur(l);
+    const plan = barPlan(steps, bps);
     const hits = [];
     let any = false;
-    for (let i = 0; i < steps; i++) {
-      const v = m[PAT + l * MAX_STEPS + i];
+    for (let i = 0; i < plan.cycleSteps; i++) {
+      const v = m[PAT + l * MAX_STEPS + plan.stepOf(i)];
       hits.push(v ? (v === 2 ? 2 : 1) : 0);
       if (v) any = true;
     }
-    if (any) drums.push({ name: SAMPLE_DEFS[smpA[l]].label, steps, span,
-      bps: span / steps, hits, sig: spanSig(span, meterM) });
+    if (any) {
+      if (!plan.bars[0].sig.exact) approx = true;
+      drums.push({ name: SAMPLE_DEFS[smpA[l]].label, steps: plan.cycleSteps, bps, hits,
+        bars: plan.bars, totalBeats: plan.cycleSteps * bps, sig: plan.bars[0].sig });
+    }
   }
   const scix = m[GKEY_SCALE];
   return {
     key: noteName(m[GKEY_NOTE]).replace(/-?\d+$/, ''),
     scale: SCALE_NAMES[scix] || '',
-    meter: spanSig(meterM, meterM),
-    microtonal,
+    meter: refSig,
+    golden: !!m[GLD_TIME],
+    microtonal, approxRhythm: approx,
     bpm, parts, drums,
   };
 }
@@ -3973,7 +4011,7 @@ window.gnome = {
   fractalLevels, buildFractalTree, sendFillNow, sendFlick, treeBranchAt, findModTarget,
   SAMPLE_DEFS,
   noteName, rollLabel, getParam, setParam, sget, sset, ronOff, rdgOff, effScale, effBase,
-  buildScoreModel, setStatus,
+  buildScoreModel, setStatus, stepSig, referenceSig,
   applyEuclid, applySynEuclid, rotatePat, rotateSyn, synGenerate, synKeyGen, dealEuclid, setStyle,
   resetAll, touchState, pushTransport, pushGains, pushSample,
   get smpA() { return smpA; },

@@ -11,7 +11,7 @@
   const h = UI.h;
   const root = document.getElementById('pocket');
 
-  let curLane = 0, curTab = 'drums';
+  let curLane = 0, curTab = 'drums', curFx = 'rack';
   let statusEl;
   const say = s => { if (statusEl) statusEl.textContent = s; };
 
@@ -84,7 +84,18 @@
     view.innerHTML = '';
     tabBtns.forEach(t => t.b.classList.toggle('sel', t.id === curTab));
     if (curTab === 'drums') drumsTab();
-    else if (curTab === 'fx') view.append(...UI.fxSections(renderTab));
+    else if (curTab === 'fx') {
+      // one rack page at a time, with a sub-tab strip across the top
+      const secs = UI.fxSections(renderTab);
+      if (!secs.some(x => x.id === curFx)) curFx = secs[0].id;
+      const bar = h('div', 'pk-subtabs');
+      for (const sc of secs) {
+        const b2 = h('button', 'pk-subtab' + (sc.id === curFx ? ' sel' : ''), sc.label);
+        b2.addEventListener('click', () => { curFx = sc.id; renderTab(); });
+        bar.append(b2);
+      }
+      view.append(bar, ...secs.find(x => x.id === curFx).rows);
+    }
     else if (curTab === 'mix') mixTab();
     else synthTab(curTab);
   }

@@ -172,8 +172,27 @@
 			border: 1px solid hsla(190, 30%, 34%, 0.8);
 			font-family: Nunito, sans-serif; padding: 0 8px;
 		}
+		.pk-subtabs { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 8px;
+			-webkit-overflow-scrolling: touch; scrollbar-width: none; }
+		.pk-subtabs::-webkit-scrollbar { display: none; }
+		.pk-subtab { flex: 0 0 auto; min-height: 38px; padding: 0 14px; border-radius: 9px;
+			border: 1px solid #3a444e; background: #1b2129; color: #b9c6d2;
+			font-size: 12px; font-weight: 700; letter-spacing: .4px; }
+		.pk-subtab.sel { background: #1f6f7a; border-color: #2b96a4; color: #eafbff; }
 		.pk-stepper { margin: 12px 0; }
 		.pk-slabel { display: flex; justify-content: space-between; align-items: baseline; font-size: 14px; }
+		/* long-press a label to cycle its LFO; the badge says which one is on */
+		.pk-lfohold { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+			cursor: pointer; touch-action: manipulation; }
+		.pk-lfo { font-size: 11px; margin-left: 6px; letter-spacing: .5px; color: transparent; }
+		.pk-lfo.on { color: #6fe3d8; animation: lfopulse 1.6s ease-in-out infinite; }
+		@keyframes lfopulse { 0%,100% { opacity: .45; } 50% { opacity: 1; } }
+		.lfoflash { animation: lfoflash .35s ease-out; }
+		@keyframes lfoflash { from { background: rgba(111,227,216,.30); } to { background: transparent; } }
+		@media (prefers-reduced-motion: reduce) {
+			.pk-lfo.on, .lfoflash { animation: none; }
+			.pk-lfo.on { opacity: 1; }
+		}
 		.pk-val { color: hsl(190, 80%, 75%); font-weight: 700; font-size: 16px; }
 		.pk-steprow { display: flex; gap: 8px; margin-top: 5px; }
 		.pk-step-btn {
@@ -239,10 +258,10 @@
 			<p>everything is phase-locked to beat 0. — <a href="../">back down to under</a> · <a href="https://mima.chat/">up to mima</a></p>
 		</footer>
 	</main>
-	<script src="gnome.js?v=31"></script>
-	<script src="gnome-score.js?v=31"></script>
-	<script src="gnome-ui.js?v=31"></script>
-	<script src="gnome-mobile.js?v=31"></script>
+	<script src="gnome.js?v=32"></script>
+	<script src="gnome-score.js?v=32"></script>
+	<script src="gnome-ui.js?v=32"></script>
+	<script src="gnome-mobile.js?v=32"></script>
 	<script>
 		const lt = document.getElementById('layoutToggle');
 		lt.textContent = window.gnome.usePocket

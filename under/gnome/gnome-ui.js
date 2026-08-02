@@ -82,6 +82,46 @@ window.createGnomeUI = function (G) {
       hint ? h('div', 'pk-hint', hint) : null);
   }
 
+  // Long-press a control's label to cycle its LFO: none -> L1 -> L2 -> both.
+  // The +/- buttons already use press-and-hold to auto-repeat, so the gesture
+  // lives on the label instead of the chips. A pulsing badge shows what is on.
+  function lfoable(off, node) {
+    if (off == null) return node;
+    const lab = node.querySelector('.pk-slabel') || node.querySelector('.pk-rowlabel');
+    if (!lab) return node;
+    const badge = h('span', 'pk-lfo', '');
+    lab.append(badge);
+    const paint = () => {
+      const msk = G.modMaskFor(off) | 0;
+      badge.textContent = msk ? (msk === 3 ? '∿12' : msk === 2 ? '∿2' : '∿1') : '';
+      badge.classList.toggle('on', !!msk);
+    };
+    let t = null, fired = false;
+    const start = () => {
+      fired = false;
+      t = setTimeout(() => {
+        fired = true;
+        const msk = G.modMaskFor(off) | 0;
+        if (msk === 0) G.modToggle(1, off);
+        else if (msk === 1) { G.modToggle(1, off); G.modToggle(2, off); }
+        else if (msk === 2) G.modToggle(1, off);
+        else { G.modToggle(1, off); G.modToggle(2, off); }
+        paint();
+        node.classList.add('lfoflash');
+        setTimeout(() => node.classList.remove('lfoflash'), 350);
+        if (navigator.vibrate) { try { navigator.vibrate(12); } catch (e) { /* ignore */ } }
+      }, 450);
+    };
+    const stop = () => { if (t) { clearTimeout(t); t = null; } };
+    lab.addEventListener('pointerdown', e => { e.preventDefault(); start(); });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => lab.addEventListener(ev, stop));
+    lab.addEventListener('click', e => { if (fired) { e.preventDefault(); e.stopPropagation(); } });
+    lab.classList.add('pk-lfohold');
+    st.syncs.push(paint);
+    paint();
+    return node;
+  }
+
   function seg(label, opts, get, set, hint) {
     const btns = opts.map((o, i) => {
       const b = h('button', 'pk-seg-btn', o);
@@ -287,15 +327,15 @@ window.createGnomeUI = function (G) {
     return [
       ...(G.smpA[l] === C.SMP_USR ? [
         group('sample', 'where each hit starts in the file — LFO it for slice motion',
-          stepper('Crop start', 0, 100, 1, () => m[C.DCRP_A + l], v => m[C.DCRP_A + l] = v, fmtPct))] : []),
+          lfoable(C.DCRP_A + l, stepper('Crop start', 0, 100, 1, () => m[C.DCRP_A + l], v => m[C.DCRP_A + l] = v, fmtPct)))] : []),
       ...(G.smpA[l] === C.SMP_SYN ? [
         group('synth drum voice', 'Pitch = tuning, Filter shapes it, decay from Gate',
-          stepper('Noise mix', 0, 100, 5, () => m[C.DNSE_A + l], v => m[C.DNSE_A + l] = v, fmtPct),
-          stepper('Pitch sweep', 0, 100, 5, () => m[C.DSWP_A + l], v => m[C.DSWP_A + l] = v, fmtPct,
-            'the hit starts high and drops to the pitch — 808-style'),
-          stepper('30Hz sub (beef)', 0, 100, 5, () => m[C.DSUB_A + l], v => m[C.DSUB_A + l] = v, fmtPct,
-            'a low sine under the transient to fatten it'),
-          stepper('Click', 0, 100, 5, () => m[C.DCLK_A + l], v => m[C.DCLK_A + l] = v, fmtPct),
+          lfoable(C.DNSE_A + l, stepper('Noise mix', 0, 100, 5, () => m[C.DNSE_A + l], v => m[C.DNSE_A + l] = v, fmtPct)),
+          lfoable(C.DSWP_A + l, stepper('Pitch sweep', 0, 100, 5, () => m[C.DSWP_A + l], v => m[C.DSWP_A + l] = v, fmtPct,
+            'the hit starts high and drops to the pitch — 808-style')),
+          lfoable(C.DSUB_A + l, stepper('30Hz sub (beef)', 0, 100, 5, () => m[C.DSUB_A + l], v => m[C.DSUB_A + l] = v, fmtPct,
+            'a low sine under the transient to fatten it')),
+          lfoable(C.DCLK_A + l, stepper('Click', 0, 100, 5, () => m[C.DCLK_A + l], v => m[C.DCLK_A + l] = v, fmtPct)),
           stepper('Decay (gate)', 5, 200, 5, () => G.getParam(l, 7), v => G.setParam(l, 7, v), fmtPct))] : []),
       group('pattern', 'euclidean engine: pulses spread evenly across steps',
         stepper('Steps', 1, 32, 1, () => G.getParam(l, 2), v => G.setParam(l, 2, v)),
@@ -350,33 +390,33 @@ window.createGnomeUI = function (G) {
         seg('Engine', ['classic', 'string', 'glass', 'splice', 'drone', 'bell', 'piano'],
           () => m[C.ENG_A + si], i => { m[C.ENG_A + si] = i; rerender(); }, engHint()),
         ...(m[C.ENG_A + si] === 2
-          ? [stepper('Harmonic cycle', 0, 100, 5, () => m[C.GLC_A + si], v => m[C.GLC_A + si] = v, fmtPct,
-              'slowly sweeps which harmonic is loudest — 0 = static')]
+          ? [lfoable(C.GLC_A + si, stepper('Harmonic cycle', 0, 100, 5, () => m[C.GLC_A + si], v => m[C.GLC_A + si] = v, fmtPct,
+              'slowly sweeps which harmonic is loudest — 0 = static'))]
           : []),
         ...(m[C.ENG_A + si] === 4
-          ? [stepper('Openness', 0, 100, 5, () => m[C.DRONE_OPEN_A + si], v => m[C.DRONE_OPEN_A + si] = v, fmtPct,
-              'closed mouth = low overtones, open = high — assign an LFO to make it sing')]
+          ? [lfoable(C.DRONE_OPEN_A + si, stepper('Openness', 0, 100, 5, () => m[C.DRONE_OPEN_A + si], v => m[C.DRONE_OPEN_A + si] = v, fmtPct,
+              'closed mouth = low overtones, open = high — assign an LFO to make it sing'))]
           : []),
         ...(m[C.ENG_A + si] === 5
-          ? [stepper('Mallet hardness', 0, 100, 5, () => m[C.BELL_STK_A + si], v => m[C.BELL_STK_A + si] = v, fmtPct,
-              'soft felt … hard striker — brightness + attack noise (Decay scales the ring)')]
+          ? [lfoable(C.BELL_STK_A + si, stepper('Mallet hardness', 0, 100, 5, () => m[C.BELL_STK_A + si], v => m[C.BELL_STK_A + si] = v, fmtPct,
+              'soft felt … hard striker — brightness + attack noise (Decay scales the ring)'))]
           : []),
         ...(m[C.ENG_A + si] === 6
-          ? [stepper('Sustain pedal', 0, 100, 5, () => m[C.PNO_A + si], v => m[C.PNO_A + si] = v, fmtPct,
-              'pedal down: strings ring longer and bleed into each other')]
+          ? [lfoable(C.PNO_A + si, stepper('Sustain pedal', 0, 100, 5, () => m[C.PNO_A + si], v => m[C.PNO_A + si] = v, fmtPct,
+              'pedal down: strings ring longer and bleed into each other'))]
           : []),
         ...(m[C.ENG_A + si] === 3
           ? [h('div', 'pk-actions',
               action('📂 load audio file', () => { G.loadSpliceSample(si); }),
               action('💿 wiki dig', () => G.digSample('splice', si, 'wiki')),
               action('📀 78rpm dig', () => G.digSample('splice', si, 'ia'))),
-            stepper('Crop start', 0, 100, 1, () => m[C.SPL_ST_A + si], v => m[C.SPL_ST_A + si] = v, fmtPct),
-            stepper('Crop end', 0, 100, 1, () => m[C.SPL_EN_A + si], v => m[C.SPL_EN_A + si] = v, fmtPct,
-              'the crop window loops while a note sustains'),
+            lfoable(C.SPL_ST_A + si, stepper('Crop start', 0, 100, 1, () => m[C.SPL_ST_A + si], v => m[C.SPL_ST_A + si] = v, fmtPct)),
+            lfoable(C.SPL_EN_A + si, stepper('Crop end', 0, 100, 1, () => m[C.SPL_EN_A + si], v => m[C.SPL_EN_A + si] = v, fmtPct,
+              'the crop window loops while a note sustains')),
             seg('Pitch', ['track the notes', 'fixed'],
               () => m[C.SPL_MODE_A + si], i => m[C.SPL_MODE_A + si] = i,
               'track: repitched per note (C4 = as recorded). fixed: plays as-is'),
-            stepper('Fine tune', -12, 12, 1, () => m[C.SPL_TUNE_A + si], v => m[C.SPL_TUNE_A + si] = v, fmtSt)]
+            lfoable(C.SPL_TUNE_A + si, stepper('Fine tune', -12, 12, 1, () => m[C.SPL_TUNE_A + si], v => m[C.SPL_TUNE_A + si] = v, fmtSt))]
           : [])),
     ];
   }
@@ -410,7 +450,17 @@ window.createGnomeUI = function (G) {
             () => m[C.WHL_SPIN], i => m[C.WHL_SPIN] = i,
             'the global spin rate — roots walk the harmonic wheel')] : []),
         seg('Join wheel spin', ['no', 'yes'], () => m[C.SPIN_P + si], i => m[C.SPIN_P + si] = i,
-          'walk this part’s root around the wheel when spin is on')),
+          'walk this part’s root around the wheel when spin is on'),
+        // GROW lives here now, beside the spin, instead of only on the canvas
+        seg('Grow from Life', ['off', 'on'], () => G.growFor(si) ? 1 : 0,
+          i => { G.setGrowFor(si, i); G.touchState(); },
+          'the Game of Life colony writes notes into this part as it evolves'),
+        selectRow('Life speed', G.golRates.map(r => r + '×/beat'),
+          () => G.golRateIx, v => G.setGolRateIx(v)),
+        h('div', 'pk-actions',
+          action('✦ seed life', () => { G.golSeed(); G.touchState(); }),
+          action('✕ clear life', () => { G.golClear(); G.touchState(); }),
+          action('▸ step once', () => { G.golStepOnce(); G.touchState(); }))),
       group('sound', null,
         stepper('Wave', 0, 100, 5, () => G.sget(si, 19), v => G.sset(si, 19, v), fmtWave),
         stepper('Filter cutoff', 0, 100, 5, () => G.sget(si, 12), v => G.sset(si, 12, v), fmtCut),
@@ -421,11 +471,11 @@ window.createGnomeUI = function (G) {
         seg('Envelope', ['AD pluck', 'HOLD', 'LATCH'], () => G.sget(si, 20), i => G.sset(si, 20, i)),
         stepper('Glide', 0, 2000, 10, () => G.sget(si, 21), v => G.sset(si, 21, v), fmtMs),
         ...(si === 0 ? [
-          stepper('Shape drive', 0, 100, 5, () => m[C.XY_DRV], v => m[C.XY_DRV] = v, fmtPct,
-            'tanh fold on the bass sum — the desktop XY scope, as sound'),
-          stepper('Shape skew', -50, 50, 5, () => m[C.XY_SKW], v => m[C.XY_SKW] = v,
+          lfoable(C.XY_DRV, stepper('Shape drive', 0, 100, 5, () => m[C.XY_DRV], v => m[C.XY_DRV] = v, fmtPct,
+            'tanh fold on the bass sum — the desktop XY scope, as sound')),
+          lfoable(C.XY_SKW, stepper('Shape skew', -50, 50, 5, () => m[C.XY_SKW], v => m[C.XY_SKW] = v,
             v => (v > 0 ? '+' : '') + Math.round(v),
-            'asymmetric bias: even harmonics, tube-ish')] : [])),
+            'asymmetric bias: even harmonics, tube-ish'))] : [])),
       group('motion', null,
         stepper('LFO rate (beats)', 0.25, 16, 0.25, () => G.sget(si, 16), v => G.sset(si, 16, v), fmtQ),
         stepper('LFO → filter depth', 0, 100, 5, () => G.sget(si, 17), v => G.sset(si, 17, v)),
@@ -486,9 +536,9 @@ window.createGnomeUI = function (G) {
     const spaceRows = [];
     for (let l = 0; l < G.numLanes; l++) {
       spaceRows.push(
-        stepper('Lane ' + (l + 1) + ' azimuth', -180, 180, 5, () => m[C.DAZ_A + l], v => m[C.DAZ_A + l] = v, fmtDeg),
-        stepper('Lane ' + (l + 1) + ' force', 0, 100, 5, () => m[C.DFRC_A + l], v => m[C.DFRC_A + l] = v, fmtPct,
-          l === 0 ? 'each lane is its own marble; force 0 = other marbles can’t shove it' : null));
+        lfoable(C.DAZ_A + l, stepper('Lane ' + (l + 1) + ' azimuth', -180, 180, 5, () => m[C.DAZ_A + l], v => m[C.DAZ_A + l] = v, fmtDeg)),
+        lfoable(C.DFRC_A + l, stepper('Lane ' + (l + 1) + ' force', 0, 100, 5, () => m[C.DFRC_A + l], v => m[C.DFRC_A + l] = v, fmtPct,
+          l === 0 ? 'each lane is its own marble; force 0 = other marbles can’t shove it' : null)));
     }
     ['Bass', 'Melody', 'Chords'].forEach((nm, p) => {
       spaceRows.push(
@@ -524,98 +574,109 @@ window.createGnomeUI = function (G) {
     const fmtDens = v => v ? 'D' + Math.round(v) : 'off';
     const fracParts = [];
     for (let l = 0; l < G.numLanes; l++)
-      fracParts.push(stepper('Lane ' + (l + 1) + ' density', 0, 7, 1,
-        () => m[C.DFILL_A + l], v => m[C.DFILL_A + l] = v, fmtDens));
+      fracParts.push(lfoable(C.DFILL_A + l, stepper('Lane ' + (l + 1) + ' density', 0, 7, 1,
+        () => m[C.DFILL_A + l], v => m[C.DFILL_A + l] = v, fmtDens)));
     ['Bass', 'Melody', 'Chords'].forEach((nm, p) =>
-      fracParts.push(stepper(nm + ' density', 0, 7, 1,
+      fracParts.push(lfoable(C.SFILL_A + p, stepper(nm + ' density', 0, 7, 1,
         () => m[C.SFILL_A + p], v => m[C.SFILL_A + p] = v, fmtDens,
-        p === 0 ? 'D1 = a tiny tail variation, D7 = a radical self-similar flurry' : null)));
+        p === 0 ? 'D1 = a tiny tail variation, D7 = a radical self-similar flurry' : null))));
+    // One rack page at a time: the FX tab was a single endless scroll.
     return [
-      group('3D space', 'angle each part around your head — LFO the azimuth to orbit it',
-        ...spaceRows,
-        stepper('Bounciness', 0, 100, 5, () => m[C.PAN_BNC], v => m[C.PAN_BNC] = v, fmtPct,
-          'how elastically crowded parts bounce off each other')),
-      group('fractal fills', 'a classic L-system picks WHEN fills land; each part’s density picks HOW MUCH',
-        seg('Fractal fills', ['off', 'on'], () => m[C.FRC_ON], i => m[C.FRC_ON] = i),
-        selectRow('L-system', T.FRACTAL_NAMES, () => m[C.FRC_RULE], v => m[C.FRC_RULE] = v),
-        stepper('Fractality', 0, 100, 5, () => m[C.FRC_AMT], v => m[C.FRC_AMT] = v, fmtPct,
-          'scales every fill the L-system asks for'),
-        stepper('Bend / swing', 0, 100, 5, () => m[C.FRC_BEND], v => m[C.FRC_BEND] = v, fmtPct,
-          'bows the tree and swings the fill timing'),
-        ...fracParts),
-      ...lfoRows, modSection,
-      group('effects rack', 'each fx has its own per-part sends, or feed the whole mix through',
+      { id: 'rack', label: 'RACK', rows: [
+        group('effects rack', 'each fx has its own per-part sends, or feed the whole mix through',
         seg('Rack', ['off', 'on'], () => m[C.FX_ON], i => m[C.FX_ON] = i),
-        stepper('Feed full mix in', 0, 100, 5, () => m[C.FX_FEED], v => m[C.FX_FEED] = v, fmtPct),
+        lfoable(C.FX_FEED, stepper('Feed full mix in', 0, 100, 5, () => m[C.FX_FEED], v => m[C.FX_FEED] = v, fmtPct)),
         seg('Sends tap', ['post-fader', 'pre-fader'], () => m[C.SND_PRE], i => m[C.SND_PRE] = i,
-          'pre-fader: pull a part’s volume down and its fx wash stays')),
-      group('dub delay', 'a tape-ish echo — pitch/reverse the repeats or let them drift',
+          'pre-fader: pull a part’s volume down and its fx wash stays'))] },
+      { id: 'delay', label: 'DELAY', rows: [
+        group('dub delay', 'a tape-ish echo — pitch/reverse the repeats or let them drift',
         seg('Delay', ['off', 'on'], () => m[C.DLY_ON], i => m[C.DLY_ON] = i),
-        stepper('Time (beats)', 0.0625, 2, 0.0625, () => m[C.DLY_TIME], v => m[C.DLY_TIME] = v, fmtDlyBeats),
-        stepper('Feedback', 0, 100, 5, () => m[C.DLY_FB], v => m[C.DLY_FB] = v, fmtPct),
-        stepper('Pitch', -24, 24, 1, () => m[C.DLY_PITCH], v => m[C.DLY_PITCH] = v, fmtSt,
-          'each repeat shifts by this — climbing or falling echoes'),
+        lfoable(C.DLY_TIME, stepper('Time (beats)', 0.0625, 2, 0.0625, () => m[C.DLY_TIME], v => m[C.DLY_TIME] = v, fmtDlyBeats)),
+        lfoable(C.DLY_FB, stepper('Feedback', 0, 100, 5, () => m[C.DLY_FB], v => m[C.DLY_FB] = v, fmtPct)),
+        lfoable(C.DLY_PITCH, stepper('Pitch', -24, 24, 1, () => m[C.DLY_PITCH], v => m[C.DLY_PITCH] = v, fmtSt,
+          'each repeat shifts by this — climbing or falling echoes')),
         seg('Reverse', ['off', 'on'], () => m[C.DLY_REV], i => m[C.DLY_REV] = i,
           'play the echoes backwards'),
-        stepper('Tone', 0, 100, 5, () => m[C.DLY_TONE], v => m[C.DLY_TONE] = v, fmtPct),
-        stepper('Float / wow', 0, 100, 5, () => m[C.DLY_WOW], v => m[C.DLY_WOW] = v, fmtPct,
-          'slow pitch drift (only when Pitch/Reverse are off)'),
+        lfoable(C.DLY_TONE, stepper('Tone', 0, 100, 5, () => m[C.DLY_TONE], v => m[C.DLY_TONE] = v, fmtPct)),
+        lfoable(C.DLY_WOW, stepper('Float / wow', 0, 100, 5, () => m[C.DLY_WOW], v => m[C.DLY_WOW] = v, fmtPct,
+          'slow pitch drift (only when Pitch/Reverse are off)')),
         seg('Golden echo', ['off', 'φ↓ compress', 'φ↑ expand'], () => m[C.DLY_GLD], i => m[C.DLY_GLD] = i,
           'repeats spaced by ×φ instead of evenly — ripples obeying a growth law'),
-        ...route(0)),
-      group('piano strings', 'a rack of strings with the sustain pedal down, tuned to the key — send anything into it (PNO sends) and the sympathetic strings ring',
-        seg('Resonator', ['off', 'on'], () => m[C.PRES_ON], i => m[C.PRES_ON] = i),
-        stepper('Mix', 0, 100, 5, () => m[C.PRES_MIX], v => m[C.PRES_MIX] = v, fmtPct),
-        stepper('Pedal (decay)', 0, 100, 5, () => m[C.PRES_DEC], v => m[C.PRES_DEC] = v, fmtPct),
-        stepper('Tone', 0, 100, 5, () => m[C.PRES_TONE], v => m[C.PRES_TONE] = v, fmtPct,
-          'string damping — low is felted, high is bright and open'),
-        ...pnoRoute()),
-      group('4-band resonator', 'four resonant bandpass filters, then summed or MULTIPLIED together \u2014 summing gives a formant bank, multiplying is ring modulation by the signal\u2019s own bands (send anything in via the 4B sends)',
+        ...route(0))] },
+      { id: 'glitch', label: 'GLITCH', rows: [
+        group('glitch', 'beat-synced stutter + crush for glitching out',
+        seg('Glitch', ['off', 'on'], () => m[C.AVO_ON], i => m[C.AVO_ON] = i),
+        lfoable(C.AVO_AMT, stepper('Amount', 0, 100, 5, () => m[C.AVO_AMT], v => m[C.AVO_AMT] = v, fmtPct)),
+        lfoable(C.AVO_RATE, stepper('Rate (beats)', 0.0625, 2, 0.0625, () => m[C.AVO_RATE], v => m[C.AVO_RATE] = v, fmtDlyBeats)),
+        lfoable(C.AVO_CRUSH, stepper('Crush', 0, 100, 5, () => m[C.AVO_CRUSH], v => m[C.AVO_CRUSH] = v, fmtPct)),
+        lfoable(C.AVO_MIX, stepper('Mix', 0, 100, 5, () => m[C.AVO_MIX], v => m[C.AVO_MIX] = v, fmtPct)),
+        ...route(1))] },
+      { id: 'granulator', label: 'GRAIN', rows: [
+        group('granulator', 'granular reverb — smears the sound into a pitched, textured wash',
+        seg('Clouds', ['off', 'on'], () => m[C.CLD_ON], i => m[C.CLD_ON] = i),
+        lfoable(C.CLD_SIZE, stepper('Grain size', 0, 100, 5, () => m[C.CLD_SIZE], v => m[C.CLD_SIZE] = v, fmtPct)),
+        lfoable(C.CLD_DENS, stepper('Density', 0, 100, 5, () => m[C.CLD_DENS], v => m[C.CLD_DENS] = v, fmtPct)),
+        lfoable(C.CLD_PITCH, stepper('Pitch', -24, 24, 1, () => m[C.CLD_PITCH], v => m[C.CLD_PITCH] = v, fmtSt)),
+        seg('Reverse grains', ['off', 'on'], () => m[C.CLD_REVG], i => m[C.CLD_REVG] = i),
+        lfoable(C.CLD_SPREAD, stepper('Spread', 0, 100, 5, () => m[C.CLD_SPREAD], v => m[C.CLD_SPREAD] = v, fmtPct,
+          'how far back grains reach — bigger = more smear')),
+        lfoable(C.CLD_REVERB, stepper('Reverb tail', 0, 100, 5, () => m[C.CLD_REVERB], v => m[C.CLD_REVERB] = v, fmtPct)),
+        lfoable(C.CLD_MIX, stepper('Mix', 0, 100, 5, () => m[C.CLD_MIX], v => m[C.CLD_MIX] = v, fmtPct)),
+        ...route(2))] },
+      { id: 'band', label: '4-BAND', rows: [
+        group('4-band resonator', 'four resonant bandpass filters, then summed or MULTIPLIED together \u2014 summing gives a formant bank, multiplying is ring modulation by the signal\u2019s own bands (send anything in via the 4B sends)',
         seg('4-band', ['off', 'on'], () => m[C.MBR_ON], i => m[C.MBR_ON] = i),
         seg('Mode', ['sum', 'ring', 'pair', 'mult'], () => m[C.MBR_MODE], i => m[C.MBR_MODE] = i,
           'sum = resonant/formant, gentle \u00b7 ring = neighbours multiply, metallic \u00b7 pair = two ring pairs, wide \u00b7 mult = all four, wreckage'),
-        stepper('Base freq', 40, 4000, 10, () => m[C.MBR_FREQ], v => m[C.MBR_FREQ] = v,
-          v => Math.round(v) + ' Hz', 'where the lowest band sits'),
-        stepper('Spread', 0, 100, 5, () => m[C.MBR_SPRD], v => m[C.MBR_SPRD] = v, fmtPct,
-          'spacing between the four bands \u2014 low packs them into a formant, high fans them across the spectrum'),
-        stepper('Resonance', 0, 100, 5, () => m[C.MBR_Q], v => m[C.MBR_Q] = v, fmtPct,
-          'band Q \u2014 high is narrow and ringing, and makes the multiply modes sing'),
-        stepper('Drive', 0, 100, 5, () => m[C.MBR_DRV], v => m[C.MBR_DRV] = v, fmtPct),
-        stepper('Mix', 0, 100, 5, () => m[C.MBR_MIX], v => m[C.MBR_MIX] = v, fmtPct),
-        ...mbrRoute()),
-      group('cross-routing', 'let one instrument work on another — ring-modulate it, sidechain-duck it, or drive it into distortion',
+        lfoable(C.MBR_FREQ, stepper('Base freq', 40, 4000, 10, () => m[C.MBR_FREQ], v => m[C.MBR_FREQ] = v,
+          v => Math.round(v) + ' Hz', 'where the lowest band sits')),
+        lfoable(C.MBR_SPRD, stepper('Spread', 0, 100, 5, () => m[C.MBR_SPRD], v => m[C.MBR_SPRD] = v, fmtPct,
+          'spacing between the four bands \u2014 low packs them into a formant, high fans them across the spectrum')),
+        lfoable(C.MBR_Q, stepper('Resonance', 0, 100, 5, () => m[C.MBR_Q], v => m[C.MBR_Q] = v, fmtPct,
+          'band Q \u2014 high is narrow and ringing, and makes the multiply modes sing')),
+        lfoable(C.MBR_DRV, stepper('Drive', 0, 100, 5, () => m[C.MBR_DRV], v => m[C.MBR_DRV] = v, fmtPct)),
+        lfoable(C.MBR_MIX, stepper('Mix', 0, 100, 5, () => m[C.MBR_MIX], v => m[C.MBR_MIX] = v, fmtPct)),
+        ...mbrRoute())] },
+      { id: 'piano', label: 'PIANO', rows: [
+        group('piano strings', 'a rack of strings with the sustain pedal down, tuned to the key — send anything into it (PNO sends) and the sympathetic strings ring',
+        seg('Resonator', ['off', 'on'], () => m[C.PRES_ON], i => m[C.PRES_ON] = i),
+        lfoable(C.PRES_MIX, stepper('Mix', 0, 100, 5, () => m[C.PRES_MIX], v => m[C.PRES_MIX] = v, fmtPct)),
+        lfoable(C.PRES_DEC, stepper('Pedal (decay)', 0, 100, 5, () => m[C.PRES_DEC], v => m[C.PRES_DEC] = v, fmtPct)),
+        lfoable(C.PRES_TONE, stepper('Tone', 0, 100, 5, () => m[C.PRES_TONE], v => m[C.PRES_TONE] = v, fmtPct,
+          'string damping — low is felted, high is bright and open')),
+        ...pnoRoute())] },
+      { id: 'cross', label: 'CROSS', rows: [
+        group('cross-routing', 'let one instrument work on another — ring-modulate it, sidechain-duck it, or drive it into distortion',
         ...['Bass', 'Melody', 'Chords'].map((nm, si) => [
           seg(nm + ' source', T.XSRC_NAMES, () => m[C.XSRC_A + si], i => m[C.XSRC_A + si] = i),
-          stepper(nm + ' amount', 0, 100, 5, () => m[C.XAMT_A + si], v => m[C.XAMT_A + si] = v, fmtPct),
+          lfoable(C.XAMT_A + si, stepper(nm + ' amount', 0, 100, 5, () => m[C.XAMT_A + si], v => m[C.XAMT_A + si] = v, fmtPct)),
           seg(nm + ' mode', T.XMODE_NAMES, () => m[C.XMODE_A + si], i => m[C.XMODE_A + si] = i),
-        ]).flat()),
-      group('glitch', 'beat-synced stutter + crush for glitching out',
-        seg('Glitch', ['off', 'on'], () => m[C.AVO_ON], i => m[C.AVO_ON] = i),
-        stepper('Amount', 0, 100, 5, () => m[C.AVO_AMT], v => m[C.AVO_AMT] = v, fmtPct),
-        stepper('Rate (beats)', 0.0625, 2, 0.0625, () => m[C.AVO_RATE], v => m[C.AVO_RATE] = v, fmtDlyBeats),
-        stepper('Crush', 0, 100, 5, () => m[C.AVO_CRUSH], v => m[C.AVO_CRUSH] = v, fmtPct),
-        stepper('Mix', 0, 100, 5, () => m[C.AVO_MIX], v => m[C.AVO_MIX] = v, fmtPct),
-        ...route(1)),
-      group('granulator', 'granular reverb — smears the sound into a pitched, textured wash',
-        seg('Clouds', ['off', 'on'], () => m[C.CLD_ON], i => m[C.CLD_ON] = i),
-        stepper('Grain size', 0, 100, 5, () => m[C.CLD_SIZE], v => m[C.CLD_SIZE] = v, fmtPct),
-        stepper('Density', 0, 100, 5, () => m[C.CLD_DENS], v => m[C.CLD_DENS] = v, fmtPct),
-        stepper('Pitch', -24, 24, 1, () => m[C.CLD_PITCH], v => m[C.CLD_PITCH] = v, fmtSt),
-        seg('Reverse grains', ['off', 'on'], () => m[C.CLD_REVG], i => m[C.CLD_REVG] = i),
-        stepper('Spread', 0, 100, 5, () => m[C.CLD_SPREAD], v => m[C.CLD_SPREAD] = v, fmtPct,
-          'how far back grains reach — bigger = more smear'),
-        stepper('Reverb tail', 0, 100, 5, () => m[C.CLD_REVERB], v => m[C.CLD_REVERB] = v, fmtPct),
-        stepper('Mix', 0, 100, 5, () => m[C.CLD_MIX], v => m[C.CLD_MIX] = v, fmtPct),
-        ...route(2)),
+        ]).flat())] },
+      { id: 'space', label: 'SPACE', rows: [
+        group('3D space', 'angle each part around your head — LFO the azimuth to orbit it',
+        ...spaceRows,
+        lfoable(C.PAN_BNC, stepper('Bounciness', 0, 100, 5, () => m[C.PAN_BNC], v => m[C.PAN_BNC] = v, fmtPct,
+          'how elastically crowded parts bounce off each other')))] },
+      { id: 'fills', label: 'FILLS', rows: [
+        group('fractal fills', 'a classic L-system picks WHEN fills land; each part’s density picks HOW MUCH',
+        seg('Fractal fills', ['off', 'on'], () => m[C.FRC_ON], i => m[C.FRC_ON] = i),
+        selectRow('L-system', T.FRACTAL_NAMES, () => m[C.FRC_RULE], v => m[C.FRC_RULE] = v),
+        lfoable(C.FRC_AMT, stepper('Fractality', 0, 100, 5, () => m[C.FRC_AMT], v => m[C.FRC_AMT] = v, fmtPct,
+          'scales every fill the L-system asks for')),
+        lfoable(C.FRC_BEND, stepper('Bend / swing', 0, 100, 5, () => m[C.FRC_BEND], v => m[C.FRC_BEND] = v, fmtPct,
+          'bows the tree and swings the fill timing')),
+        ...fracParts)] },
+      { id: 'lfo', label: 'LFO', rows: [
+        ...lfoRows, modSection] },
     ];
   }
 
   function masterKeySection() {
     return group('master key', 'key-locked B / M / C sections all follow this',
-      stepper('Key', 12, 108, 1, () => m[C.GKEY_NOTE], v => m[C.GKEY_NOTE] = Math.max(12, Math.min(108, v)), fmtNote),
+      lfoable(C.GKEY_NOTE, stepper('Key', 12, 108, 1, () => m[C.GKEY_NOTE], v => m[C.GKEY_NOTE] = Math.max(12, Math.min(108, v)), fmtNote)),
       selectRow('Scale', T.SCALE_NAMES, () => m[C.GKEY_SCALE], v => m[C.GKEY_SCALE] = v),
       selectRow('Progression', T.PROG_NAMES, () => m[C.GKEY_PROG], v => m[C.GKEY_PROG] = v),
-      stepper('Progression speed', 0.25, 16, 0.25, () => m[C.GKEY_SPD], v => m[C.GKEY_SPD] = Math.max(0.25, v), fmtBeats),
+      lfoable(C.GKEY_SPD, stepper('Progression speed', 0.25, 16, 0.25, () => m[C.GKEY_SPD], v => m[C.GKEY_SPD] = Math.max(0.25, v), fmtBeats)),
       selectRow('Generate style', T.STYLE_NAMES, () => m[C.GEN_STYLE], v => G.setStyle(v)),
       seg('\u26a0 \u03c6 tuning', ['off', 'on'], () => m[C.PHI_TUNE], i => m[C.PHI_TUNE] = i,
         'EXPERIMENTAL \u2014 the octave becomes a golden sixth; every scale leans toward golden-ratio intervals'),
@@ -634,8 +695,8 @@ window.createGnomeUI = function (G) {
     return group('volumes', null,
       stepper('Drums', 0, 100, 5, () => G.vols.drum, v => G.setVol('drum', v)),
       ...Array.from({ length: G.numLanes }, (_, l) =>
-        stepper('· lane ' + (l + 1), 0, 100, 5, () => m[C.DVOL_A + l],
-          v => m[C.DVOL_A + l] = v, fmtPct)),
+        lfoable(C.DVOL_A + l, stepper('· lane ' + (l + 1), 0, 100, 5, () => m[C.DVOL_A + l],
+          v => m[C.DVOL_A + l] = v, fmtPct))),
       stepper('Bass', 0, 100, 5, () => G.vols.bass, v => G.setVol('bass', v)),
       stepper('Melody', 0, 100, 5, () => G.vols.mel, v => G.setVol('mel', v)),
       stepper('Chords', 0, 100, 5, () => G.vols.chd, v => G.setVol('chd', v)),
@@ -742,7 +803,7 @@ window.createGnomeUI = function (G) {
     setSay(fn) { st.say = fn || (() => { }); },
     beginRender() { st.syncs = []; st.paint = 'draw'; },
     frame() { for (const f of st.syncs) f(); },
-    stepper, seg, chip, action, selectRow, group, modeBar, rotateRow,
+    stepper, seg, chip, action, selectRow, group, modeBar, rotateRow, lfoable,
     drumGrid, rollGrid, laneStrip, engineHint, transport,
     drumMain, drumParams, synthMain, synthParams, fxSections,
     masterKeySection, locksSection, volumesSection, performSection, presetsSection,

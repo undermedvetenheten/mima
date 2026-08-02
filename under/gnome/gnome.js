@@ -9,7 +9,7 @@
 
 // bump on every release: cache-busts the worklet module so a stale cached
 // DSP can never run against fresh UI code
-const APP_V = '31';
+const APP_V = '32';
 
 
 const LANES_CAP = 8, MAX_STEPS = 32, EUC_N = 21, NROWS = 12, NSCALES = 15,
@@ -891,8 +891,9 @@ function initState() {
   m[ENG_A] = 4; m[ENG_A + 1] = 0; m[ENG_A + 2] = 2;
   m[GLC_A + 2] = 100;                          // chords: glass rotation wide open
   smpA = LANE_SAMPLE.slice();
-  // FX rack on from the start: a slow dotted delay with the chords in it
-  m[FX_ON] = 1;
+  // FX rack OFF at INIT. The jam is built to stand up dry, and starting with
+  // the rack live meant every first press of play began with a crackle.
+  m[FX_ON] = 0;
   m[DLY_ON] = 1; m[DLY_TIME] = 1.1875; m[DLY_FB] = 38; m[DLY_TONE] = 55;
   m[DLY_WOW] = 30; m[FX_FEED] = 0;
   m[AVO_ON] = 0; m[AVO_AMT] = 40; m[AVO_RATE] = 0.5; m[AVO_CRUSH] = 0; m[AVO_MIX] = 100;
@@ -1275,7 +1276,17 @@ function modTargets() {
       out.push({ name: `${SYN_NAMES[si]} piano pedal`, off: PNO_A + si });
     out.push({ name: `${SYN_NAMES[si]} cross amount`, off: XAMT_A + si });
   }
-  out.push({ name: 'piano resonator mix', off: PRES_MIX },
+  out.push({ name: '4-band base freq', off: MBR_FREQ },
+    { name: '4-band spread', off: MBR_SPRD },
+    { name: '4-band resonance', off: MBR_Q },
+    { name: '4-band drive', off: MBR_DRV },
+    { name: '4-band mix', off: MBR_MIX });
+  for (let p = 1; p < 4; p++)
+    out.push({ name: `${['drums', 'bass', 'melody', 'chords'][p]} → 4-band`, off: MBR_SND_A + p });
+  for (let l = 0; l < numLanes; l++)
+    out.push({ name: `lane ${l + 1} → 4-band`, off: MBR_LSND_A + l });
+  out.push({ name: 'tempo wobble', off: BPM_WOB },
+    { name: 'piano resonator mix', off: PRES_MIX },
     { name: 'piano resonator decay', off: PRES_DEC },
     { name: 'piano resonator tone', off: PRES_TONE });
   for (let p = 1; p < 4; p++)
@@ -4153,6 +4164,19 @@ window.gnome = {
   get enerArr() { return enerArr; },
   get golGrid() { return golGrid; }, get golGrow() { return golGrow; },
   setGrow(mel, bass, chd) { golGrow = !!mel; golGrowB = !!bass; golGrowC = !!chd; },
+  // per-part access, so the pocket can put GROW beside each sequencer
+  growFor(si) { return si === 0 ? golGrowB : si === 1 ? golGrow : golGrowC; },
+  setGrowFor(si, v) {
+    if (si === 0) golGrowB = !!v; else if (si === 1) golGrow = !!v; else golGrowC = !!v;
+  },
+  golClear() { golGrid.fill(0); },
+  golSeed(d) {
+    const p2 = Math.max(0.05, Math.min(0.9, d == null ? 0.32 : d));
+    for (let i = 0; i < golGrid.length; i++) golGrid[i] = Math.random() < p2 ? 1 : 0;
+  },
+  get golRateIx() { return golRate; },
+  setGolRateIx(v) { golRate = ((v % GOL_RATES.length) + GOL_RATES.length) % GOL_RATES.length; },
+  get golRates() { return GOL_RATES.slice(); },
   get golRate() { return GOL_RATES[golRate]; },
   golStepOnce: golStep,
   initAudio, togglePlay,

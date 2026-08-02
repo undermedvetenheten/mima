@@ -146,10 +146,15 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
   **Pocket navigation.** Both the FX tab and each part tab are **paged into
   sub-tabs**, on a wrapping two-row strip that sits directly under the main tabs
   so nothing needs scrolling to reach. FX: RACK · DELAY · GLITCH · GRAIN ·
-  4-BAND · PIANO · CROSS · SPACE · FILLS · LFO. Each part: **VOICE** (engine +
-  wave shaping together, since that is one decision), PATTERN, KEY, MOTION,
-  GROOVE — with the step grid and the generate buttons **pinned** above the page
-  so they stay on screen while you tweak. The title and blurb are hidden in the
+  4-BAND · PIANO · CROSS · SPACE · FILLS · LFO. Each pitched part: **VOICE**
+  (engine, wave shaping and motion — one decision about what it sounds like),
+  **PATTERN** (the euclidean engine plus swing / nudge / humanise, since those
+  are all about where hits land) and **KEY**. Drums get the same treatment with
+  **SOUND** and **PATTERN** — "sound" rather than "voice", because a drum lane
+  picks a sample rather than an instrument — and the sample chooser lives on the
+  SOUND page. The **step grid stays pinned above the strip** in every case, with
+  the lane picker above that on the drums tab, so the sequencer is what you see
+  when you switch parts and the pages hang underneath it. The title and blurb are hidden in the
   pocket; they are landing-page furniture and on a phone they are just something
   to scroll past before you can play. **Long-press any control's label to cycle its LFO** — none →
   L1 → L2 → both — and a pulsing `∿1` / `∿2` / `∿12` badge shows what is driving

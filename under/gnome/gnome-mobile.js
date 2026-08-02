@@ -11,7 +11,7 @@
   const h = UI.h;
   const root = document.getElementById('pocket');
 
-  let curLane = 0, curTab = 'drums', curFx = 'rack', curSyn = 'voice';
+  let curLane = 0, curTab = 'drums', curFx = 'rack', curSyn = 'voice', curDrum = 'sound';
   let statusEl;
   const say = s => { if (statusEl) statusEl.textContent = s; };
 
@@ -43,14 +43,18 @@
 
   function drumsTab() {
     curLane = Math.min(curLane, G.numLanes - 1);
-    view.append(
-      h('div', 'pk-group', h('h3', '', `drum lanes — editing lane ${curLane + 1}`),
-        UI.laneStrip(curLane,
-          i => { curLane = i; renderTab(); },
-          () => { G.setNumLanes(G.numLanes + 1); renderTab(); },
-          () => { G.setNumLanes(G.numLanes - 1); curLane = Math.min(curLane, G.numLanes - 1); renderTab(); })),
-      UI.drumMain(curLane, say, renderTab),
-      ...UI.drumParams(curLane));
+    // lane picker stays above the sequencer; the pages go underneath it
+    view.append(h('div', 'pk-group', h('h3', '', `drum lanes — editing lane ${curLane + 1}`),
+      UI.laneStrip(curLane,
+        i => { curLane = i; renderTab(); },
+        () => { G.setNumLanes(G.numLanes + 1); renderTab(); },
+        () => { G.setNumLanes(G.numLanes - 1); curLane = Math.min(curLane, G.numLanes - 1); renderTab(); })));
+    const M = UI.drumMain(curLane, say, renderTab), P = UI.drumParams(curLane);
+    paged(curDrum, [
+      // "sound" rather than "voice": a drum lane picks a sample, it has no voice
+      { id: 'sound', label: 'SOUND', rows: [M.sample, P.crop, P.synth, P.sound, P.motion] },
+      { id: 'pattern', label: 'PATTERN', rows: [P.pattern, P.groove] },
+    ], id => { curDrum = id; }, M.pinned);
   }
 
   // shared sub-tab strip: pinned rows stay put, one page shows at a time
@@ -62,9 +66,10 @@
       b2.addEventListener('click', () => { pick(sc.id); renderTab(); });
       bar.append(b2);
     }
-    // the bar goes directly under the main tabs so both strips are reachable
-    // without scrolling; the pinned grid follows, then the selected page
-    view.append(bar, ...pinned.filter(Boolean), ...secs.find(x => x.id === cur).rows);
+    // the sequencer comes first and the pages hang underneath it, so the grid
+    // is what you see when you switch parts
+    view.append(...pinned.filter(Boolean), bar,
+      ...secs.find(x => x.id === cur).rows.filter(Boolean));
   }
 
   function synthTab(si) {
@@ -72,11 +77,9 @@
     // the grid and the generate buttons are the point of the tab — they stay
     // on screen; everything that used to be an endless scroll gets a page
     paged(curSyn, [
-      { id: 'voice', label: 'VOICE', rows: [M.instrument, P.sound] },
-      { id: 'pattern', label: 'PATTERN', rows: [P.pattern] },
+      { id: 'voice', label: 'VOICE', rows: [M.instrument, P.sound, P.motion] },
+      { id: 'pattern', label: 'PATTERN', rows: [P.pattern, P.groove] },
       { id: 'key', label: 'KEY', rows: [P.key] },
-      { id: 'motion', label: 'MOTION', rows: [P.motion] },
-      { id: 'groove', label: 'GROOVE', rows: [P.groove] },
     ], id => { curSyn = id; }, M.pinned);
   }
 

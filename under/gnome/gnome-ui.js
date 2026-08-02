@@ -306,29 +306,34 @@ window.createGnomeUI = function (G) {
   function drumMain(l, say, rerender) {
     const rr = rerender || (() => { });
     const isSyn = G.smpA[l] === C.SMP_SYN, isUsr = G.smpA[l] === C.SMP_USR;
-    return group('',
-      m[C.MUTE_A + l] ? 'lane muted' : null,
-      h('div', 'pk-actions',
-        chip('MUTE', () => m[C.MUTE_A + l], v => m[C.MUTE_A + l] = v ? 1 : 0, 'danger'),
-        action('🎲 choose euclidean rhythm', () => { say(`lane ${l + 1}: ${G.dealEuclid(l)}`); G.touchState(); })),
-      seg('Sample', G.SAMPLE_DEFS.map(s => s.label), () => G.smpA[l],
-        i => { G.setSmp(l, i); rr(); },
-        isSyn ? 'SYN: a synthesized drum — shape it under “synth drum voice” below'
-          : isUsr ? (G.userSmp[l] ? `“${G.userSmp[l].name}”` : 'no file yet — load or dig one below') : null),
-      ...(isUsr ? [h('div', 'pk-actions',
-        action('📂 load audio file', () => G.loadUserSample(l)),
-        action('💿 wiki dig', () => G.digSample('lane', l, 'wiki')),
-        action('📀 78rpm dig', () => G.digSample('lane', l, 'ia')))] : []),
-      modeBar(),
-      drumGrid(l));
+    // the sequencer itself stays pinned; the sample chooser belongs on the
+    // SOUND page with everything else that decides what the lane sounds like
+    return {
+      pinned: group('',
+        m[C.MUTE_A + l] ? 'lane muted' : null,
+        h('div', 'pk-actions',
+          chip('MUTE', () => m[C.MUTE_A + l], v => m[C.MUTE_A + l] = v ? 1 : 0, 'danger'),
+          action('🎲 choose euclidean rhythm', () => { say(`lane ${l + 1}: ${G.dealEuclid(l)}`); G.touchState(); })),
+        modeBar(),
+        drumGrid(l)),
+      sample: group('sample', 'what this lane actually hits',
+        seg('Sample', G.SAMPLE_DEFS.map(s => s.label), () => G.smpA[l],
+          i => { G.setSmp(l, i); rr(); },
+          isSyn ? 'SYN: a synthesized drum — shape it below'
+            : isUsr ? (G.userSmp[l] ? `“${G.userSmp[l].name}”` : 'no file yet — load or dig one below') : null),
+        ...(isUsr ? [h('div', 'pk-actions',
+          action('📂 load audio file', () => G.loadUserSample(l)),
+          action('💿 wiki dig', () => G.digSample('lane', l, 'wiki')),
+          action('📀 78rpm dig', () => G.digSample('lane', l, 'ia')))] : [])),
+    };
   }
 
   function drumParams(l) {
-    return [
-      ...(G.smpA[l] === C.SMP_USR ? [
-        group('sample', 'where each hit starts in the file — LFO it for slice motion',
-          lfoable(C.DCRP_A + l, stepper('Crop start', 0, 100, 1, () => m[C.DCRP_A + l], v => m[C.DCRP_A + l] = v, fmtPct)))] : []),
-      ...(G.smpA[l] === C.SMP_SYN ? [
+    return {
+      crop: (G.smpA[l] === C.SMP_USR
+        ? group('crop', 'where each hit starts in the file — LFO it for slice motion',
+          lfoable(C.DCRP_A + l, stepper('Crop start', 0, 100, 1, () => m[C.DCRP_A + l], v => m[C.DCRP_A + l] = v, fmtPct))) : null),
+      synth: (G.smpA[l] === C.SMP_SYN ? (
         group('synth drum voice', 'Pitch = tuning, Filter shapes it, decay from Gate',
           lfoable(C.DNSE_A + l, stepper('Noise mix', 0, 100, 5, () => m[C.DNSE_A + l], v => m[C.DNSE_A + l] = v, fmtPct)),
           lfoable(C.DSWP_A + l, stepper('Pitch sweep', 0, 100, 5, () => m[C.DSWP_A + l], v => m[C.DSWP_A + l] = v, fmtPct,
@@ -336,8 +341,8 @@ window.createGnomeUI = function (G) {
           lfoable(C.DSUB_A + l, stepper('30Hz sub (beef)', 0, 100, 5, () => m[C.DSUB_A + l], v => m[C.DSUB_A + l] = v, fmtPct,
             'a low sine under the transient to fatten it')),
           lfoable(C.DCLK_A + l, stepper('Click', 0, 100, 5, () => m[C.DCLK_A + l], v => m[C.DCLK_A + l] = v, fmtPct)),
-          stepper('Decay (gate)', 5, 200, 5, () => G.getParam(l, 7), v => G.setParam(l, 7, v), fmtPct))] : []),
-      group('pattern', 'euclidean engine: pulses spread evenly across steps',
+          stepper('Decay (gate)', 5, 200, 5, () => G.getParam(l, 7), v => G.setParam(l, 7, v), fmtPct))) : null),
+      pattern: group('pattern', 'euclidean engine: pulses spread evenly across steps',
         stepper('Steps', 1, 32, 1, () => G.getParam(l, 2), v => G.setParam(l, 2, v)),
         stepper('Length (beats)', 0.25, 16, 0.25, () => G.getParam(l, 3), v => G.setParam(l, 3, v), fmtQ),
         stepper('Pulses', 0, 32, 1, () => G.getParam(l, 4), v => { G.setParam(l, 4, v); G.applyEuclid(l); }),
@@ -349,22 +354,22 @@ window.createGnomeUI = function (G) {
         seg('Timing mode', ['PR — synced', 'PM — drifts'],
           () => m[C.LMODE_A + l], i => m[C.LMODE_A + l] = i,
           'PR: steps fill the length. PM: fixed 16th steps, pattern drifts')),
-      group('sound', null,
+      sound: group('sound', null,
         stepper('Velocity', 1, 127, 1, () => G.getParam(l, 6), v => G.setParam(l, 6, v)),
         stepper('Pitch', -24, 24, 1, () => G.getParam(l, 8), v => G.setParam(l, 8, v), fmtSt),
         stepper('Filter cutoff', 0, 100, 5, () => G.getParam(l, 9), v => G.setParam(l, 9, v), fmtCut),
         stepper('Filter env per hit', 0, 100, 5, () => G.getParam(l, 10), v => G.setParam(l, 10, v))),
-      group('motion', 'a beat-synced LFO wobbles the filter (and pitch, if you let it)',
+      motion: group('motion', 'a beat-synced LFO wobbles the filter (and pitch, if you let it)',
         stepper('LFO rate (beats)', 0.25, 16, 0.25, () => G.getParam(l, 11), v => G.setParam(l, 11, v), fmtQ),
         stepper('LFO → filter depth', 0, 100, 5, () => G.getParam(l, 12), v => G.setParam(l, 12, v)),
         seg('LFO shape', ['sine', 'triangle', 'saw ↓', 'S&H', 'saw ↑', 'spline', 'golden'], () => m[C.LSHAPE_A + l], i => m[C.LSHAPE_A + l] = i),
         stepper('LFO → pitch (semis)', 0, 24, 1, () => G.getParam(l, 14), v => G.setParam(l, 14, v))),
-      group('groove', null,
+      groove: group('groove', null,
         stepper('Swing', 0, 75, 5, () => G.getParam(l, 15), v => G.setParam(l, 15, v), fmtPct),
         stepper('Nudge range', -50, 50, 5, () => G.getParam(l, 16), v => G.setParam(l, 16, v), fmtPct,
           'how far off the grid a hit may land — each hit picks its own amount up to this, so the lane breathes instead of sitting exactly late'),
         stepper('Humanize velocity', 0, 100, 5, () => G.getParam(l, 17), v => G.setParam(l, 17, v), fmtPct)),
-    ];
+    };
   }
 
   function synthMain(si, say, rerender) {

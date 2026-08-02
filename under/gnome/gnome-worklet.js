@@ -10,6 +10,18 @@
 'use strict';
 
 const LANES_CAP = 8, MAX_STEPS = 32, NROWS = 12, NSYN = 3;
+// most steps one render quantum may schedule; a stalled/resumed audio thread
+// must not be able to dump an entire pattern into a single block
+const SCHED_MAX = 64;
+// NUDGE is a range, not a fixed offset: each hit lands somewhere between the
+// grid and the full nudge. This must be DETERMINISTIC per step occurrence --
+// the scheduler scans a step of slack either side of the block, so a hit near a
+// boundary is evaluated in two adjacent blocks. With Math.random() the two
+// evaluations would disagree and the hit would double-fire or vanish.
+function stepRand(n, seed) {
+  const h = Math.sin(n * 127.1 + seed * 311.7) * 43758.5453;
+  return h - Math.floor(h);
+}
 
 // ---- mem offsets (mirror of the JSFX block; keep in sync with gnome.js) ----
 const PAT = 0, STEPS_A = 272, SPAN_A = 280, PUL_A = 288,
@@ -73,6 +85,7 @@ const GLD_TIME = 1028;
 const MBR_ON = 1029, MBR_FREQ = 1030, MBR_SPRD = 1031, MBR_Q = 1032;
 const MBR_MODE = 1033, MBR_MIX = 1034, MBR_DRV = 1035;
 const MBR_SND_A = 1036, MBR_LSND_A = 1040;   // 4 parts, then 8 drum lanes
+const BPM_WSH = 1048;                       // tempo-wobble LFO shape
 // GOLDEN METER: tempo, grid and step length are all untouched — what changes
 // is HOW MANY STEPS the loop runs before it snaps back to step 0. The loop
 // grows 1,1,2,3,5,8,13,21 steps and starts over (21 is the ceiling because the
@@ -245,6 +258,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     this.bpm = 120;
     this.gBeat = 0;
     this.wobPh = 0;   // tempo-wobble LFO phase
+    this.wobCy = 0;   // ...and its cycle count, for S&H / spline / golden
 
     // part gains: drums, bass, melody, chords + master (0..1)
     this.gPart = [1, 1, 1, 1];
@@ -283,6 +297,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     this.scopeBuf = new Float32Array(512); // bass waveform tap for the XY scope
     this.scopeW = 0;
     this.xyDc = 0;                         // DC tracker for the XY waveshaper
+    this.dlyLenS = 0;                      // smoothed delay length in samples
     // 4-band resonator: one state-variable filter per band, plus a slow
     // envelope per band (the multiply modes normalise by it) and output DC
     this.mbLo = F(4); this.mbBp = F(4);
@@ -293,7 +308,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     this.fltLo = F(LANES_CAP); this.fltBp = F(LANES_CAP);
     this.fltLo2 = F(LANES_CAP); this.fltBp2 = F(LANES_CAP);
     this.fltF = F(LANES_CAP); this.fenv = F(LANES_CAP);
-    this.shc = F(14); this.shv = F(14); this.shn = F(14);
+    this.shc = F(16); this.shv = F(16); this.shn = F(16);
 
     this.svDel = F(NSYN); this.svNfreq = F(NSYN); this.svNgain = F(NSYN);
     this.svFreq = F(NSYN); this.svGain = F(NSYN); this.svStage = F(NSYN);
@@ -380,6 +395,15 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     this.rec = false; this.REC_CHUNK = 4096;
     this.recBufL = new Float32Array(this.REC_CHUNK);
     this.recBufR = new Float32Array(this.REC_CHUNK);
+    // stems: drums / bass / melody / chords / fx, interleaved L,R per stem.
+    // The four instrument stems are tapped after panning; the fx stem is
+    // whatever the master has that they do not, so it needs no tapping at all
+    // and can never drift out of sync with the rack.
+    this.STEMS = 5;
+    this.recStems = false;
+    this.stemBuf = [];
+    for (let i = 0; i < this.STEMS * 2; i++)
+      this.stemBuf.push(new Float32Array(this.REC_CHUNK));
     this.recPos = 0;
 
     this.tickN = 0;
@@ -426,7 +450,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
       // per-synth splice sample (mono)
       this.spl[d.si] = d.data ? { data: d.data, sr: d.sr, len: d.len } : null;
     } else if (d.type === 'record') {
-      if (d.on) { this.rec = true; this.recPos = 0; }
+      if (d.on) { this.rec = true; this.recPos = 0; this.recStems = !!d.stems; }
       else { this.rec = false; this.flushRec(true); }
     } else if (d.type === 'fillNow') {
       // a tree branch was clicked: force that fill level for the next bars
@@ -445,10 +469,16 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     if (this.recPos > 0) {
       const l = this.recBufL.slice(0, this.recPos);
       const r = this.recBufR.slice(0, this.recPos);
-      this.port.postMessage({ type: 'rec', l, r }, [l.buffer, r.buffer]);
+      const xfer = [l.buffer, r.buffer];
+      let st = null;
+      if (this.recStems) {
+        st = this.stemBuf.map(b2 => b2.slice(0, this.recPos));
+        for (const b2 of st) xfer.push(b2.buffer);
+      }
+      this.port.postMessage({ type: 'rec', l, r, st }, xfer);
       this.recPos = 0;
     }
-    if (done) this.port.postMessage({ type: 'recdone', sr: sampleRate });
+    if (done) this.port.postMessage({ type: 'recdone', sr: sampleRate, stems: this.recStems });
   }
 
   sget(si, k) {
@@ -619,7 +649,12 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
   // beat-synced LFO, phase-locked to beat 0. si = S&H state slot.
   lfoVal(rt, shp, si) {
     const phv = this.gBeat / Math.max(0.25, rt);
-    const cy = Math.floor(phv), fr = phv - cy;
+    return this.shapeAt(Math.floor(phv), phv - Math.floor(phv), shp, si);
+  }
+  // one LFO cycle's worth of shape, given the cycle index and phase. Split out
+  // of lfoVal so the tempo wobble can drive it from its OWN phase — the wobble
+  // must not read gBeat, which advances at the wobbled rate it is producing.
+  shapeAt(cy, fr, shp, si) {
     if (shp === 3) {
       if (cy !== this.shc[si]) { this.shc[si] = cy; this.shv[si] = Math.random() * 2 - 1; }
       return this.shv[si];
@@ -862,16 +897,33 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
       m[t] = v;
     }
 
+    // A bad bpm poisons every downstream time, so pin it to something sane
+    // before anything reads it.
+    if (!(this.bpm > 0) || !isFinite(this.bpm)) this.bpm = 120;
+    this.bpm = Math.max(20, Math.min(400, this.bpm));
     // tempo wobble: a slow sine breathes the effective bpm up and down
-    // (depth up to ±12%, period in beats). Phase advances in musical time.
+    // (depth up to ±12%, period in beats). The phase advances off the BASE
+    // tempo, not the wobbled one — feeding effBpm back into its own phase made
+    // the wobble self-referential, so a single non-finite value latched forever.
     let effBpm = this.bpm;
     if (m[BPM_WOB] > 0) {
-      effBpm = this.bpm * (1 + m[BPM_WOB] / 100 * 0.12 * Math.sin(2 * Math.PI * this.wobPh));
-      this.wobPh += (nframes / (srate * 60 / effBpm)) / Math.max(4, m[BPM_WRT]);
-      if (this.wobPh >= 1) this.wobPh -= 1;
+      this.wobPh = sane(this.wobPh)
+        + (nframes / (srate * 60 / this.bpm)) / Math.max(4, m[BPM_WRT]);
+      if (this.wobPh >= 1) { this.wobPh -= 1; this.wobCy++; }
+      // a real player's push and drag is not a tidy sine: S&H lurches, the saws
+      // ramp and snap back, spline wanders, golden steps out by phi
+      const wv = this.shapeAt(this.wobCy, this.wobPh, m[BPM_WSH] | 0, 14);
+      effBpm = this.bpm * (1 + m[BPM_WOB] / 100 * 0.12 * sane(wv));
     }
+    if (!(effBpm > 0) || !isFinite(effBpm)) effBpm = this.bpm;
     const bps = effBpm / 60;
     const spb = srate / bps;
+    // FX timings stay on the BASE tempo. Deriving them from the wobbled tempo
+    // modulated the delay line's length, and a delay line whose length moves is
+    // a pitch shifter — the wobble was detuning the echoes and clicking the
+    // read pointer every block. The groove breathes; the effects hold still.
+    const spbFx = srate / (this.bpm / 60);
+    if (!isFinite(this.gBeat)) this.gBeat = 0;
     const blkStart = this.gBeat;
     const blkEnd = blkStart + nframes / spb;
     const toOfs = (t) => Math.min(Math.max(0,
@@ -1050,13 +1102,19 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
         // scan one step of slack either side so swing/nudge shifts stay caught
         let n = Math.ceil((seqStart - stepdur) / stepdur - 1e-9);
         let t = n * stepdur;
-        while (t < seqEnd + stepdur) {
+        // One render quantum is a handful of steps at any sane tempo. If the
+        // clock ever jumps -- a stalled audio thread, a resumed context -- this
+        // stops the block from firing the whole pattern at once, which is what
+        // "zipping through the sequence" sounds like.
+        let guard = SCHED_MAX;
+        while (t < seqEnd + stepdur && guard-- > 0) {
           const gl = m[GLD_TIME] ? goldLoop(n) : null;
           const stepidx = gl ? gl.local % steps : ((n % steps) + steps) % steps;
           const pass = gl ? gl.pass : Math.floor(n / steps);
           const pv = m[PAT + l * MAX_STEPS + stepidx];
           if (pv && (pv !== 2 || pass % 2 !== 0)) {
-            const tsh = t + (m[NDG_A + l] / 100 + ((stepidx & 1) ? m[SWG_A + l] / 100 : 0)) * stepdur;
+            const tsh = t + (m[NDG_A + l] / 100 * stepRand(n, l + 1)
+              + ((stepidx & 1) ? m[SWG_A + l] / 100 : 0)) * stepdur;
             const gate = stepdur * spb * (m[GATE_A + l] / 100) * 2;
             if (pv === 3) {
               // ghost-fill cell: two grace notes rolling into a soft hit
@@ -1093,13 +1151,15 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
         const seqStart = blkStart, seqEnd = blkEnd;
         let n = Math.ceil((seqStart - stepdur) / stepdur - 1e-9);
         let t = n * stepdur;
-        while (t < seqEnd + stepdur) {
+        let guard = SCHED_MAX;
+        while (t < seqEnd + stepdur && guard-- > 0) {
           const gl = m[GLD_TIME] ? goldLoop(n) : null;
           const stepidx = gl ? gl.local % nst : ((n % nst) + nst) % nst;
           const pass = gl ? gl.pass : Math.floor(n / nst);
           const sv2 = m[ron + stepidx];
           if (sv2 && (sv2 !== 2 || pass % 2 !== 0)) {
-            const tsh = t + (m[SND_A + si] / 100 + ((stepidx & 1) ? m[SSW_A + si] / 100 : 0)) * stepdur;
+            const tsh = t + (m[SND_A + si] / 100 * stepRand(n, si + 17)
+              + ((stepidx & 1) ? m[SSW_A + si] / 100 : 0)) * stepdur;
             if (tsh >= seqStart && tsh < seqEnd) {
               const ofs = toOfs(tsh);
               // harmony: diatonic degree shift for 12-TET progs, exact cents for JI
@@ -1182,7 +1242,11 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     const dlyOn = m[DLY_ON] ? 1 : 0;
     const avoOn = m[AVO_ON] ? 1 : 0;
     const DMAX = this.FX_DLY_MAX;
-    const dlyTimeSamp = Math.min(DMAX - 4, Math.max(2, m[DLY_TIME] * spb));
+    const dlyTarget = Math.min(DMAX - 4, Math.max(2, m[DLY_TIME] * spbFx));
+    // glide toward the target: a jump in delay length is a click and a pitch jolt
+    if (!isFinite(this.dlyLenS) || this.dlyLenS <= 0) this.dlyLenS = dlyTarget;
+    this.dlyLenS += (dlyTarget - this.dlyLenS) * 0.05;
+    const dlyTimeSamp = this.dlyLenS;
     const dlyFb = Math.min(0.98, m[DLY_FB] / 100 * 0.98);
     const toneCoef = 0.04 + m[DLY_TONE] / 100 * 0.9;   // one-pole: higher = brighter
     const wowDepth = m[DLY_WOW] / 100 * 45;             // samples of pitch drift
@@ -1571,13 +1635,20 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
       this.scopeW = (this.scopeW + 1) & 511;
 
       // ---- 3D space: position each entity (lanes + synths), sum to master ----
+      let stD0 = 0, stD1 = 0, stB0 = 0, stB1 = 0, stM0 = 0, stM1 = 0, stC0 = 0, stC1 = 0;
       for (let p = 0; p < NE; p++) {
         if (p < 8 && p >= this.numLanes) continue;
         let s = pm[p];
         this.pLp[p] += this.panK[p] * (s - this.pLp[p]);
         s = s + (this.pLp[p] - s) * this.panBack[p];
-        spl0 += s * this.panGL[p];
-        spl1 += s * this.panGR[p];
+        const gl = s * this.panGL[p], gr = s * this.panGR[p];
+        spl0 += gl; spl1 += gr;
+        if (this.recStems) {
+          if (p < 8) { stD0 += gl; stD1 += gr; }
+          else if (p === 8) { stB0 += gl; stB1 += gr; }
+          else if (p === 9) { stM0 += gl; stM1 += gr; }
+          else { stC0 += gl; stC1 += gr; }
+        }
         this.pEner[p] += s < 0 ? -s : s;
       }
 
@@ -1640,7 +1711,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
             this.avoSlice = slice;
             if (Math.random() < avoAmt) {
               this.avoStut = 1;
-              const sliceSamp = avoRate * spb;
+              const sliceSamp = avoRate * spbFx;
               let rl = Math.floor(sliceSamp * (0.5 - 0.4 * avoAmt));
               if (rl < 64) rl = 64; if (rl > AMAX - 1) rl = AMAX - 1;
               this.avoLen = rl;
@@ -1795,6 +1866,17 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
       if (this.rec) {
         this.recBufL[this.recPos] = oL;
         this.recBufR[this.recPos] = oR;
+        if (this.recStems) {
+          const sb = this.stemBuf, i = this.recPos;
+          sb[0][i] = stD0; sb[1][i] = stD1;
+          sb[2][i] = stB0; sb[3][i] = stB1;
+          sb[4][i] = stM0; sb[5][i] = stM1;
+          sb[6][i] = stC0; sb[7][i] = stC1;
+          // everything the master carries that the parts do not: the whole fx
+          // rack, the piano strings and the 4-band, taken pre-limiter
+          sb[8][i] = spl0 - (stD0 + stB0 + stM0 + stC0);
+          sb[9][i] = spl1 - (stD1 + stB1 + stM1 + stC1);
+        }
         if (++this.recPos >= this.REC_CHUNK) this.flushRec(false);
       }
     }

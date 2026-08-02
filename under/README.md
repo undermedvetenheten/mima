@@ -91,17 +91,110 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
   **Sheet music (PDF)**: `gnome-score.js` renders the current pattern as staff
   notation — one system per pitched part (clef auto-picked from each part's
   pitch range so notes land on the staff, not stacks of ledger lines), plus a
-  drum grid (x = hit, ◆ = accent). `buildScoreModel` in gnome.js does the
-  musical mapping (pitches match playback at the nearest semitone — microtonal
-  scales are labelled as approximated; rhythm is the step grid, beats per step
-  = span ÷ steps). The **time signature is guessed** (`guessMeter`) from where
-  the kick and bass put their weight — candidate meters that divide the spans
-  are scored by average downbeat emphasis — and parts whose span disagrees
-  with the global meter carry their own signature (polymeter notated as-is).
-  It's drawn as inline SVG into an on-screen preview and saved via the
-  browser's print-to-PDF (`window.print`), so it works the same on desktop and
-  iOS. The canvas has a ♪ PDF header button; the pocket has a "Sheet music
-  (PDF)" action on the KEY·MIX tab.
+  drum grid (x = hit, ◆ = accent).
+
+  **The meter is derived, not guessed.** A signature `n/d` says: n notes of
+  value 1/d to the bar, and a 1/d note lasts 4/d quarter notes. So let **one
+  step be one unit of the signature**:
+
+      d = 4 / stepdur        (the note value of one step)
+      n = the step count
+
+  This matches how you would work a signature out by ear: tap the pulse, find
+  where the downbeat resets, count the beats between. **Reduction supplies the
+  pulse** (halving until the quarter note is the beat, unless the numerator is
+  odd or the meter is compound) and **the loop supplies the measure** — in a
+  step sequencer the pattern restarting *is* the downbeat reset. A loop that is
+  an exact multiple of the main pulse's bar is split into that many bars rather
+  than printed as one enormous one: a 32-step sixteenth loop is **two bars of
+  4/4**, not one bar of 8/4. A loop that doesn't divide by the reference keeps
+  its own signature — that is real polymeter, not a mistake.
+
+  What the rule does *not* do is read accents: it never inspects which hits are
+  loud to find the downbeat, only the grid's geometry. In this sequencer that is
+  almost always right, because the loop boundary is the strongest downbeat there
+  is, but a pattern that internally groups against its own loop length will be
+  barred by the loop rather than by the accent.
+
+  SPAN never appears directly — it is what *sets* stepdur, and therefore the
+  denominator. 16 steps on a sixteenth grid is 16/16, written **4/4**; 7 steps
+  on an eighth grid is **7/8**; 8 steps of sixteenths (PM mode) is **2/4** —
+  half a bar, which is what it really is. Reduction halves n and d together, so
+  the bar length never changes; compound meters keep their eighth (**6/8**,
+  **9/8**, **12/8** are not 3/4, 4½/4 and 6/4). The heading shows the **main
+  pulse** — the first sounding drum lane, else the bass — and any part on a
+  different grid carries its own signature, so genuine polymeter is notated as
+  polymeter instead of being flattened to 4/4.
+
+  Under the **golden loop** every part is written out over its whole 54-step
+  cycle and the signature changes bar to bar — with a sixteenth grid that reads
+  `1/16 · 1/16 · 1/8 · 3/16 · 5/16 · 2/4 · 13/16 · 21/16`. Parts on different
+  grids reach the end of that cycle at different times, which is exactly what
+  you hear. Long cycles get dense on the page: the renderer draws one
+  unwrapped system per part, so a 54-beat melody is a very wide staff.
+
+  A grid that doesn't divide into note values (a triplet feel, or a step count
+  that doesn't divide the span) can't be given an honest simple signature, so
+  the loop length is approximated and the page says so. `buildScoreModel` in
+  gnome.js does the musical mapping (pitches match playback at the nearest
+  semitone — microtonal scales are labelled as approximated). It's drawn as
+  inline SVG into an on-screen preview and saved via the browser's
+  print-to-PDF (`window.print`), so it works the same on desktop and iOS. The
+  canvas has a ♪ PDF header button; the pocket has a "Sheet music (PDF)"
+  action on the KEY·MIX tab.
+
+  **Stems + packaging.** Arming **STEMS** (header button, or the ⚙ chip in the
+  pocket transport) makes a take capture five extra stereo buses alongside the
+  master: **drums / bass / melody / chords / fx**. The four instrument stems are
+  tapped after panning; the fx stem is *derived by subtraction* — whatever the
+  master carries that the parts do not — so the whole rack (delay, glitch,
+  grain, piano strings, 4-band) lands in it and it can never drift out of sync
+  with the routing. Stems are **pre master limiter**, which is what a DAW wants:
+  `tanh(sum of stems) == master` to within 16-bit quantisation (measured 0.02%).
+
+  **ZIP** packs the take into one archive — master.wav, a wav per stem, and the
+  compressed copy — using a store-only zip writer (~40 lines with a CRC32
+  table) rather than a vendored library, since WAV barely deflates anyway.
+
+  **A compressed copy is recorded in parallel**, not re-encoded afterwards
+  (re-encoding costs a second of wall clock per second of audio). Note:
+  **browsers cannot encode MP3** — `MediaRecorder` supports AAC (`audio/mp4`)
+  and Opus (`audio/webm`), never `audio/mpeg`, so takes come out as **.m4a**
+  where AAC is available and .webm otherwise. A true .mp3 would need a
+  JavaScript encoder vendored into the repo.
+
+  **Tempo wobble** (`BPM_WOB` amount, `BPM_WRT` period, `BPM_WSH` shape) sits in
+  the experimental strip with the golden-ratio toggles, because it moves the
+  clock under everything. It takes **any of the seven LFO shapes**, not just a
+  sine: a real player's push and drag is not a tidy period, so S&H lurches, the
+  saws ramp and snap back, spline wanders and golden steps out by φ. The
+  wobble's phase advances off the **base** tempo, never off its own output.
+
+  **Timing robustness.** The beat clock is the one piece of state that, if it
+  ever goes wrong, takes everything with it, so it is defended: `bpm` is pinned
+  to 20-400 on arrival, `gBeat` and the wobble phase are checked for
+  non-finiteness, and the wobble's phase advances off the **base** tempo rather
+  than the wobbled one (feeding `effBpm` back into its own phase made it
+  self-referential — one bad value would have latched forever). Each scheduler
+  loop is capped at `SCHED_MAX` steps per render quantum, so a stalled or
+  resumed audio thread cannot dump a whole pattern into one block.
+  Backgrounding the tab **parks the context** rather than letting the audio
+  thread fall behind and then race to catch up, and re-sends transport on the
+  way back in.
+
+  **FX timings run off the base tempo, not the wobbled one.** The delay line's
+  length used to be `DLY_TIME × spb` with `spb` taken from the wobbled tempo —
+  and a delay line whose length is moving is a pitch shifter, so tempo wobble
+  was detuning the echoes and jolting the read pointer every block. The groove
+  breathes; the effects hold still. Delay length also glides toward its target
+  now, so changing TIME no longer snaps the read pointer.
+
+  **NUDGE is a range, not a fixed offset** (`NDG_A`, `SND_A`): each hit picks
+  its own amount between the grid and the full nudge, so a lane breathes instead
+  of sitting exactly late. The amount is a deterministic hash of the absolute
+  step index, *not* `Math.random()` — the scheduler scans a step of slack either
+  side of each block, so a hit near a boundary is evaluated twice, and two
+  different random values would make it double-fire or vanish.
 
   **A fresh gnome starts as a chill jam.** INIT (and a first-ever visit) no
   longer deals a neutral test groove — it opens playable: **90 bpm, A#

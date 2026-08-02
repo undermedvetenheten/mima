@@ -9,7 +9,7 @@
 
 // bump on every release: cache-busts the worklet module so a stale cached
 // DSP can never run against fresh UI code
-const APP_V = '27';
+const APP_V = '31';
 
 
 const LANES_CAP = 8, MAX_STEPS = 32, EUC_N = 21, NROWS = 12, NSCALES = 15,
@@ -102,6 +102,7 @@ const GLD_TIME = 1028;
 const MBR_ON = 1029, MBR_FREQ = 1030, MBR_SPRD = 1031, MBR_Q = 1032;
 const MBR_MODE = 1033, MBR_MIX = 1034, MBR_DRV = 1035;
 const MBR_SND_A = 1036, MBR_LSND_A = 1040;   // 4 parts, then 8 drum lanes
+const BPM_WSH = 1048;                       // tempo-wobble LFO shape
 // GOLDEN METER: tempo and grid are untouched — the LOOP LENGTH grows
 // 1,1,2,3,5,8,13,21 steps and snaps back. Mirrors goldLoop() in the worklet.
 const GM_STEPS = [1, 1, 2, 3, 5, 8, 13, 21];
@@ -252,64 +253,116 @@ function rollLabel(si, deg) {
 // part's span, score the average accent weight landing on its downbeats —
 // a four-on-the-floor kick ties everything and the prior picks 4/4, but a
 // kick on 1 & 4 of a 6-beat span makes 3 win (waltz feel), etc.
-function guessMeter() {
-  const on = [];   // onsets: { b: beat position, w: weight }
+// ---- meter -------------------------------------------------------------
+// A time signature n/d says: n notes of value 1/d to the bar. A 1/d note lasts
+// 4/d quarter notes. So if we let ONE STEP be one unit of the signature:
+//
+//     d = 4 / stepdur      (the note value of a step)
+//     n = the step count
+//
+// SPAN never appears directly — it is what SETS stepdur, and therefore the
+// denominator. A lane of 7 steps on an eighth-note grid is 7/8; the same 7
+// steps on a sixteenth grid is 7/16. That is the whole rule.
+const FEL_MULT_S = [1, 2 / 3, 1.5];
+// step length in quarter notes, for a drum lane / for a pitched part
+function laneStepDur(l) {
+  const steps = Math.max(1, Math.round(m[STEPS_A + l]));
+  return m[LMODE_A + l] ? m[SPAN_A + l] / 16 : m[SPAN_A + l] / steps;
+}
+function partStepDur(si) {
+  const steps = Math.max(1, Math.round(sget(si, 2)));
+  return (sget(si, 15) ? sget(si, 3) / 16 : sget(si, 3) / steps)
+    * FEL_MULT_S[m[SFL_A + si] | 0];
+}
+// n/d for `steps` steps of `stepdur` quarter notes each.
+function stepSig(steps, stepdur) {
+  steps = Math.max(1, Math.round(steps));
+  const d0 = 4 / stepdur, p = Math.round(Math.log2(d0));
+  if (stepdur > 0 && p >= 0 && p <= 6 && Math.abs(d0 - Math.pow(2, p)) < 1e-9) {
+    let n = steps, d = Math.pow(2, p);
+    // Decide compound ONCE, on the grid as written: 6, 9 or 12 on an eighth or
+    // sixteenth grid is 6/8, 9/8, 12/8 and stays that way. Testing this during
+    // reduction instead made any numerator divisible by three stick — a 24-step
+    // sixteenth loop froze at 24/16 rather than reducing to 6/4.
+    const compound = (d === 8 || d === 16) && (n === 6 || n === 9 || n === 12);
+    // 16/16 is how a 16-step sixteenth loop falls out, but it is written 4/4.
+    // Halving n and d together keeps the bar exactly as long (n*4/d unchanged).
+    if (!compound) while (n % 2 === 0 && d > 4) { n /= 2; d /= 2; }
+    return { n, d, exact: true };
+  }
+  // The grid does not divide into note values — a triplet feel, or a step
+  // count that doesn't divide the span. There is no honest simple signature,
+  // so notate the LOOP LENGTH and let the caller disclose the approximation.
+  let b = steps * stepdur, d = 4;
+  while (Math.abs(b - Math.round(b)) > 1e-6 && d < 32) { b *= 2; d *= 2; }
+  return { n: Math.max(1, Math.round(b)), d, exact: false };
+}
+// The main pulse: the first sounding drum lane, else the bass. Everything else
+// is compared against this one to decide what counts as "the" meter.
+function referenceSig() {
   for (let l = 0; l < numLanes; l++) {
     if (!smpA[l]) continue;
-    const steps = m[STEPS_A + l], bps = m[SPAN_A + l] / steps;
-    const w = SAMPLE_DEFS[smpA[l]].label === 'BD' ? 3 : 1;   // the kick leads
-    for (let i = 0; i < steps; i++)
-      if (m[PAT + l * MAX_STEPS + i]) on.push({ b: i * bps, w });
+    for (let i = 0; i < Math.round(m[STEPS_A + l]); i++)
+      if (m[PAT + l * MAX_STEPS + i]) return stepSig(m[STEPS_A + l], laneStepDur(l));
   }
-  const bron = ronOff(0), bsteps = sget(0, 2), bbps = sget(0, 3) / bsteps;
-  for (let i = 0; i < bsteps; i++)
-    if (m[bron + i]) on.push({ b: i * bbps, w: 2 });         // bass emphasis
-  if (!on.length) return 4;
-  const spans = [];
-  for (let l = 0; l < numLanes; l++) if (smpA[l]) spans.push(m[SPAN_A + l]);
-  spans.push(sget(0, 3));
-  let best = 4, bestScore = -1;
-  for (const M of [4, 3, 2, 6, 5, 7]) {
-    if (!spans.some(sp => Math.abs(sp / M - Math.round(sp / M)) < 1e-6)) continue;
-    let hit = 0, down = 0;
-    for (const o of on) {
-      const r = o.b % M;
-      if (r < 1e-6 || M - r < 1e-6) hit += o.w;
-    }
-    for (const sp of spans) down += Math.max(1, Math.round(sp / M));
-    const score = hit / down + (M === 4 ? 0.02 : M === 3 ? 0.01 : 0);
-    if (score > bestScore + 1e-9) { bestScore = score; best = M; }
-  }
-  return best;
+  return stepSig(sget(0, 2), partStepDur(0));
 }
-// time signature {n, d} for a span, preferring the global meter; parts whose
-// span the global meter doesn't divide get their own (polymeter shown as-is)
-function spanSig(span, meterM) {
-  let b = Math.abs(span / meterM - Math.round(span / meterM)) < 1e-6 ? meterM
-    : span % 4 === 0 ? 4 : span % 3 === 0 ? 3 : span;
-  let d = 4;
-  while (b !== Math.round(b) && d <= 16) { b *= 2; d *= 2; }   // 3.5 -> 7/8
-  return { n: Math.round(b), d };
+// The bars of one part. Normally every bar is the whole loop; under the golden
+// loop the bar walks 1,1,2,3,5,8,13,21 STEPS, so the signature changes bar to
+// bar and the notated cycle is all 54 steps long.
+//
+// refBeats is the main pulse's bar length. A loop that is an exact multiple of
+// it is split into that many bars rather than printed as one enormous one: tap
+// the pulse, and the downbeat resets every refBeats -- a 32-step sixteenth loop
+// is two bars of 4/4, not a single bar of 8/4. A loop that does NOT divide by
+// the reference keeps its own signature; that is real polymeter, not a mistake.
+function barPlan(steps, stepdur, refBeats) {
+  steps = Math.max(1, Math.round(steps));
+  const bars = [];
+  if (m[GLD_TIME]) {
+    let n = 0;
+    for (let k = 0; k < 8; k++) {
+      bars.push({ beat: n * stepdur, steps: GM_STEPS[k], sig: stepSig(GM_STEPS[k], stepdur) });
+      n += GM_STEPS[k];
+    }
+    return { bars, cycleSteps: n, stepOf: (i) => goldLoop(i).local % steps };
+  }
+  const loopBeats = steps * stepdur;
+  if (refBeats > 0 && stepdur > 0) {
+    const nb = loopBeats / refBeats, sb = refBeats / stepdur;
+    if (nb >= 2 && Math.abs(nb - Math.round(nb)) < 1e-6
+      && Math.abs(sb - Math.round(sb)) < 1e-6) {
+      const per = Math.round(sb), sig = stepSig(per, stepdur);
+      for (let k = 0; k < Math.round(nb); k++)
+        bars.push({ beat: k * refBeats, steps: per, sig });
+      return { bars, cycleSteps: steps, stepOf: (i) => i };
+    }
+  }
+  bars.push({ beat: 0, steps, sig: stepSig(steps, stepdur) });
+  return { bars, cycleSteps: steps, stepOf: (i) => i };
 }
 const sigBeats = sig => sig.n * 4 / sig.d;
 
 // A musical model of the current pattern, for the score export. Pitches match
 // what plays (nearest semitone — microtonal scales are approximated); timing
-// is the step grid (beats per step = span / steps).
+// is the step grid: one step is one unit of the time signature (see stepSig).
 function buildScoreModel() {
   const parts = [];
   const has7 = sget(2, 24) > 0;
   const chordDegs = has7 ? [0, 2, 4, 6] : [0, 2, 4];
-  const meterM = guessMeter();
-  let microtonal = false;
+  const refSig = referenceSig();
+  const refBeats = refSig.n * 4 / refSig.d;
+  let microtonal = false, approx = false;
   for (let si = 0; si < NSYN; si++) {
     const ron = ronOff(si), rdg = rdgOff(si);
-    const steps = Math.round(sget(si, 2)), span = sget(si, 3);
-    const bps = span / steps;
+    const steps = Math.max(1, Math.round(sget(si, 2)));
+    const bps = partStepDur(si);
+    const plan = barPlan(steps, bps, refBeats);
     const notes = [];
-    for (let i = 0; i < steps; i++) {
-      if (!m[ron + i]) { notes.push(null); continue; }
-      const deg = m[rdg + i], accent = m[ron + i] === 2;
+    for (let i = 0; i < plan.cycleSteps; i++) {
+      const st = plan.stepOf(i);
+      if (!m[ron + st]) { notes.push(null); continue; }
+      const deg = m[rdg + st], accent = m[ron + st] === 2;
       const midis = si === 2 ? chordDegs.map(dd => degMidi(2, deg + dd)) : [degMidi(si, deg)];
       notes.push({ midis, accent });
     }
@@ -317,35 +370,43 @@ function buildScoreModel() {
       // the disclaimer covers every part that actually sounds, using the
       // scale that part plays in (unlocked parts have their own scale)
       if (scaleIsMicro(effScale(si))) microtonal = true;
+      if (!plan.bars[0].sig.exact) approx = true;
       // pick the clef from the part's pitch range so notes sit on the staff
       // instead of stacks of ledger lines (chords/low parts go to bass clef).
       const allMidi = notes.filter(Boolean).flatMap(n => n.midis).sort((a, b) => a - b);
       const median = allMidi[Math.floor(allMidi.length / 2)];
       parts.push({ name: SYN_NAMES[si].toUpperCase(), clef: median < 59 ? 'bass' : 'treble',
-        steps, span, bps, notes, sig: spanSig(span, meterM),
+        steps: plan.cycleSteps, bps, notes, bars: plan.bars,
+        totalBeats: plan.cycleSteps * bps, sig: plan.bars[0].sig,
         keyPc: ((effBase(si) % 12) + 12) % 12, scix: effScale(si) });
     }
   }
   const drums = [];
   for (let l = 0; l < numLanes; l++) {
     if (!smpA[l]) continue;   // '---' lane is silent: don't notate phantom hits
-    const steps = Math.round(m[STEPS_A + l]), span = m[SPAN_A + l];
+    const steps = Math.max(1, Math.round(m[STEPS_A + l]));
+    const bps = laneStepDur(l);
+    const plan = barPlan(steps, bps, refBeats);
     const hits = [];
     let any = false;
-    for (let i = 0; i < steps; i++) {
-      const v = m[PAT + l * MAX_STEPS + i];
+    for (let i = 0; i < plan.cycleSteps; i++) {
+      const v = m[PAT + l * MAX_STEPS + plan.stepOf(i)];
       hits.push(v ? (v === 2 ? 2 : 1) : 0);
       if (v) any = true;
     }
-    if (any) drums.push({ name: SAMPLE_DEFS[smpA[l]].label, steps, span,
-      bps: span / steps, hits, sig: spanSig(span, meterM) });
+    if (any) {
+      if (!plan.bars[0].sig.exact) approx = true;
+      drums.push({ name: SAMPLE_DEFS[smpA[l]].label, steps: plan.cycleSteps, bps, hits,
+        bars: plan.bars, totalBeats: plan.cycleSteps * bps, sig: plan.bars[0].sig });
+    }
   }
   const scix = m[GKEY_SCALE];
   return {
     key: noteName(m[GKEY_NOTE]).replace(/-?\d+$/, ''),
     scale: SCALE_NAMES[scix] || '',
-    meter: spanSig(meterM, meterM),
-    microtonal,
+    meter: refSig,
+    golden: !!m[GLD_TIME],
+    microtonal, approxRhythm: approx,
     bpm, parts, drums,
   };
 }
@@ -877,7 +938,7 @@ function seedNewRegions(arr) {
   for (let l = 0; l < LANES_CAP; l++) {
     a[DNSE_A + l] = 20; a[DSWP_A + l] = 55; a[DSUB_A + l] = 25; a[DCLK_A + l] = 25;
   }
-  a[BPM_WOB] = 0; a[BPM_WRT] = 32;
+  a[BPM_WOB] = 0; a[BPM_WRT] = 32; a[BPM_WSH] = 0;
   a[MLFO_A] = 8; a[MLFO_A + 1] = 50; a[MLFO_A + 2] = 0;      // L1: 8 beats, 50%
   a[MLFO_A + 3] = 16; a[MLFO_A + 4] = 50; a[MLFO_A + 5] = 0; // L2: 16 beats
   for (let k = 0; k < MOD_SLOTS; k++) { a[MOD_TGT_A + k] = 0; a[MOD_MSK_A + k] = 0; }
@@ -1629,7 +1690,7 @@ async function initAudio() {
     } else if (d.type === 'rec') {
       recChunks.push(d); recFrames += d.l.length;
     } else if (d.type === 'recdone') {
-      finalizeRecording(d.sr);
+      finalizeRecording(d.sr, d.stems);
     }
   };
   pushState(); pushGains(); pushTransport();
@@ -1649,7 +1710,20 @@ function togglePlay() {
 // encode a 16-bit WAV on stop. lastRec keeps the finished take so the UI can
 // offer a save button (a fresh user gesture, which iOS/Safari needs).
 let recording = false, recChunks = [], recFrames = 0, recSampleRate = 44100;
-let lastRec = null; // { url, name, blob }
+let lastRec = null;      // { url, name, blob, stems: [{name, data}], comp }
+let armStems = false;    // capture per-instrument stems on the next take
+let hadStems = false;
+// Browsers cannot encode MP3: MediaRecorder offers AAC (audio/mp4) and Opus
+// (audio/webm), never audio/mpeg. We record a compressed copy in PARALLEL with
+// the raw capture rather than re-encoding afterwards, which would otherwise
+// cost a second of wall clock per second of audio.
+const COMP_TYPES = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'];
+function compType() {
+  if (typeof MediaRecorder === 'undefined') return null;
+  return COMP_TYPES.find(t => { try { return MediaRecorder.isTypeSupported(t); } catch (e) { return false; } }) || null;
+}
+function compExt(t) { return t && t.indexOf('mp4') >= 0 ? 'm4a' : 'webm'; }
+let mediaRec = null, mediaDest = null, compChunks = [], compBlob = null;
 
 async function startRecording() {
   if (recording) return;
@@ -1657,29 +1731,142 @@ async function startRecording() {
   if (actx.state === 'suspended') actx.resume();
   recSampleRate = actx.sampleRate;
   recChunks = []; recFrames = 0; recording = true;
-  node.port.postMessage({ type: 'record', on: true });
+  hadStems = armStems; compBlob = null; compChunks = [];
+  const ct = compType();
+  if (ct) {
+    try {
+      mediaDest = actx.createMediaStreamDestination();
+      node.connect(mediaDest);
+      mediaRec = new MediaRecorder(mediaDest.stream, { mimeType: ct, audioBitsPerSecond: 192000 });
+      mediaRec.ondataavailable = e => { if (e.data && e.data.size) compChunks.push(e.data); };
+      mediaRec.onstop = () => { compBlob = new Blob(compChunks, { type: ct }); };
+      mediaRec.start();
+    } catch (e) { mediaRec = null; mediaDest = null; }
+  }
+  node.port.postMessage({ type: 'record', on: true, stems: armStems });
 }
 function stopRecording() {
   if (!recording) return;
   recording = false;
+  if (mediaRec && mediaRec.state !== 'inactive') {
+    try { mediaRec.stop(); } catch (e) { /* ignore */ }
+  }
+  if (mediaDest) { try { node.disconnect(mediaDest); } catch (e) { /* ignore */ } mediaDest = null; }
   node.port.postMessage({ type: 'record', on: false }); // -> flush + recdone
 }
 function toggleRecording() { recording ? stopRecording() : startRecording(); }
 
-function finalizeRecording(sr) {
+function finalizeRecording(sr, withStems) {
   recSampleRate = sr || (actx ? actx.sampleRate : 44100);
   if (!recChunks.length) return;
   const blob = encodeWav(recChunks, recSampleRate);
-  recChunks = [];
-  if (lastRec && lastRec.url) URL.revokeObjectURL(lastRec.url);
   const d = new Date();
   const p = n => String(n).padStart(2, '0');
-  const name = `supergnome-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}` +
-    `-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.wav`;
-  lastRec = { url: URL.createObjectURL(blob), name, blob };
+  const stamp = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}` +
+    `-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+  const stems = [];
+  if (withStems || hadStems) {
+    for (let k = 0; k < STEM_NAMES.length; k++) {
+      const pr = stemPairs(recChunks, k);
+      if (pr.length) stems.push({ name: `${STEM_NAMES[k]}.wav`, data: encodeWavBytes(pr, recSampleRate) });
+    }
+  }
+  recChunks = [];
+  if (lastRec && lastRec.url) URL.revokeObjectURL(lastRec.url);
+  lastRec = { url: URL.createObjectURL(blob), name: `supergnome-${stamp}.wav`,
+    blob, stamp, stems, get comp() { return compBlob; } };
+  setStatus(`take saved: ${(blob.size / 1048576).toFixed(1)} MB wav`
+    + (stems.length ? ` + ${stems.length} stems` : '')
+    + (compBlob ? ` + ${compExt(compType())}` : '') + ' — tap SAVE or ZIP');
+}
+
+// everything from the take in one archive: master wav, the compressed copy,
+// and a wav per stem when they were captured
+function buildTakeZip() {
+  if (!lastRec) return null;
+  const files = [];
+  return lastRec.blob.arrayBuffer().then(async (mb) => {
+    files.push({ name: `supergnome-${lastRec.stamp}/master.wav`, data: new Uint8Array(mb) });
+    for (const st of lastRec.stems)
+      files.push({ name: `supergnome-${lastRec.stamp}/${st.name}`, data: st.data });
+    if (lastRec.comp) {
+      const cb = await lastRec.comp.arrayBuffer();
+      files.push({ name: `supergnome-${lastRec.stamp}/master.${compExt(compType())}`,
+        data: new Uint8Array(cb) });
+    }
+    return { blob: zipStore(files), name: `supergnome-${lastRec.stamp}.zip`, count: files.length };
+  });
+}
+async function saveTakeZip() {
+  const z = await buildTakeZip();
+  if (!z) return;
+  const file = new File([z.blob], z.name, { type: 'application/zip' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: z.name }); return; } catch (e) { /* fall through */ }
+  }
+  const url = URL.createObjectURL(z.blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = z.name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 20000);
+  setStatus(`${z.count} files saved as ${z.name}`);
+}
+
+// ---- stems + packaging ----------------------------------------------------
+const STEM_NAMES = ['drums', 'bass', 'melody', 'chords', 'fx'];
+// CRC32, for the zip's file records
+let CRCT = null;
+function crc32(u8) {
+  if (!CRCT) {
+    CRCT = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      CRCT[n] = c >>> 0;
+    }
+  }
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < u8.length; i++) c = CRCT[(c ^ u8[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+// A zip with no compression (method 0 = store). WAV barely deflates anyway, and
+// storing keeps this to a few dozen lines instead of a vendored library.
+function zipStore(files) {
+  const enc = new TextEncoder(), parts = [], central = [];
+  let offset = 0;
+  for (const f of files) {
+    const name = enc.encode(f.name), crc = crc32(f.data), len = f.data.length;
+    const lh = new Uint8Array(30 + name.length), dv = new DataView(lh.buffer);
+    dv.setUint32(0, 0x04034b50, true); dv.setUint16(4, 20, true);
+    dv.setUint32(14, crc, true); dv.setUint32(18, len, true);
+    dv.setUint32(22, len, true); dv.setUint16(26, name.length, true);
+    lh.set(name, 30);
+    parts.push(lh, f.data);
+    const ch = new Uint8Array(46 + name.length), cv = new DataView(ch.buffer);
+    cv.setUint32(0, 0x02014b50, true); cv.setUint16(4, 20, true); cv.setUint16(6, 20, true);
+    cv.setUint32(16, crc, true); cv.setUint32(20, len, true); cv.setUint32(24, len, true);
+    cv.setUint16(28, name.length, true); cv.setUint32(42, offset, true);
+    ch.set(name, 46);
+    central.push(ch);
+    offset += lh.length + len;
+  }
+  let cdSize = 0;
+  for (const c of central) cdSize += c.length;
+  const eocd = new Uint8Array(22), ev = new DataView(eocd.buffer);
+  ev.setUint32(0, 0x06054b50, true);
+  ev.setUint16(8, files.length, true); ev.setUint16(10, files.length, true);
+  ev.setUint32(12, cdSize, true); ev.setUint32(16, offset, true);
+  return new Blob([...parts, ...central, eocd], { type: 'application/zip' });
+}
+// pull one stem out of the captured chunks as {l, r} pairs
+function stemPairs(chunks, k) {
+  return chunks.filter(c => c.st).map(c => ({ l: c.st[k * 2], r: c.st[k * 2 + 1] }));
 }
 
 function encodeWav(chunks, sr) {
+  return new Blob([encodeWavBytes(chunks, sr)], { type: 'audio/wav' });
+}
+function encodeWavBytes(chunks, sr) {
   let n = 0;
   for (const c of chunks) n += c.l.length;
   const buf = new ArrayBuffer(44 + n * 4);      // 16-bit stereo
@@ -1700,7 +1887,7 @@ function encodeWav(chunks, sr) {
       v.setInt16(o, r < 0 ? r * 0x8000 : r * 0x7fff, true); o += 2;
     }
   }
-  return new Blob([buf], { type: 'audio/wav' });
+  return new Uint8Array(buf);
 }
 
 // save the finished take. Called from a user tap so the share sheet /
@@ -1740,6 +1927,8 @@ function yExp() { return yStat() + 20; }
 const EXP_H = 30;
 // φ tuning / φ loop chips inside that strip
 const EXP_PHI_X = 250, EXP_GLD_X = 292, EXP_CHIP_W = 34;
+// tempo wobble lives in the strip too: amount / period / shape
+const EXP_WOB_X = 372, EXP_WRT_X = 416, EXP_WSH_X = 466;
 function totalH() { return yExp() + EXP_H + 4; }
 
 // KEY row layout
@@ -1753,6 +1942,7 @@ const PLAY_R = [130, 4, 44, 22], BPM_R = [180, 4, 52, 22],
   REC_R = [330, 4, 52, 22], SAVE_R = [388, 4, 52, 22],
   UNDO_R = [446, 4, 34, 22], REDO_R = [484, 4, 34, 22],
   SHEET_R = [524, 4, 56, 22],
+  STEM_R = [584, 4, 52, 22], ZIP_R = [640, 4, 40, 22],
   // preset slots: tap = recall live, ALT/right-click = store; ⇩⇧ = file io
   PRE_RS = [[590, 4, 26, 22], [620, 4, 26, 22], [650, 4, 26, 22]],
   PEXP_R = [684, 4, 26, 22], PIMP_R = [714, 4, 26, 22];
@@ -2013,8 +2203,7 @@ function tryModAssign(off) {
 // which LFO-able mem offset sits under (x, y) — powers the ARM chip's
 // drag-and-drop assignment (mirrors the armed-tap hit zones)
 function findModTarget(x, y) {
-  if (y < 28) {   // header: tempo wobble + the per-lane mini mixer knobs
-    if (x >= 744 && x < 788) return BPM_WOB;
+  if (y < 28) {   // header: the per-lane mini mixer knobs
     for (let l = 0; l < numLanes; l++)
       if (x >= 840 + l * 19 && x < 858 + l * 19) return DVOL_A + l;
     return null;
@@ -2097,8 +2286,21 @@ function onDown(x, y, right) {
   dragMode = 0; dragMoved = false; rotApplied = 0;
   dragX = x; dragY = y;   // tap-vs-drag baseline for every mode
 
-  // experimental strip (very bottom): the two golden-ratio toggles
+  // experimental strip (very bottom): golden-ratio toggles + tempo wobble
   if (y >= yExp() && y < yExp() + EXP_H) {
+    if (x >= EXP_WOB_X && x < EXP_WOB_X + 40) {
+      if (armLfo) { tryModAssign(BPM_WOB); return; }
+      dragMode = 55; dragFx = BPM_WOB; dragY = y; dragV = m[BPM_WOB]; return;
+    }
+    if (x >= EXP_WRT_X && x < EXP_WRT_X + 46) {
+      dragMode = 57; dragY = y; dragV = m[BPM_WRT]; return;
+    }
+    if (x >= EXP_WSH_X && x < EXP_WSH_X + 44) {
+      m[BPM_WSH] = ((m[BPM_WSH] | 0) + 1) % SHAPE_NAMES.length;
+      setStatus('tempo wobble shape: ' + SHAPE_NAMES[m[BPM_WSH]]
+        + ' — a player\u2019s push and drag is not a tidy sine; S&H lurches, the saws ramp and snap');
+      touchState(); return;
+    }
     if (x >= EXP_PHI_X && x < EXP_PHI_X + EXP_CHIP_W) {
       m[PHI_TUNE] = m[PHI_TUNE] ? 0 : 1;
       setStatus(m[PHI_TUNE]
@@ -2137,6 +2339,14 @@ function onDown(x, y, right) {
       return;
     }
     if (lastRec && inRect(x, y, SAVE_R)) { saveLastRecording(); return; }
+    if (inRect(x, y, STEM_R)) {
+      armStems = !armStems;
+      setStatus(armStems
+        ? 'stems armed — the next take also captures drums / bass / melody / chords / fx separately; save with ZIP'
+        : 'stems off — takes capture the master only');
+      return;
+    }
+    if (lastRec && inRect(x, y, ZIP_R)) { saveTakeZip(); return; }
     if (inRect(x, y, UNDO_R)) { undo(); return; }
     if (inRect(x, y, REDO_R)) { redo(); return; }
     if (inRect(x, y, SHEET_R)) { if (window.gnome.exportScore) window.gnome.exportScore(); return; }
@@ -2144,13 +2354,6 @@ function onDown(x, y, right) {
       if (inRect(x, y, PRE_RS[i])) { recallPreset(PRESET_IDS[i]); return; }
     if (inRect(x, y, PEXP_R)) { downloadPreset('now'); setStatus('current groove saved as a .json file'); return; }
     if (inRect(x, y, PIMP_R)) { importCurrent(); return; }
-    // tempo wobble beside the mixer (drag amount / period)
-    if (x >= 744 && x < 788) {
-      if (armLfo) { tryModAssign(BPM_WOB); return; }
-      dragMode = 55; dragFx = BPM_WOB; dragY = y; dragV = m[BPM_WOB];
-      return;
-    }
-    if (x >= 792 && x < 836) { dragMode = 57; dragY = y; dragV = m[BPM_WRT]; return; }
     // per-lane mini mixer knobs (LFO-able)
     for (let l = 0; l < numLanes; l++) {
       if (x >= 840 + l * 19 && x < 858 + l * 19) {
@@ -3060,6 +3263,14 @@ function draw() {
   textC('⤼', REDO_R[0], REDO_R[0] + REDO_R[2], 8, '14px Arial');
   set(0.24, 0.3, 0.36); rect(...SHEET_R);
   set(0.82, 0.9, 0.95); textC('♪ PDF', SHEET_R[0], SHEET_R[0] + SHEET_R[2], 9, F11);
+  armStems ? set(0.3, 0.36, 0.26) : set(0.2, 0.2, 0.23);
+  rect(...STEM_R);
+  set(armStems ? 0.75 : 0.45, armStems ? 0.95 : 0.45, armStems ? 0.7 : 0.5);
+  textC('STEMS', STEM_R[0], STEM_R[0] + STEM_R[2], 9, F11);
+  lastRec ? set(0.26, 0.3, 0.34) : set(0.17, 0.17, 0.19);
+  rect(...ZIP_R);
+  set(lastRec ? 0.85 : 0.35, lastRec ? 0.9 : 0.35, lastRec ? 0.95 : 0.4);
+  textC('ZIP', ZIP_R[0], ZIP_R[0] + ZIP_R[2], 9, F11);
   // preset slots: lit when stored; tap recalls, ALT/right-click stores
   for (let i = 0; i < 3; i++) {
     const r = PRE_RS[i], used = !!presets[PRESET_IDS[i]];
@@ -3073,14 +3284,6 @@ function draw() {
   set(0.24, 0.28, 0.34); rect(...PIMP_R);
   set(0.8, 0.85, 0.9); textC('⇧', PIMP_R[0], PIMP_R[0] + PIMP_R[2], 8, '14px Arial');
 
-  // tempo wobble beside the mixer (AMT drag / period drag)
-  m[BPM_WOB] > 0 ? set(0.3, 0.27, 0.34) : set(0.22, 0.22, 0.26);
-  rect(744, 4, 44, 22);
-  set(0.85, 0.8, 0.95); textC('W ' + Math.round(m[BPM_WOB]) + '%', 744, 788, 8, F10);
-  modTick(BPM_WOB, 744, 44, 4);
-  set(0.22, 0.22, 0.26); rect(792, 4, 44, 22);
-  set(0.75, 0.78, 0.85); textC(fmtG(m[BPM_WRT]) + 'b', 792, 836, 8, F10);
-  set(0.45, 0.45, 0.5); text('WOBBLE', 746, 27, '8px Arial');
   // per-lane mini mixer knobs
   for (let l = 0; l < numLanes; l++) {
     const kx = 840 + l * 19 + 9, v = m[DVOL_A + l] / 100;
@@ -3840,14 +4043,27 @@ function draw() {
     m[GLD_TIME] ? set(0.56, 0.43, 0.17) : set(0.24, 0.24, 0.27);
     rect(EXP_GLD_X, ey + 7, EXP_CHIP_W, 18);
     set(0.97, 0.9, 0.72); textC('φT', EXP_GLD_X, EXP_GLD_X + EXP_CHIP_W, ey + 10, F10);
+    // tempo wobble: amount / period / shape
+    set(0.42, 0.4, 0.36); text('WOB', 340, ey + 12, F9);
+    m[BPM_WOB] > 0 ? set(0.5, 0.42, 0.2) : set(0.24, 0.24, 0.27);
+    rect(EXP_WOB_X, ey + 7, 40, 18);
+    set(0.95, 0.9, 0.78); textC(Math.round(m[BPM_WOB]) + '%', EXP_WOB_X, EXP_WOB_X + 40, ey + 10, F10);
+    modTick(BPM_WOB, EXP_WOB_X, 40, ey + 7);
+    set(0.24, 0.24, 0.27); rect(EXP_WRT_X, ey + 7, 46, 18);
+    set(0.82, 0.82, 0.86); textC(fmtG(m[BPM_WRT]) + 'b', EXP_WRT_X, EXP_WRT_X + 46, ey + 10, F10);
+    m[BPM_WSH] ? set(0.4, 0.36, 0.22) : set(0.24, 0.24, 0.27);
+    rect(EXP_WSH_X, ey + 7, 44, 18);
+    set(0.88, 0.86, 0.8);
+    textC(['SIN', 'TRI', 'SW\u2193', 'S&H', 'SW\u2191', 'SPL', 'GLD'][m[BPM_WSH] | 0] || 'SIN',
+      EXP_WSH_X, EXP_WSH_X + 44, ey + 10, F10);
     const loopNow = m[GLD_TIME] && playing
       ? `  ·  LOOP ${GM_STEPS[goldLoop(Math.floor(dispBeat / gridSd())).i]} steps`
       : m[GLD_TIME] ? '  ·  loop 1·1·2·3·5·8·13·21' : '';
     set(0.52, 0.5, 0.46);
-    text('φ = golden tuning (the octave becomes a golden sixth) · φT = golden loop '
-      + '(the loop grows 1·1·2·3·5·8·13·21 steps)' + loopNow
-      + '   —   these two retune and re-time everything; slow, strange, and liable to wander',
-      EXP_GLD_X + EXP_CHIP_W + 12, ey + 11, F9);
+    text('φ tuning · φT golden loop' + loopNow
+      + '  ·  WOB drags the tempo about (amount / period / shape)'
+      + '   —   these retune and re-time everything; slow, strange, liable to wander',
+      EXP_WSH_X + 52, ey + 11, F9);
   }
 
   // wake overlay until the first gesture creates the AudioContext
@@ -3895,8 +4111,25 @@ document.addEventListener('keydown', e => {
 ['pointerdown', 'touchend'].forEach(ev => document.addEventListener(ev, () => {
   if (actx && actx.state === 'suspended') actx.resume().catch(() => { });
 }, { passive: true }));
+// Backgrounding the tab (or switching apps) starves the audio thread, and the
+// browser then tries to make the time up in a burst when you come back: the
+// sequence races and the buffers crackle. Park the context on the way out
+// instead of letting it fall behind, and pick it up cleanly on the way in.
+let bgParked = false;
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && playing && actx && actx.state === 'suspended') actx.resume().catch(() => { });
+  if (!actx) return;
+  if (document.hidden) {
+    if (playing && actx.state === 'running') {
+      bgParked = true;
+      actx.suspend().catch(() => { bgParked = false; });
+    }
+  } else if (playing && (bgParked || actx.state === 'suspended')) {
+    bgParked = false;
+    actx.resume().catch(() => { });
+    // the clock stood still while we were away; re-send transport so the
+    // worklet is running against the tempo and play state the UI shows
+    pushTransport();
+  }
 });
 
 // exposed for the pocket UI (gnome-mobile.js), the tests, and the console
@@ -3929,6 +4162,10 @@ window.gnome = {
   storePreset, recallPreset, downloadPreset, importToPreset, importCurrent,
   presetUsed(id) { return !!presets[id]; },
   startRecording, stopRecording, toggleRecording, saveLastRecording,
+  saveTakeZip, buildTakeZip,
+  get armStems() { return armStems; },
+  setArmStems(v) { armStems = !!v; },
+  get compFormat() { return compExt(compType()); },
   get recording() { return recording; },
   get recSeconds() { return recFrames / (recSampleRate || 44100); },
   get lastRecording() { return lastRec; },
@@ -3967,13 +4204,13 @@ window.gnome = {
     PHI_TUNE, DLY_GLD, BELL_STK_A, PNO_A, PSND_A, PLSND_A,
     PRES_ON, PRES_MIX, PRES_DEC, PRES_TONE, XSRC_A, XAMT_A, XMODE_A, GLD_TIME,
     MBR_ON, MBR_FREQ, MBR_SPRD, MBR_Q, MBR_MODE, MBR_MIX, MBR_DRV,
-    MBR_SND_A, MBR_LSND_A,
+    MBR_SND_A, MBR_LSND_A, BPM_WSH,
   },
   tables: { SCALE_NAMES, PROG_NAMES, SHAPE_NAMES, SYN_NAMES, FEEL_NAMES, SCL, STYLE_NAMES, FRACTAL_NAMES, XSRC_NAMES, XMODE_NAMES },
   fractalLevels, buildFractalTree, sendFillNow, sendFlick, treeBranchAt, findModTarget,
   SAMPLE_DEFS,
   noteName, rollLabel, getParam, setParam, sget, sset, ronOff, rdgOff, effScale, effBase,
-  buildScoreModel, setStatus,
+  buildScoreModel, setStatus, stepSig, referenceSig,
   applyEuclid, applySynEuclid, rotatePat, rotateSyn, synGenerate, synKeyGen, dealEuclid, setStyle,
   resetAll, touchState, pushTransport, pushGains, pushSample,
   get smpA() { return smpA; },

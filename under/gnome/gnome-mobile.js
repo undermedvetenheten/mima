@@ -36,7 +36,7 @@
   root.append(
     h('div', 'pk-head',
       h('div', 'pk-topbar',
-        h('div', 'pk-topctl', T.play, T.bpmBox, T.undoBox, T.rec, T.save),
+        h('div', 'pk-topctl', T.play, T.bpmBox, T.undoBox, T.rec, T.stems, T.save, T.zip),
         statusEl),
       tabBar),
     view);
@@ -70,6 +70,9 @@
           v => Math.round(v) + '% (±' + (v * 0.12).toFixed(1) + '%)'),
         UI.stepper('Wobble period', 4, 256, 4, () => G.m[G.consts.BPM_WRT], v => { G.m[G.consts.BPM_WRT] = v; G.touchState(); },
           v => Math.round(v) + ' beats'),
+        UI.selectRow('Wobble shape', G.tables.SHAPE_NAMES,
+          () => G.m[G.consts.BPM_WSH], v => { G.m[G.consts.BPM_WSH] = v; G.touchState(); },
+          () => G.m[G.consts.BPM_WOB] > 0 ? '' : 'set a wobble amount first'),
         h('div', 'pk-actions',
           UI.action('🔄 INIT — fresh starter groove', () => {
             G.resetAll(); curLane = 0; renderTab(); say('fresh gnome: starter groove restored');

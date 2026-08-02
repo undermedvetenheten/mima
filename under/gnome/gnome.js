@@ -9,7 +9,7 @@
 
 // bump on every release: cache-busts the worklet module so a stale cached
 // DSP can never run against fresh UI code
-const APP_V = '32';
+const APP_V = '33';
 
 
 const LANES_CAP = 8, MAX_STEPS = 32, EUC_N = 21, NROWS = 12, NSCALES = 15,
@@ -3225,7 +3225,6 @@ const F9 = '9px Arial', F10 = '10px Arial', F11 = '11px Arial', F12 = '12px Aria
 function fmtG(v) { return String(Math.round(v * 100) / 100); }
 
 function draw() {
-  golFrame();   // evolve + seed the melody's life colony
   sizeCanvas();
   const dpr = window.devicePixelRatio || 1;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -4108,6 +4107,11 @@ committed = snapshot();                                   // undo baseline
 // desktop = the canvas (all on one page); pocket = the DOM tab layout.
 if (usePocket) document.body.classList.add('pocket');
 else requestAnimationFrame(draw);
+// The Game of Life used to be evolved inside draw(), which only runs on the
+// canvas — so in the pocket the colony never advanced and GROW did nothing.
+// It drives sequencer content, not pixels, so it gets its own loop either way.
+function lifeLoop() { golFrame(); requestAnimationFrame(lifeLoop); }
+requestAnimationFrame(lifeLoop);
 
 // keyboard undo/redo (desktop)
 document.addEventListener('keydown', e => {

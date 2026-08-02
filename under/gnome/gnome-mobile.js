@@ -11,7 +11,7 @@
   const h = UI.h;
   const root = document.getElementById('pocket');
 
-  let curLane = 0, curTab = 'drums', curFx = 'rack';
+  let curLane = 0, curTab = 'drums', curFx = 'rack', curSyn = 'voice';
   let statusEl;
   const say = s => { if (statusEl) statusEl.textContent = s; };
 
@@ -53,8 +53,31 @@
       ...UI.drumParams(curLane));
   }
 
+  // shared sub-tab strip: pinned rows stay put, one page shows at a time
+  function paged(cur, secs, pick, ...pinned) {
+    if (!secs.some(x => x.id === cur)) cur = secs[0].id;
+    const bar = h('div', 'pk-subtabs');
+    for (const sc of secs) {
+      const b2 = h('button', 'pk-subtab' + (sc.id === cur ? ' sel' : ''), sc.label);
+      b2.addEventListener('click', () => { pick(sc.id); renderTab(); });
+      bar.append(b2);
+    }
+    // the bar goes directly under the main tabs so both strips are reachable
+    // without scrolling; the pinned grid follows, then the selected page
+    view.append(bar, ...pinned.filter(Boolean), ...secs.find(x => x.id === cur).rows);
+  }
+
   function synthTab(si) {
-    view.append(...UI.synthMain(si, say, renderTab), ...UI.synthParams(si));
+    const M = UI.synthMain(si, say, renderTab), P = UI.synthParams(si);
+    // the grid and the generate buttons are the point of the tab — they stay
+    // on screen; everything that used to be an endless scroll gets a page
+    paged(curSyn, [
+      { id: 'voice', label: 'VOICE', rows: [M.instrument, P.sound] },
+      { id: 'pattern', label: 'PATTERN', rows: [P.pattern] },
+      { id: 'key', label: 'KEY', rows: [P.key] },
+      { id: 'motion', label: 'MOTION', rows: [P.motion] },
+      { id: 'groove', label: 'GROOVE', rows: [P.groove] },
+    ], id => { curSyn = id; }, M.pinned);
   }
 
   function mixTab() {
@@ -84,18 +107,7 @@
     view.innerHTML = '';
     tabBtns.forEach(t => t.b.classList.toggle('sel', t.id === curTab));
     if (curTab === 'drums') drumsTab();
-    else if (curTab === 'fx') {
-      // one rack page at a time, with a sub-tab strip across the top
-      const secs = UI.fxSections(renderTab);
-      if (!secs.some(x => x.id === curFx)) curFx = secs[0].id;
-      const bar = h('div', 'pk-subtabs');
-      for (const sc of secs) {
-        const b2 = h('button', 'pk-subtab' + (sc.id === curFx ? ' sel' : ''), sc.label);
-        b2.addEventListener('click', () => { curFx = sc.id; renderTab(); });
-        bar.append(b2);
-      }
-      view.append(bar, ...secs.find(x => x.id === curFx).rows);
-    }
+    else if (curTab === 'fx') paged(curFx, UI.fxSections(renderTab), id => { curFx = id; });
     else if (curTab === 'mix') mixTab();
     else synthTab(curTab);
   }

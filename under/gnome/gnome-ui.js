@@ -369,8 +369,8 @@ window.createGnomeUI = function (G) {
 
   function synthMain(si, say, rerender) {
     const engHint = () => engineHint(si);
-    return [
-      group('',
+    return {
+      pinned: group('',
         m[C.LOCK_A + si] ? null : 'independent of the master key',
         h('div', 'pk-actions',
           chip('MUTE', () => G.sget(si, 11), v => G.sset(si, 11, v ? 1 : 0), 'danger'),
@@ -386,7 +386,7 @@ window.createGnomeUI = function (G) {
           })),
         modeBar(),
         rollGrid(si)),
-      group('instrument', 'the voice this part plays through',
+      instrument: group('instrument', 'the voice this part plays through',
         seg('Engine', ['classic', 'string', 'glass', 'splice', 'drone', 'bell', 'piano'],
           () => m[C.ENG_A + si], i => { m[C.ENG_A + si] = i; rerender(); }, engHint()),
         ...(m[C.ENG_A + si] === 2
@@ -418,14 +418,14 @@ window.createGnomeUI = function (G) {
               'track: repitched per note (C4 = as recorded). fixed: plays as-is'),
             lfoable(C.SPL_TUNE_A + si, stepper('Fine tune', -12, 12, 1, () => m[C.SPL_TUNE_A + si], v => m[C.SPL_TUNE_A + si] = v, fmtSt))]
           : [])),
-    ];
+    };
   }
 
   function synthParams(si) {
     const locked = () => m[C.LOCK_A + si]
       ? 'following the master key — unlock to use' : '';
-    return [
-      group('pattern', 'euclidean engine: pulses spread evenly across steps',
+    return {
+      pattern: group('pattern', 'euclidean engine: pulses spread evenly across steps',
         stepper('Steps', 1, 32, 1, () => G.sget(si, 2), v => G.sset(si, 2, v)),
         stepper('Length (beats)', 0.25, 16, 0.25, () => G.sget(si, 3), v => G.sset(si, 3, v), fmtQ),
         stepper('Pulses', 0, 32, 1, () => G.sget(si, 4), v => { G.sset(si, 4, v); G.applySynEuclid(si); }),
@@ -436,7 +436,7 @@ window.createGnomeUI = function (G) {
         }),
         seg('Timing mode', ['PR — synced', 'PM — drifts'], () => G.sget(si, 15), i => G.sset(si, 15, i)),
         seg('Feel', ['straight', 'triplet', 'dotted'], () => m[C.SFL_A + si], i => m[C.SFL_A + si] = i)),
-      group('pitch & key', null,
+      key: group('pitch & key', null,
         seg('Key lock', ['independent', 'locked to key'],
           () => m[C.LOCK_A + si], i => m[C.LOCK_A + si] = i,
           'locked sections follow the master key/scale/harmony'),
@@ -461,7 +461,7 @@ window.createGnomeUI = function (G) {
           action('✦ seed life', () => { G.golSeed(); G.touchState(); }),
           action('✕ clear life', () => { G.golClear(); G.touchState(); }),
           action('▸ step once', () => { G.golStepOnce(); G.touchState(); }))),
-      group('sound', null,
+      sound: group('sound', null,
         stepper('Wave', 0, 100, 5, () => G.sget(si, 19), v => G.sset(si, 19, v), fmtWave),
         stepper('Filter cutoff', 0, 100, 5, () => G.sget(si, 12), v => G.sset(si, 12, v), fmtCut),
         stepper('Resonance', 0, 100, 5, () => G.sget(si, 13), v => G.sset(si, 13, v)),
@@ -476,17 +476,17 @@ window.createGnomeUI = function (G) {
           lfoable(C.XY_SKW, stepper('Shape skew', -50, 50, 5, () => m[C.XY_SKW], v => m[C.XY_SKW] = v,
             v => (v > 0 ? '+' : '') + Math.round(v),
             'asymmetric bias: even harmonics, tube-ish'))] : [])),
-      group('motion', null,
+      motion: group('motion', null,
         stepper('LFO rate (beats)', 0.25, 16, 0.25, () => G.sget(si, 16), v => G.sset(si, 16, v), fmtQ),
         stepper('LFO → filter depth', 0, 100, 5, () => G.sget(si, 17), v => G.sset(si, 17, v)),
         seg('LFO shape', ['sine', 'triangle', 'saw ↓', 'S&H', 'saw ↑', 'spline', 'golden'], () => G.sget(si, 18), i => G.sset(si, 18, i))),
-      group('groove', null,
+      groove: group('groove', null,
         stepper('Velocity', 1, 127, 1, () => G.sget(si, 6), v => G.sset(si, 6, v)),
         stepper('Gate length', 5, 200, 5, () => G.sget(si, 7), v => G.sset(si, 7, v), fmtPct),
         stepper('Swing', 0, 75, 5, () => G.sget(si, 25), v => G.sset(si, 25, v), fmtPct),
         stepper('Nudge range', -50, 50, 5, () => G.sget(si, 26), v => G.sset(si, 26, v), fmtPct,
           'how far off the grid a note may land — each note picks its own amount up to this')),
-    ];
+    };
   }
 
   function fxSections(rerender) {

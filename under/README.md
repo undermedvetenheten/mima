@@ -143,6 +143,30 @@ GitHub Pages. Friends import `https://mima.chat/under/index.xml` in REAPER
   canvas has a ♪ PDF header button; the pocket has a "Sheet music (PDF)"
   action on the KEY·MIX tab.
 
+  **Pocket navigation.** Both the FX tab and each part tab are **paged into
+  sub-tabs**, on a wrapping two-row strip that sits directly under the main tabs
+  so nothing needs scrolling to reach. FX: RACK · DELAY · GLITCH · GRAIN ·
+  4-BAND · PIANO · CROSS · SPACE · FILLS · LFO. Each pitched part: **VOICE**
+  (engine, wave shaping and motion — one decision about what it sounds like),
+  **PATTERN** (the euclidean engine plus swing / nudge / humanise, since those
+  are all about where hits land) and **KEY**. Drums get the same treatment with
+  **SOUND** and **PATTERN** — "sound" rather than "voice", because a drum lane
+  picks a sample rather than an instrument — and the sample chooser lives on the
+  SOUND page. The **step grid stays pinned above the strip** in every case, with
+  the lane picker above that on the drums tab, so the sequencer is what you see
+  when you switch parts and the pages hang underneath it. The title and blurb are hidden in the
+  pocket; they are landing-page furniture and on a phone they are just something
+  to scroll past before you can play. **Long-press any control's label to cycle its LFO** — none →
+  L1 → L2 → both — and a pulsing `∿1` / `∿2` / `∿12` badge shows what is driving
+  it. The gesture is on the label rather than the +/− chips because those
+  already use press-and-hold to auto-repeat. **GROW from the Game of Life** now
+  sits on every sequencer tab beside the wheel-spin controls, with the life
+  speed and seed / clear / step-once actions, so the colony can be driven
+  without leaving the part you are editing. The colony itself is evolved on its
+  **own animation loop**, not inside the canvas `draw()` — it drives sequencer
+  content rather than pixels, and living in `draw()` meant it never advanced at
+  all in the pocket layout.
+
   **Stems + packaging.** Arming **STEMS** (header button, or the ⚙ chip in the
   pocket transport) makes a take capture five extra stereo buses alongside the
   master: **drums / bass / melody / chords / fx**. The four instrument stems are

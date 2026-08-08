@@ -259,6 +259,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     this.gBeat = 0;
     this.wobPh = 0;   // tempo-wobble LFO phase
     this.wobCy = 0;   // ...and its cycle count, for S&H / spline / golden
+    this.startFade = 1;   // transport-start ramp, kills the click on play
 
     // part gains: drums, bass, melody, chords + master (0..1)
     this.gPart = [1, 1, 1, 1];
@@ -419,6 +420,7 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
     } else if (d.type === 'transport') {
       if (d.playing && !this.playing) {
         this.gBeat = 0; // phase-locked to beat 0, like the plugin in REAPER
+        this.startFade = 0;   // ramp up over ~15ms instead of slamming on
         this.vlHave = 0;
         for (let s = 0; s < this.KS_SLOTS; s++) this.ksActive[s] = 0;
       }
@@ -1372,6 +1374,12 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
       }
     }
     const mbrG = 1 + mbrDrv * 8, mbrNg = 1 / (1 + mbrDrv * 2);
+    // SUM is the reference level. The multiply modes were measurably matched on
+    // RMS but sound much louder, because their energy is concentrated in bright
+    // intermodulation rather than spread across four resonant bands. Trim them
+    // so switching mode changes the sound and not the volume you hear.
+    const MBR_TRIM = [1, 0.5, 0.45, 0.4];
+    const mbrTrim = MBR_TRIM[mbrMode] || 1;
 
     // cross-routing per synth (source, amount, mode) read once per block
     const xSrcI = [m[XSRC_A] | 0, m[XSRC_A + 1] | 0, m[XSRC_A + 2] | 0];
@@ -1844,8 +1852,8 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
         // products are not zero-mean: block the DC they leave behind
         this.mbDcL = sane(this.mbDcL + 0.0004 * (wL2 - this.mbDcL));
         this.mbDcR = sane(this.mbDcR + 0.0004 * (wR2 - this.mbDcR));
-        spl0 += (wL2 - this.mbDcL) * mbrMix;
-        spl1 += (wR2 - this.mbDcR) * mbrMix;
+        spl0 += (wL2 - this.mbDcL) * mbrMix * mbrTrim;
+        spl1 += (wR2 - this.mbDcR) * mbrMix * mbrTrim;
       }
 
       // cross-routing sources: this frame's buses feed the next frame, so a
@@ -1861,21 +1869,24 @@ class SuperGnomeProcessor extends AudioWorkletProcessor {
       }
 
       // gentle safety limiter (protects against delay-feedback runaway)
-      const oL = Math.tanh(spl0), oR = Math.tanh(spl1);
+      if (this.startFade < 1) this.startFade = Math.min(1, this.startFade + 1 / (srate * 0.015));
+      const oL = Math.tanh(spl0) * this.startFade, oR = Math.tanh(spl1) * this.startFade;
       outL[f] = oL; outR[f] = oR;
       if (this.rec) {
         this.recBufL[this.recPos] = oL;
         this.recBufR[this.recPos] = oR;
         if (this.recStems) {
-          const sb = this.stemBuf, i = this.recPos;
-          sb[0][i] = stD0; sb[1][i] = stD1;
-          sb[2][i] = stB0; sb[3][i] = stB1;
-          sb[4][i] = stM0; sb[5][i] = stM1;
-          sb[6][i] = stC0; sb[7][i] = stC1;
+          const sb = this.stemBuf, i = this.recPos, sf = this.startFade;
+          // the same transport-start ramp the master gets, so the stems stay
+          // consistent with it rather than carrying the click it hides
+          sb[0][i] = stD0 * sf; sb[1][i] = stD1 * sf;
+          sb[2][i] = stB0 * sf; sb[3][i] = stB1 * sf;
+          sb[4][i] = stM0 * sf; sb[5][i] = stM1 * sf;
+          sb[6][i] = stC0 * sf; sb[7][i] = stC1 * sf;
           // everything the master carries that the parts do not: the whole fx
           // rack, the piano strings and the 4-band, taken pre-limiter
-          sb[8][i] = spl0 - (stD0 + stB0 + stM0 + stC0);
-          sb[9][i] = spl1 - (stD1 + stB1 + stM1 + stC1);
+          sb[8][i] = (spl0 - (stD0 + stB0 + stM0 + stC0)) * sf;
+          sb[9][i] = (spl1 - (stD1 + stB1 + stM1 + stC1)) * sf;
         }
         if (++this.recPos >= this.REC_CHUNK) this.flushRec(false);
       }

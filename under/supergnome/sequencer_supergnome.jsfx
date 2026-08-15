@@ -158,21 +158,116 @@ gkey_spd   = 719; // master rotation beats/step
 lock_a   = 720;  // per-synth: 1 = locked to master key (3)
 hml_a    = 724;  // per-synth harmony speed mult: 0 = 1/2, 1 = x1, 2 = x2 (3)
 
-// ---- non-serialized scratch ----
-v_del   = 1000;
-v_pos   = 1008;
-v_on    = 1016;
-v_gain  = 1024;
-smp_nch = 1032;
-smp_sr  = 1040;
-smp_len = 1048;
-flt_lo  = 1056;
-flt_bp  = 1064;
-flt_lo2 = 1072;
-flt_bp2 = 1080;
-flt_f   = 1088;  // 2 = bypass sentinel
-v_rt    = 1096;
-fenv    = 1104;
+// ---- web-parity state: everything the browser port added lives at >= 728,
+// at the SAME offsets, so a groove means the same thing in both. ----
+eng_a      = 728;  // per-synth engine 0 osc 1 string 2 glass 3 splice 4 drone 5 bell 6 piano
+gen_style  = 731;  // RND generation style
+fx_on      = 736;
+dly_on     = 737;
+dly_time   = 738;  // beats
+dly_fb     = 739;
+dly_tone   = 740;
+dly_wow    = 741;
+fx_feed    = 742;
+avo_on     = 743;  // glitch
+avo_amt    = 744;
+avo_rate   = 745;  // beats
+avo_crush  = 746;
+avo_mix    = 747;
+dly_pitch  = 748;
+dly_rev    = 749;
+send_a     = 752;  // legacy single-bus sends (4)
+glc_a      = 756;  // per-synth glass harmonic-cycle rate (3)
+cld_on     = 760;  // granulator
+cld_mix    = 761;
+cld_size   = 762;
+cld_dens   = 763;
+cld_pitch  = 764;
+cld_spread = 765;
+cld_reverb = 766;
+cld_revg   = 767;
+snd_mtx    = 768;  // 4 parts x 3 fx sends
+mute_syn   = 780;  // per-synth mute (3)
+solo_lane  = 783;  // per-lane solo (8)
+solo_syn   = 791;  // per-synth solo (3)
+snd_pre    = 794;  // sends ignore the faders
+spl_st_a   = 800;  // splice crop start (3)
+spl_en_a   = 803;  // splice crop end (3)
+spl_mode_a = 806;  // 0 TRK, 1 FIX (3)
+spl_tune_a = 809;  // splice tune (3)
+dnse_a     = 812;  // synth drum: noise mix (8)
+dswp_a     = 820;  // synth drum: pitch sweep (8)
+dsub_a     = 828;  // synth drum: 30Hz sub (8)
+dclk_a     = 836;  // synth drum: click (8)
+bpm_wob    = 844;  // tempo wobble depth
+bpm_wrt    = 845;  // tempo wobble period, beats
+mlfo_a     = 846;  // 2 mod LFOs x (rate, depth, shape)
+mod_tgt_a  = 852;  // 8 assignment slots: target offset
+mod_msk_a  = 868;  // 8 assignment slots: LFO bitmask
+dcrp_a     = 884;  // per-lane sample crop start (8)
+pan_az_a   = 896;  // 4 parts: azimuth
+pan_frc_a  = 900;  // 4 parts: force
+pan_bnc    = 904;  // dome bounciness
+xy_drv     = 905;  // bass waveshaper drive
+xy_skw     = 906;  // bass waveshaper skew
+whl_spin   = 907;  // harmonic-wheel spin rate
+spin_p     = 908;  // which parts join the spin (3)
+frc_on     = 911;  // fractal fills
+frc_rule   = 912;
+frc_depth  = 913;
+frc_amt    = 914;
+frc_pmask  = 915;  // legacy part bitmask
+dfill_a    = 916;  // per-lane fill density (8)
+sfill_a    = 924;  // per-synth fill density (3)
+frc_bend   = 927;
+drone_op_a = 928;  // per-synth drone mouth openness (3)
+dvol_a     = 931;  // per-lane volume (8)
+dsnd_a     = 939;  // per-lane x 3 fx sends (24)
+daz_a      = 976;  // per-lane azimuth (8)
+dfrc_a     = 984;  // per-lane force (8)
+phi_tune   = 995;  // octave becomes a golden sixth
+dly_gld    = 996;  // 0 off, 1 compress, 2 expand
+bell_stk_a = 997;  // per-synth bell mallet hardness (3)
+pno_a      = 1000; // per-synth piano pedal (3)
+psnd_a     = 1003; // 4 parts -> piano strings
+plsnd_a    = 1007; // 8 lanes -> piano strings
+pres_on    = 1015; // piano-string resonator
+pres_mix   = 1016;
+pres_dec   = 1017;
+pres_tone  = 1018;
+xsrc_a     = 1019; // per-synth cross-routing source (3)
+xamt_a     = 1022;
+xmode_a    = 1025; // 0 RING, 1 DUCK, 2 DRV
+gld_time   = 1028; // golden loop
+mbr_on     = 1029; // 4-band resonator
+mbr_freq   = 1030;
+mbr_sprd   = 1031;
+mbr_q      = 1032;
+mbr_mode   = 1033; // 0 SUM, 1 RING, 2 PAIR, 3 MULT
+mbr_mix    = 1034;
+mbr_drv    = 1035;
+mbr_snd_a  = 1036; // 4 parts -> 4-band
+mbr_lsnd_a = 1040; // 8 lanes -> 4-band
+bpm_wsh    = 1048; // tempo wobble LFO shape
+SER_END    = 1049; // serialized block is 0 .. SER_END-1
+MOD_SLOTS  = 8;
+
+// ---- non-serialized scratch. Moved clear of the serialized block: the web
+// port grew state up to 1048, and v_del..smp_sr used to sit right on top of it.
+v_del   = 3000;
+v_pos   = 3008;
+v_on    = 3016;
+v_gain  = 3024;
+smp_nch = 3032;
+smp_sr  = 3040;
+smp_len = 3048;
+flt_lo  = 3056;
+flt_bp  = 3064;
+flt_lo2 = 3072;
+flt_bp2 = 3080;
+flt_f   = 3088;  // 2 = bypass sentinel
+v_rt    = 3096;
+fenv    = 3104;
 offq    = 1120;  // (beat, note, chan) triplets
 OFFQ_MAX = 64;
 euc_tab = 1320;
@@ -180,6 +275,7 @@ scl_tab = 1400;
 rot_tmp = 1700;
 shc     = 1800;
 shv     = 1812;
+shn     = 1824;  // spline drift: the value being slewed toward
 // synth voices, indexed 0 bass / 1 melody / 2 chords (chords share env)
 sv_del  = 2100;
 sv_nfreq = 2103;
@@ -223,6 +319,48 @@ function ep(k, n, r) ( euc_tab[_ei] = k; euc_tab[_ei + 1] = n; euc_tab[_ei + 2] 
 ep(2,5,0); ep(3,4,0); ep(3,5,2); ep(3,7,0); ep(3,8,0); ep(4,7,0); ep(4,9,0);
 ep(4,11,0); ep(5,6,0); ep(5,7,0); ep(5,8,0); ep(5,9,0); ep(5,11,0); ep(5,12,0);
 ep(5,16,0); ep(7,8,0); ep(7,12,0); ep(7,16,14); ep(9,16,0); ep(11,24,14); ep(13,24,5);
+
+// GOLDEN LOOP: the loop length walks 1,1,2,3,5,8,13,21 STEPS and snaps back.
+// Tempo and grid are untouched; only where the pattern wraps moves. Returns the
+// bar-local step in gl_local and the pass number in gl_pass.
+function gold_loop(n) local(lap, tt, k, cum, len) (
+  lap = floor(n / 54); tt = n - lap * 54;
+  k = 0; cum = 0; gl_i = 7;
+  while (k < 8) (
+    len = k == 0 ? 1 : k == 1 ? 1 : k == 2 ? 2 : k == 3 ? 3 :
+          k == 4 ? 5 : k == 5 ? 8 : k == 6 ? 13 : 21;
+    tt < cum + len ? ( gl_i = k; k = 8; ) : ( cum += len; k += 1; );
+  );
+  gl_cum = cum;
+  gl_local = tt - cum;
+  gl_pass = lap * 8 + gl_i;
+);
+// deterministic per-step "random" in 0..1. NUDGE is a range, not a fixed
+// offset, and the scheduler scans a step of slack either side of the block --
+// with rand() the two evaluations of a boundary hit would disagree and it would
+// fire twice or vanish. A hash of the absolute step index cannot.
+function step_rand(n, seed) local(h) (
+  h = sin(n * 127.1 + seed * 311.7) * 43758.5453;
+  h - floor(h);
+);
+// one LFO cycle of shape: 0 sin 1 tri 2 saw down 3 S&H 4 saw up 5 spline 6 golden
+function shape_at(cy, fr, shp, si) local(k, v, t) (
+  shp == 3 ? (
+    cy != shc[si] ? ( shc[si] = cy; shv[si] = rand(2) - 1; );
+    shv[si];
+  ) : shp == 5 ? (
+    cy != shc[si] ? ( shc[si] = cy; shv[si] = shn[si]; shn[si] = rand(2) - 1; );
+    t = (1 - cos($pi * fr)) * 0.5;
+    shv[si] + (shn[si] - shv[si]) * t;
+  ) : shp == 6 ? (
+    k = min(6, floor(fr * 7));
+    v = (pow(1.6180339887, k) - 1) / (pow(1.6180339887, 7) - 1);
+    v * 2 - 1;
+  ) : shp == 0 ? sin(2 * $pi * fr)
+    : shp == 1 ? 1 - 4 * abs(fr - 0.5)
+    : shp == 4 ? 2 * fr - 1
+    : 1 - 2 * fr;
+);
 
 function euc_name(i) (
   i == 0 ? "Khafif-e-ramal (Persia)" :
@@ -703,6 +841,57 @@ initialized == 0 ? (
   initialized = 1;
 );
 
+// Defaults for the web-parity region. Runs on every @init, so a project saved
+// before v11 keeps whatever it had for 0..727 and simply inherits these for the
+// rest -- @serialize reads fewer words than the block is wide and leaves the
+// tail alone. Mirrors seedNewRegions() in gnome.js exactly.
+_i = 0;
+while (_i < NSYN) (
+  eng_a[_i] = 0;
+  spl_st_a[_i] = 0; spl_en_a[_i] = 100; spl_mode_a[_i] = 0; spl_tune_a[_i] = 0;
+  glc_a[_i] = 0; mute_syn[_i] = 0; solo_syn[_i] = 0;
+  drone_op_a[_i] = 30; bell_stk_a[_i] = 40; pno_a[_i] = 45;
+  xsrc_a[_i] = 0; xamt_a[_i] = 40; xmode_a[_i] = 0;
+  sfill_a[_i] = _i == 2 ? 1 : 2;
+  spin_p[_i] = _i == 2 ? 1 : 0;
+  _i += 1;
+);
+_i = 0;
+while (_i < LANES_CAP) (
+  dnse_a[_i] = 20; dswp_a[_i] = 55; dsub_a[_i] = 25; dclk_a[_i] = 25;
+  dcrp_a[_i] = 0; dfill_a[_i] = 2; dvol_a[_i] = 90;
+  daz_a[_i] = 0; dfrc_a[_i] = 0; solo_lane[_i] = 0; plsnd_a[_i] = 0;
+  mbr_lsnd_a[_i] = 0;
+  dsnd_a[_i * 3] = 0; dsnd_a[_i * 3 + 1] = 0; dsnd_a[_i * 3 + 2] = 0;
+  _i += 1;
+);
+_i = 0;
+while (_i < 4) (
+  pan_az_a[_i] = 0; pan_frc_a[_i] = 0; send_a[_i] = 0;
+  psnd_a[_i] = 0; mbr_snd_a[_i] = 0;
+  snd_mtx[_i * 3] = 0; snd_mtx[_i * 3 + 1] = 0; snd_mtx[_i * 3 + 2] = 0;
+  _i += 1;
+);
+_i = 0;
+while (_i < MOD_SLOTS) ( mod_tgt_a[_i] = 0; mod_msk_a[_i] = 0; _i += 1; );
+gen_style[0] = 0;
+fx_on[0] = 0; fx_feed[0] = 0; snd_pre[0] = 0;
+dly_on[0] = 1; dly_time[0] = 0.75; dly_fb[0] = 38; dly_tone[0] = 55;
+dly_wow[0] = 30; dly_pitch[0] = 0; dly_rev[0] = 0; dly_gld[0] = 0;
+avo_on[0] = 0; avo_amt[0] = 40; avo_rate[0] = 0.5; avo_crush[0] = 0; avo_mix[0] = 100;
+cld_on[0] = 0; cld_mix[0] = 50; cld_size[0] = 45; cld_dens[0] = 55;
+cld_pitch[0] = 0; cld_spread[0] = 40; cld_reverb[0] = 55; cld_revg[0] = 0;
+bpm_wob[0] = 0; bpm_wrt[0] = 32; bpm_wsh[0] = 0;
+mlfo_a[0] = 8; mlfo_a[1] = 50; mlfo_a[2] = 0;
+mlfo_a[3] = 16; mlfo_a[4] = 50; mlfo_a[5] = 0;
+pan_bnc[0] = 40; xy_drv[0] = 0; xy_skw[0] = 0; whl_spin[0] = 0;
+frc_on[0] = 0; frc_rule[0] = 0; frc_depth[0] = 4; frc_amt[0] = 50;
+frc_pmask[0] = 3; frc_bend[0] = 25;
+phi_tune[0] = 0; gld_time[0] = 0;
+pres_on[0] = 0; pres_mix[0] = 45; pres_dec[0] = 70; pres_tone[0] = 55;
+mbr_on[0] = 0; mbr_freq[0] = 180; mbr_sprd[0] = 50; mbr_q[0] = 45;
+mbr_mode[0] = 0; mbr_mix[0] = 60; mbr_drv[0] = 30;
+
 @slider
 slider1 != l_s1 ? ( l_s1 = slider1; load_sample(0, file_open(slider1)); );
 slider2 != l_s2 ? ( l_s2 = slider2; load_sample(1, file_open(slider2)); );
@@ -715,10 +904,15 @@ slider8 != l_s8 ? ( l_s8 = slider8; load_sample(7, file_open(slider8)); );
 
 @serialize
 ser_rd = file_avail(0) >= 0;
-ser_ver = 10;
+ser_ver = 11;
 file_var(0, ser_ver);
 nl_ser = num_lanes;
-ser_ver >= 10 ? (
+ser_ver >= 11 ? (
+  // v11 carries the whole web-parity block, so a groove moves between the
+  // plugin and the browser port unchanged
+  file_mem(0, 0, SER_END);
+  file_var(0, nl_ser);
+) : ser_ver == 10 ? (
   file_mem(0, 0, 728);
   file_var(0, nl_ser);
 ) : ser_ver == 9 ? (
@@ -787,6 +981,16 @@ slider8 != l_s8 ? ( l_s8 = slider8; load_sample(7, file_open(slider8)); );
 playing = play_state & 1;
 bps = tempo / 60;
 spb = srate / bps;
+// TEMPO WOBBLE. In the browser the gnome owns its clock and the wobble warps
+// it; here REAPER owns beat_position and the host transport is authoritative,
+// so instead the same LFO shapes push and drag each HIT off the grid. Same
+// audible breathing, no fight with the DAW's timeline.
+wob_amt = 0;
+bpm_wob[0] > 0 ? (
+  wob_ph = beat_position / max(4, bpm_wrt[0]);
+  wob_amt = shape_at(floor(wob_ph), wob_ph - floor(wob_ph), bpm_wsh[0], 14)
+    * bpm_wob[0] / 100 * 0.12;
+);
 blk_start = beat_position;
 blk_end = blk_start + samplesblock / spb;
 g_beat = blk_start;
@@ -885,11 +1089,19 @@ playing ? (
       n = ceil((blk_start - stepdur) / stepdur - 0.000000001);
       t = n * stepdur;
       while (t < blk_end + stepdur) (
-        stepidx = ((n % steps_a[l]) + steps_a[l]) % steps_a[l];
+        gld_time[0] ? (
+          gold_loop(n);
+          stepidx = gl_local % steps_a[l];
+          npass = gl_pass;
+        ) : (
+          stepidx = ((n % steps_a[l]) + steps_a[l]) % steps_a[l];
+          npass = floor(n / steps_a[l]);
+        );
         pv = pat[l * MAX_STEPS + stepidx];
         // value 2 = plays only every second cycle
-        (pv && (pv != 2 || floor(n / steps_a[l]) % 2 != 0)) ? (
-          tsh = t + (ndg_a[l] / 100 + ((stepidx & 1) ? swg_a[l] / 100 : 0)) * stepdur;
+        (pv && (pv != 2 || npass % 2 != 0)) ? (
+          tsh = t + (ndg_a[l] / 100 * step_rand(n, l + 1)
+            + ((stepidx & 1) ? swg_a[l] / 100 : 0) + wob_amt) * stepdur;
           (tsh >= blk_start && tsh < blk_end) ? (
             ofs = min(max(0, floor((tsh - blk_start) * spb)), samplesblock - 1);
             hvel = vel_a[l];
@@ -946,10 +1158,18 @@ playing ? (
       n = ceil((blk_start - stepdur) / stepdur - 0.000000001);
       t = n * stepdur;
       while (t < blk_end + stepdur) (
-        stepidx = ((n % sp[2]) + sp[2]) % sp[2];
+        gld_time[0] ? (
+          gold_loop(n);
+          stepidx = gl_local % sp[2];
+          npass = gl_pass;
+        ) : (
+          stepidx = ((n % sp[2]) + sp[2]) % sp[2];
+          npass = floor(n / sp[2]);
+        );
         sv2 = ron[stepidx];
-        (sv2 && (sv2 != 2 || floor(n / sp[2]) % 2 != 0)) ? (
-          tsh = t + (snd_a[si] / 100 + ((stepidx & 1) ? ssw_a[si] / 100 : 0)) * stepdur;
+        (sv2 && (sv2 != 2 || npass % 2 != 0)) ? (
+          tsh = t + (snd_a[si] / 100 * step_rand(n, si + 17)
+            + ((stepidx & 1) ? ssw_a[si] / 100 : 0) + wob_amt) * stepdur;
           (tsh >= blk_start && tsh < blk_end) ? (
             ofs = min(max(0, floor((tsh - blk_start) * spb)), samplesblock - 1);
             // harmony: diatonic degree shift for 12-TET progs, exact cents for JI
@@ -961,6 +1181,7 @@ playing ? (
             si < 2 ? (
               // ---- mono voice (bass / melody) ----
               cents = deg_cents(rdg[stepidx] + dsh, escale) + hcents;
+              phi_tune[0] ? cents *= 0.6942419136;
               si == 0 ? gsnd_b[0] = ((ebase * 100 + cents) % 1200 + 1200) % 1200
                       : gsnd_m[0] = ((ebase * 100 + cents) % 1200 + 1200) % 1200;
               sp[10] ? (
@@ -999,6 +1220,7 @@ playing ? (
               v = 0;
               while (v < nv) (
                 rcv = deg_cents(rdg[stepidx] + dsh + v * 2, escale) + hcents;
+                phi_tune[0] ? rcv *= 0.6942419136;
                 tc = rcv;
                 vl_have[0] ? (
                   // nearest-octave pull = inversion; anchor within an octave
@@ -1060,6 +1282,14 @@ expected_beat = blk_end;
 p_playing = playing;
 
 @sample
+// perform mute + solo, resolved once per sample block. Any solo anywhere means
+// only soloed channels sound -- same rule as the browser port.
+any_solo = 0;
+_k = 0;
+while (_k < num_lanes) ( solo_lane[_k] ? any_solo = 1; _k += 1; );
+_k = 0;
+while (_k < NSYN) ( solo_syn[_k] ? any_solo = 1; _k += 1; );
+
 // drum sample voices -> mix (1/2) + stem pair (3/4 .. 17/18)
 c = 0;
 while (c < num_lanes) (
@@ -1098,8 +1328,13 @@ while (c < num_lanes) (
         flt_bp2[c] += fl2 * hp;
         smix2 = flt_lo2[c];
       );
-      spl0 += smix;
-      spl1 += smix2;
+      // per-lane fader, then the mute/solo gate. The stem taps stay pre-gate
+      // so a muted lane still records to its own stem pair.
+      lg = dvol_a[c] / 100; lg *= lg;
+      smix *= lg; smix2 *= lg;
+      laud = (any_solo ? solo_lane[c] : 1) && !mute_a[c];
+      spl0 += smix * laud;
+      spl1 += smix2 * laud;
       spl(2 + c * 2) += smix;
       spl(3 + c * 2) += smix2;
       v_pos[c] = vp + vrate;
@@ -1199,8 +1434,11 @@ while (si2 < NSYN) (
       sv_bp[si2] += sf * s_hp;
       so = sv_lo[si2];
     );
-    spl0 += so;
-    spl1 += so;
+    // mute/solo gate at the render, so it responds instantly and also silences
+    // a latched or still-ringing voice rather than only stopping new notes
+    saud = (any_solo ? solo_syn[si2] : 1) && !mute_syn[si2];
+    spl0 += so * saud;
+    spl1 += so * saud;
     spl(18 + si2 * 2) += so;
     spl(19 + si2 * 2) += so;
   );

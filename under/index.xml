@@ -25,6 +25,17 @@
         <source type="data" file="supergnome/dr55_sn.wav">https://mima.chat/under/supergnome/dr55_sn.wav</source>
         <source type="data" file="supergnome/dr55_rim.wav">https://mima.chat/under/supergnome/dr55_rim.wav</source>
       </version>
+      <version name="1.2.0-beta1" author="joade comack" time="2026-08-27T22:00:00Z">
+        <changelog><![CDATA[BLEEDING EDGE - untested. GEN KEY and the FX rack.
+- GEN KEY: the in-key generator from the browser port. The style box on the KEY row (after the B M C locks) picks free / Onon / Paln / Kaltuel / Roke / Ark / Atuan and sets the master scale to match; RIGHT-CLICK a section's RND button to write that part in the key and style. Left-click still does the old key-independent random
+- FX rack: dub delay (wow, pitched and reversed repeats, golden echo), glitch/stutter with bit crush, and a 24-grain granulator with a feedback tail. They run in parallel, each hearing only its own sends. The FX RACK button (top right) opens the page; the RACK cell is the master switch and starts off
+- SENDS matrix: four instrument rows plus one per drum lane, so the snare can swim in delay while the kick stays dry
+Saved projects are unaffected - the format is unchanged from 1.1.0. This build has never been compiled by its author; if it fails to load, install 1.1.0 from the version list.]]></changelog>
+        <source file="sequencer_supergnome.jsfx">https://mima.chat/under/supergnome/beta/sequencer_supergnome.jsfx</source>
+        <source type="data" file="supergnome/dr55_bd.wav">https://mima.chat/under/supergnome/dr55_bd.wav</source>
+        <source type="data" file="supergnome/dr55_sn.wav">https://mima.chat/under/supergnome/dr55_sn.wav</source>
+        <source type="data" file="supergnome/dr55_rim.wav">https://mima.chat/under/supergnome/dr55_rim.wav</source>
+      </version>
     </reapack>
   </category>
   <metadata>

@@ -2388,7 +2388,16 @@ top = 34;
 rowh = 40;
 x_fields = 8;
 fieldw = 36;
-FXY = 30;                 // top of the FX overlay
+// ---- FX page geometry. Derived, not hard-coded: the sends matrix grows by
+// one row per drum lane, so the panel height has to follow num_lanes or the
+// bottom rows fall off the window. Both the hit-test and the draw read these.
+FXY = 30;                          // top of the FX overlay
+FXCW = 58; FXCH = 34;              // control cell pitch
+FXCY = FXY + 24;                   // first control row
+FXSY = FXCY + 4 * FXCH + 26;       // first send row (after 4 rows + a header)
+FXSW = 44; FXSH = 20;              // send cell pitch
+FXSX = 78;                         // first send column
+FXH = FXSY + (4 + num_lanes) * FXSH + 12 - FXY;   // panel height
 x_mute = x_fields + 18 * fieldw + 4;  // 660
 x_euc = x_mute + 22;                  // 682
 x_mode = x_euc + 36;                  // 718
@@ -2492,9 +2501,10 @@ click ? (
       : "sequencer");
     have_status = 1;
   ) :
-  (fxpage && mouse_y >= FXY && mouse_y < FXY + 300) ? (
-    fxr = floor((mouse_y - FXY - 22) / 34);
-    fxc = floor((mouse_x - 12) / 58);
+  (fxpage && mouse_y >= FXY && mouse_y < FXY + FXH) ? (
+    fxr = floor((mouse_y - FXCY) / FXCH);
+    fxc = floor((mouse_x - 12) / FXCW);
+    mouse_y < FXCY ? fxr = -1;
     (fxr == 0 && fxc >= 0 && fxc < 8) ? fxi = fxc :
     (fxr == 1 && fxc >= 0 && fxc < 5) ? fxi = 8 + fxc :
     (fxr == 2 && fxc >= 0 && fxc < 8) ? fxi = 13 + fxc :
@@ -2514,8 +2524,9 @@ click ? (
       );
     ) : (
       // the send matrix: 4 part rows x 3 fx, then the per-lane rows
-      fxr = floor((mouse_y - FXY - 160) / 22);
-      fxc = floor((mouse_x - 74) / 44);
+      fxr = floor((mouse_y - FXSY) / FXSH);
+      fxc = floor((mouse_x - FXSX) / FXSW);
+      mouse_y < FXSY ? fxr = -1;
       (fxr >= 0 && fxr < 4 + num_lanes && fxc >= 0 && fxc < 3) ? (
         drag_f = fxc; drag_lane = fxr; drag_y = mouse_y;
         drag_v = fxr < 4 ? snd_mtx[fxr * 3 + fxc] : dsnd_a[(fxr - 4) * 3 + fxc];
@@ -3292,10 +3303,10 @@ have_status ? (
 // ---- FX rack page, drawn over the sequencer ----
 fxpage ? (
   gfx_set(0.07, 0.06, 0.09, 0.97);
-  gfx_rect(8, FXY, gfx_w - 16, 300);
+  gfx_rect(8, FXY, gfx_w - 16, FXH);
   gfx_set(0.3, 0.26, 0.34);
   gfx_rect(8, FXY, gfx_w - 16, 1);
-  gfx_rect(8, FXY + 299, gfx_w - 16, 1);
+  gfx_rect(8, FXY + FXH - 1, gfx_w - 16, 1);
 
   gfx_setfont(1, "Arial", 12);
   fx_on[0] ? gfx_set(0.5, 0.85, 0.55) : gfx_set(0.6, 0.5, 0.5);
@@ -3310,23 +3321,23 @@ fxpage ? (
     fxb = fxrow == 0 ? 0 : fxrow == 1 ? 8 : fxrow == 2 ? 13 : 21;
     fxi = 0;
     while (fxi < fxn) (
-      fxx = 12 + fxi * 58;
-      fxy = FXY + 22 + fxrow * 34;
+      fxx = 12 + fxi * FXCW;
+      fxy = FXCY + fxrow * FXCH;
       // the stage's own on/off cell is tinted by its state, so the row reads
       // at a glance whether it is live
       ((fxi == 0 && fxrow < 3) || (fxrow == 3 && fxi == 2)) ?
         (fxp_get(fxb + fxi) ? gfx_set(0.3, 0.42, 0.32) : gfx_set(0.24, 0.2, 0.22))
         : gfx_set(0.17, 0.16, 0.2);
-      gfx_rect(fxx, fxy, 54, 30);
+      gfx_rect(fxx, fxy, FXCW - 4, FXCH - 4);
       gfx_setfont(1, "Arial", 10);
       gfx_set(0.5, 0.48, 0.55);
       gfx_x = fxx + 2; gfx_y = fxy + 2;
-      gfx_drawstr(fxp_name(fxb + fxi), 1, fxx + 52, fxy + 13);
+      gfx_drawstr(fxp_name(fxb + fxi), 1, fxx + FXCW - 6, fxy + 13);
       gfx_setfont(1, "Arial", 13);
       gfx_set(0.88, 0.86, 0.9);
       fxp_str(fxb + fxi, #fv);
       gfx_x = fxx + 2; gfx_y = fxy + 14;
-      gfx_drawstr(#fv, 1, fxx + 52, fxy + 29);
+      gfx_drawstr(#fv, 1, fxx + FXCW - 6, fxy + FXCH - 5);
       fxi += 1;
     );
     fxrow += 1;
@@ -3335,17 +3346,18 @@ fxpage ? (
   // the routing matrix: which instrument feeds which stage, and how much
   gfx_setfont(1, "Arial", 10);
   gfx_set(0.55, 0.53, 0.6);
-  gfx_x = 12; gfx_y = FXY + 146;
+  gfx_x = 12; gfx_y = FXSY - 24;
   gfx_drawstr("SENDS   part -> stage, 0..100. The drums send per lane.");
   fxi = 0;
   while (fxi < 3) (
-    gfx_x = 74 + fxi * 44; gfx_y = FXY + 160 - 12;
-    gfx_drawstr(fxi == 0 ? "DLY" : fxi == 1 ? "GLI" : "GRN", 1, 74 + fxi * 44 + 40, FXY + 160);
+    gfx_x = FXSX + fxi * FXSW; gfx_y = FXSY - 12;
+    gfx_drawstr(fxi == 0 ? "DLY" : fxi == 1 ? "GLI" : "GRN", 1,
+      FXSX + fxi * FXSW + FXSW - 4, FXSY - 2);
     fxi += 1;
   );
   fxrow = 0;
   while (fxrow < 4 + num_lanes) (
-    fxy = FXY + 160 + fxrow * 22;
+    fxy = FXSY + fxrow * FXSH;
     gfx_setfont(1, "Arial", 10);
     gfx_set(0.6, 0.58, 0.62);
     gfx_x = 12; gfx_y = fxy + 4;
@@ -3358,12 +3370,12 @@ fxpage ? (
     while (fxi < 3) (
       fxv = fxrow < 4 ? snd_mtx[fxrow * 3 + fxi] : dsnd_a[(fxrow - 4) * 3 + fxi];
       fxv > 0 ? gfx_set(0.26, 0.3, 0.38) : gfx_set(0.15, 0.15, 0.18);
-      gfx_rect(74 + fxi * 44, fxy, 40, 19);
+      gfx_rect(FXSX + fxi * FXSW, fxy, FXSW - 4, FXSH - 2);
       fxv > 0 ? gfx_set(0.85, 0.88, 0.95) : gfx_set(0.42, 0.42, 0.46);
       gfx_setfont(1, "Arial", 12);
-      gfx_x = 74 + fxi * 44 + 2; gfx_y = fxy + 3;
+      gfx_x = FXSX + fxi * FXSW + 2; gfx_y = fxy + 3;
       sprintf(#fv, "%d", fxv);
-      gfx_drawstr(#fv, 1, 74 + fxi * 44 + 38, fxy + 18);
+      gfx_drawstr(#fv, 1, FXSX + fxi * FXSW + FXSW - 6, fxy + FXSH - 2);
       fxi += 1;
     );
     fxrow += 1;
@@ -3371,6 +3383,6 @@ fxpage ? (
   // the drums row is the sum of the lane rows below it, not a control
   gfx_set(0.45, 0.44, 0.5);
   gfx_setfont(1, "Arial", 10);
-  gfx_x = 230; gfx_y = FXY + 160 + 4;
+  gfx_x = FXSX + 3 * FXSW + 12; gfx_y = FXSY + 3;
   gfx_drawstr("<- all drums, added on top of each lane row below");
 );

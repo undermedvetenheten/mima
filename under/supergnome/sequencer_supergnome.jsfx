@@ -15,6 +15,13 @@ desc:MIDI Sequencer SuperGnome
     (pink); right-click again to remove.
   - Triplet drums: use ST/SPAN ratios (24 steps / 4 beats = 16th triplets).
   - SAMPLES button (top right) shows/hides the sample picker sliders.
+  - PATTERN / VOICE button (beside it) flips the lane field row to a
+    second page: SYN NSE SWP SUB CLK VOL CRP.
+    SYN switches the lane to the internal synth drum instead of a sample
+    (or MIDI): a swept sine body with NSE noise, SWP sweep depth, SUB a
+    30Hz thump and CLK the transient. PIT tunes it, GATE is its decay,
+    LPF/FEV/LRT still shape it. VOL is the lane fader; CRP starts a
+    SAMPLE part-way in.
 
   KEY row (next to +/- LANE): the master key.
   - KEY: master root note. SCL: master scale (tap = next).
@@ -31,7 +38,23 @@ desc:MIDI Sequencer SuperGnome
   THREE SYNTH SECTIONS: BASS, MELODY, CHORDS.
   Row 1: BASE SCAL ST SPAN PULS ROT VEL GATE ATT DEC + M / RND / PR-PM
   Row 2: CUT RES ENV WAV RATE DEP SHP EMD GLD SWG NDG FEL PRG SPD
-         + SYN/MID (+ 7TH on chords)
+         ENG + the engine's own knob, + SYN/MID (+ 7TH on chords)
+  - ENG picks the voice: OSC / STR / GLS / DRN / BEL / PNO.
+    STR  Karplus-Strong pluck; RES is the ring length (100 = endless,
+         pair it with EMD=LAT for a bowed drone). CUT still shapes it.
+    GLS  blown glass: stretched partials 1, 2, 3.01, 4.18, 5.43 with a
+         breath-noise onset. WAV = upper-partial richness, CYC sweeps
+         which partial is emphasised (34 down to 4 beats per cycle).
+    DRN  throat song: OPEN slides a narrow formant up harmonics 2..10,
+         WAV shapes the body from near-pure to saw-ish.
+    BEL  bell/gong. Register decides the character on its own: low notes
+         ring for seconds with a heavy hum, high ones are fast and
+         clangy. STK = mallet hardness, DEC scales the ring length.
+    PNO  long stiff strings; PED is the sustain pedal - it lengthens the
+         ring and bleeds each chord string into all the others.
+    SPL (splice) exists in the saved data for web compatibility but has
+    no sample bank here, so it plays as OSC and the ENG field steps past
+    it.
   - WAV: 0 sine (beefed: sub-octave + 2nd harm) - 50 tri - 100 saw.
   - EMD: AD pluck / HLD sustain for GATE / LAT latch. GLD: portamento ms.
   - SWG/NDG: swing and nudge, like the drums. FEL: tap for STRaight /
@@ -99,6 +122,7 @@ l_s5 = -1; l_s6 = -1; l_s7 = -1; l_s8 = -1;
 LANES_CAP = 8;
 MAX_STEPS = 32;
 EUC_N = 21;
+DV_N = 7;      // fields on the drum lanes' VOICE page
 NROWS = 12;
 NSCALES = 14;
 NPROGS = 14;
@@ -158,28 +182,170 @@ gkey_spd   = 719; // master rotation beats/step
 lock_a   = 720;  // per-synth: 1 = locked to master key (3)
 hml_a    = 724;  // per-synth harmony speed mult: 0 = 1/2, 1 = x1, 2 = x2 (3)
 
-// ---- non-serialized scratch ----
-v_del   = 1000;
-v_pos   = 1008;
-v_on    = 1016;
-v_gain  = 1024;
-smp_nch = 1032;
-smp_sr  = 1040;
-smp_len = 1048;
-flt_lo  = 1056;
-flt_bp  = 1064;
-flt_lo2 = 1072;
-flt_bp2 = 1080;
-flt_f   = 1088;  // 2 = bypass sentinel
-v_rt    = 1096;
-fenv    = 1104;
-offq    = 1120;  // (beat, note, chan) triplets
+// ---- web-parity state: everything the browser port added lives at >= 728,
+// at the SAME offsets, so a groove means the same thing in both. ----
+eng_a      = 728;  // per-synth engine 0 osc 1 string 2 glass 3 splice 4 drone 5 bell 6 piano
+gen_style  = 731;  // RND generation style
+fx_on      = 736;
+dly_on     = 737;
+dly_time   = 738;  // beats
+dly_fb     = 739;
+dly_tone   = 740;
+dly_wow    = 741;
+fx_feed    = 742;
+avo_on     = 743;  // glitch
+avo_amt    = 744;
+avo_rate   = 745;  // beats
+avo_crush  = 746;
+avo_mix    = 747;
+dly_pitch  = 748;
+dly_rev    = 749;
+send_a     = 752;  // legacy single-bus sends (4)
+glc_a      = 756;  // per-synth glass harmonic-cycle rate (3)
+cld_on     = 760;  // granulator
+cld_mix    = 761;
+cld_size   = 762;
+cld_dens   = 763;
+cld_pitch  = 764;
+cld_spread = 765;
+cld_reverb = 766;
+cld_revg   = 767;
+snd_mtx    = 768;  // 4 parts x 3 fx sends
+mute_syn   = 780;  // per-synth mute (3)
+solo_lane  = 783;  // per-lane solo (8)
+solo_syn   = 791;  // per-synth solo (3)
+snd_pre    = 794;  // sends ignore the faders
+spl_st_a   = 800;  // splice crop start (3)
+spl_en_a   = 803;  // splice crop end (3)
+spl_mode_a = 806;  // 0 TRK, 1 FIX (3)
+spl_tune_a = 809;  // splice tune (3)
+dnse_a     = 812;  // synth drum: noise mix (8)
+dswp_a     = 820;  // synth drum: pitch sweep (8)
+dsub_a     = 828;  // synth drum: 30Hz sub (8)
+dclk_a     = 836;  // synth drum: click (8)
+bpm_wob    = 844;  // tempo wobble depth
+bpm_wrt    = 845;  // tempo wobble period, beats
+mlfo_a     = 846;  // 2 mod LFOs x (rate, depth, shape)
+mod_tgt_a  = 852;  // 8 assignment slots: target offset
+mod_msk_a  = 868;  // 8 assignment slots: LFO bitmask
+dcrp_a     = 884;  // per-lane sample crop start (8)
+pan_az_a   = 896;  // 4 parts: azimuth
+pan_frc_a  = 900;  // 4 parts: force
+pan_bnc    = 904;  // dome bounciness
+xy_drv     = 905;  // bass waveshaper drive
+xy_skw     = 906;  // bass waveshaper skew
+whl_spin   = 907;  // harmonic-wheel spin rate
+spin_p     = 908;  // which parts join the spin (3)
+frc_on     = 911;  // fractal fills
+frc_rule   = 912;
+frc_depth  = 913;
+frc_amt    = 914;
+frc_pmask  = 915;  // legacy part bitmask
+dfill_a    = 916;  // per-lane fill density (8)
+sfill_a    = 924;  // per-synth fill density (3)
+frc_bend   = 927;
+drone_op_a = 928;  // per-synth drone mouth openness (3)
+dvol_a     = 931;  // per-lane volume (8)
+dsnd_a     = 939;  // per-lane x 3 fx sends (24)
+daz_a      = 976;  // per-lane azimuth (8)
+dfrc_a     = 984;  // per-lane force (8)
+phi_tune   = 995;  // octave becomes a golden sixth
+dly_gld    = 996;  // 0 off, 1 compress, 2 expand
+bell_stk_a = 997;  // per-synth bell mallet hardness (3)
+pno_a      = 1000; // per-synth piano pedal (3)
+psnd_a     = 1003; // 4 parts -> piano strings
+plsnd_a    = 1007; // 8 lanes -> piano strings
+pres_on    = 1015; // piano-string resonator
+pres_mix   = 1016;
+pres_dec   = 1017;
+pres_tone  = 1018;
+xsrc_a     = 1019; // per-synth cross-routing source (3)
+xamt_a     = 1022;
+xmode_a    = 1025; // 0 RING, 1 DUCK, 2 DRV
+gld_time   = 1028; // golden loop
+mbr_on     = 1029; // 4-band resonator
+mbr_freq   = 1030;
+mbr_sprd   = 1031;
+mbr_q      = 1032;
+mbr_mode   = 1033; // 0 SUM, 1 RING, 2 PAIR, 3 MULT
+mbr_mix    = 1034;
+mbr_drv    = 1035;
+mbr_snd_a  = 1036; // 4 parts -> 4-band
+mbr_lsnd_a = 1040; // 8 lanes -> 4-band
+bpm_wsh    = 1048; // tempo wobble LFO shape
+
+// ---- plugin-only state. The browser port's memory ends at 1072, so anything
+// the plugin invents for itself starts there and can never grow into a web
+// offset. 1049..1071 is left free for the web port to expand into. ----
+dsyn_a     = 1072; // per-lane: 1 = internal synth drum, not sample or MIDI
+SER_END    = 1080; // serialized block is 0 .. SER_END-1
+MOD_SLOTS  = 8;
+
+// ---- non-serialized scratch. Moved clear of the serialized block: the web
+// port grew state up to 1048, and v_del..smp_sr used to sit right on top of it.
+v_del   = 3000;
+v_pos   = 3008;
+v_on    = 3016;
+v_gain  = 3024;
+smp_nch = 3032;
+smp_sr  = 3040;
+smp_len = 3048;
+flt_lo  = 3056;
+flt_bp  = 3064;
+flt_lo2 = 3072;
+flt_bp2 = 3080;
+flt_f   = 3088;  // 2 = bypass sentinel
+v_rt    = 3096;
+fenv    = 3104;
+// ---- engine scratch: strings, bells, glass, drone, piano ----
+// 6 voice slots throughout: 0 bass, 1 melody, 2..5 the four chord voices.
+KS_MAX  = 2048;  // longest Karplus-Strong delay line, i.e. lowest pitch
+ks_buf  = 8000;  // 6 x KS_MAX, so 8000 .. 20287
+ks_len  = 4000;
+ks_pos  = 4008;
+ks_act  = 4016;
+ks_dec  = 4024;  // per-synth loop sustain
+ks_brt  = 4032;  // per-synth loop-filter blend
+bl_ph   = 4050;  // bell: 6 banks x 8 partials
+bl_amp  = 4100;
+bl_dec  = 4150;
+bl_f    = 4200;
+bl_nz   = 4250;  // strike noise, per bank
+bl_nzd  = 4258;
+bl_beat = 4266;  // warble clock, per bank
+bl_r    = 4274;  // the 8 partial ratios
+bl_dsc  = 4290;  // per-synth ring-length scale
+gls_shim = 4300; // glass shimmer phase, per synth
+gls_brth = 4308; // glass breath-noise envelope, per synth
+gls_shc = 4316;  // ... and the same two per chord voice
+gls_brc = 4324;
+gls_emph = 4332; // 3 synths x 5 partial emphases
+gls_mix = 4352;
+dr_vib  = 4360;  // drone vibrato phase
+dr_hsel = 4368;  // drone singing formant, slewed per-sample
+pno_prv = 4376;  // piano sympathetic bleed: last block's chord sum
+pno_dc  = 4384;
+sv_eng  = 4392;  // engine latched per block, so it can't change mid-note
+// synth drum, per lane: a swept sine body, a noise burst, a click and a sub
+d_env   = 4400;
+d_nze   = 4410;
+d_ph    = 4420;
+d_sph   = 4430;
+d_dec   = 4440;
+d_nzd   = 4450;
+d_f0    = 4460;
+d_nse   = 4470;
+d_swp   = 4480;
+d_sub   = 4490;
+d_clk   = 4500;
+offq    = 3200;  // (beat, note, chan) triplets
 OFFQ_MAX = 64;
 euc_tab = 1320;
 scl_tab = 1400;
 rot_tmp = 1700;
 shc     = 1800;
 shv     = 1812;
+shn     = 1824;  // spline drift: the value being slewed toward
 // synth voices, indexed 0 bass / 1 melody / 2 chords (chords share env)
 sv_del  = 2100;
 sv_nfreq = 2103;
@@ -223,6 +389,48 @@ function ep(k, n, r) ( euc_tab[_ei] = k; euc_tab[_ei + 1] = n; euc_tab[_ei + 2] 
 ep(2,5,0); ep(3,4,0); ep(3,5,2); ep(3,7,0); ep(3,8,0); ep(4,7,0); ep(4,9,0);
 ep(4,11,0); ep(5,6,0); ep(5,7,0); ep(5,8,0); ep(5,9,0); ep(5,11,0); ep(5,12,0);
 ep(5,16,0); ep(7,8,0); ep(7,12,0); ep(7,16,14); ep(9,16,0); ep(11,24,14); ep(13,24,5);
+
+// GOLDEN LOOP: the loop length walks 1,1,2,3,5,8,13,21 STEPS and snaps back.
+// Tempo and grid are untouched; only where the pattern wraps moves. Returns the
+// bar-local step in gl_local and the pass number in gl_pass.
+function gold_loop(n) local(lap, tt, k, cum, len) (
+  lap = floor(n / 54); tt = n - lap * 54;
+  k = 0; cum = 0; gl_i = 7;
+  while (k < 8) (
+    len = k == 0 ? 1 : k == 1 ? 1 : k == 2 ? 2 : k == 3 ? 3 :
+          k == 4 ? 5 : k == 5 ? 8 : k == 6 ? 13 : 21;
+    tt < cum + len ? ( gl_i = k; k = 8; ) : ( cum += len; k += 1; );
+  );
+  gl_cum = cum;
+  gl_local = tt - cum;
+  gl_pass = lap * 8 + gl_i;
+);
+// deterministic per-step "random" in 0..1. NUDGE is a range, not a fixed
+// offset, and the scheduler scans a step of slack either side of the block --
+// with rand() the two evaluations of a boundary hit would disagree and it would
+// fire twice or vanish. A hash of the absolute step index cannot.
+function step_rand(n, seed) local(h) (
+  h = sin(n * 127.1 + seed * 311.7) * 43758.5453;
+  h - floor(h);
+);
+// one LFO cycle of shape: 0 sin 1 tri 2 saw down 3 S&H 4 saw up 5 spline 6 golden
+function shape_at(cy, fr, shp, si) local(k, v, t) (
+  shp == 3 ? (
+    cy != shc[si] ? ( shc[si] = cy; shv[si] = rand(2) - 1; );
+    shv[si];
+  ) : shp == 5 ? (
+    cy != shc[si] ? ( shc[si] = cy; shv[si] = shn[si]; shn[si] = rand(2) - 1; );
+    t = (1 - cos($pi * fr)) * 0.5;
+    shv[si] + (shn[si] - shv[si]) * t;
+  ) : shp == 6 ? (
+    k = min(6, floor(fr * 7));
+    v = (pow(1.6180339887, k) - 1) / (pow(1.6180339887, 7) - 1);
+    v * 2 - 1;
+  ) : shp == 0 ? sin(2 * $pi * fr)
+    : shp == 1 ? 1 - 4 * abs(fr - 0.5)
+    : shp == 4 ? 2 * fr - 1
+    : 1 - 2 * fr;
+);
 
 function euc_name(i) (
   i == 0 ? "Khafif-e-ramal (Persia)" :
@@ -292,6 +500,55 @@ function shape_name(i) (
   i == 0 ? "sine" : i == 1 ? "triangle" : i == 2 ? "saw down" : "random (S&H)";
 );
 
+function eng_name(i) (
+  i == 1 ? "STR" : i == 2 ? "GLS" : i == 3 ? "SPL" :
+  i == 4 ? "DRN" : i == 5 ? "BEL" : i == 6 ? "PNO" : "OSC";
+);
+function eng_blurb(i) (
+  i == 1 ? "string: plucked Karplus-Strong, RES = ring length" :
+  i == 2 ? "glass: stretched partials, CYC sweeps the emphasis" :
+  i == 3 ? "splice: no sample bank in the plugin - plays as OSC" :
+  i == 4 ? "drone: throat song, OPEN climbs the harmonic series" :
+  i == 5 ? "bell: register picks gong .. hand bell, STK = mallet" :
+  i == 6 ? "piano: long stiff strings, PED = pedal + sympathy" :
+           "osc: sin -> tri -> saw morph on WAV";
+);
+// Every engine but the osc has exactly one extra knob, so they share a field
+function engp_name(si) (
+  eng_a[si] == 2 ? "CYC" : eng_a[si] == 4 ? "OPEN" :
+  eng_a[si] == 5 ? "STK" : eng_a[si] == 6 ? "PED" : "--";
+);
+function engp_get(si) (
+  eng_a[si] == 2 ? glc_a[si] :
+  eng_a[si] == 4 ? drone_op_a[si] :
+  eng_a[si] == 5 ? bell_stk_a[si] :
+  eng_a[si] == 6 ? pno_a[si] : 0;
+);
+function engp_set(si, v) (
+  v = max(0, min(100, v));
+  eng_a[si] == 2 ? (glc_a[si] = v) :
+  eng_a[si] == 4 ? (drone_op_a[si] = v) :
+  eng_a[si] == 5 ? (bell_stk_a[si] = v) :
+  eng_a[si] == 6 ? (pno_a[si] = v);
+);
+
+// The drum lanes' second field page: the synth-drum voice, plus the two
+// sample controls that had nowhere to live on the main row.
+function dv_name(f) (
+  f == 0 ? "SYN" : f == 1 ? "NSE" : f == 2 ? "SWP" : f == 3 ? "SUB" :
+  f == 4 ? "CLK" : f == 5 ? "VOL" : "CRP";
+);
+function dv_get(l, f) (
+  f == 0 ? dsyn_a[l] : f == 1 ? dnse_a[l] : f == 2 ? dswp_a[l] :
+  f == 3 ? dsub_a[l] : f == 4 ? dclk_a[l] : f == 5 ? dvol_a[l] : dcrp_a[l];
+);
+function dv_set(l, f, v) (
+  v = max(0, min(100, v));
+  f == 1 ? (dnse_a[l] = v) : f == 2 ? (dswp_a[l] = v) :
+  f == 3 ? (dsub_a[l] = v) : f == 4 ? (dclk_a[l] = v) :
+  f == 5 ? (dvol_a[l] = v) : f == 6 ? (dcrp_a[l] = v) : 0;
+);
+
 function syn_name(i) (
   i == 0 ? "bass" : i == 1 ? "melody" : "chords";
 );
@@ -357,6 +614,160 @@ function load_sample(l, h) local(nch, sr_f, avail) (
     );
     file_close(h);
   );
+);
+
+// pluck a Karplus-Strong string: fill its delay line with a noise burst
+function ks_excite(slot, freq) local(len, base, i) (
+  len = floor(srate / max(1, freq) + 0.5);
+  len < 2 ? len = 2;
+  len > KS_MAX - 1 ? len = KS_MAX - 1;
+  base = ks_buf + slot * KS_MAX;
+  i = 0;
+  while (i < len) ( base[i] = rand(2) - 1; i += 1; );
+  ks_len[slot] = len;
+  ks_pos[slot] = 0;
+  ks_act[slot] = 1;
+);
+
+// one sample of a Karplus-Strong string. brt is the loop-filter blend
+// (0.5 = dark/heavy averaging, ~0.05 = bright), dec the loop sustain (<1),
+// inj the sympathetic bleed injected by the piano engine.
+function ks_step(slot, dec, brt, inj) local(base, len, pos, nx, cur, nxt) (
+  ks_act[slot] ? (
+    base = ks_buf + slot * KS_MAX;
+    len = ks_len[slot];
+    pos = ks_pos[slot];
+    cur = base[pos];
+    nx = pos + 1 < len ? pos + 1 : 0;
+    nxt = base[nx];
+    base[pos] = (cur + brt * (nxt - cur)) * dec + inj;
+    ks_pos[slot] = nx;
+    cur;
+  ) : 0;
+);
+
+// Strike a bell/gong. Register decides the character automatically: low notes
+// ring for many seconds with a heavy hum + prime (church bell, gong), high
+// notes decay fast and clangy with a noisy attack (kettle, hand bell).
+// stk = mallet hardness (brightness + attack noise), dsc = ring-length scale.
+function bell_strike(bank, f0, stk, dsc)
+         local(b, reg, brt, tau0, centre, wide, norm, k, ratio, f, d, amp, tau) (
+  b = bank * 8;
+  // 0 at ~55Hz (gong end), 1 at ~880Hz (kettle end)
+  reg = max(0, min(1, log(max(20, f0) / 55) / log(2) / 4));
+  brt = 0.2 + stk / 100 * 0.8;
+  tau0 = (0.5 + (1 - reg) * 7.5) * dsc;              // seconds of ring
+  // the gaussian window rides up the partials with hardness + register
+  centre = 1.1 + brt * 2.8 + reg * 1.4;
+  wide = 2.2 + (1 - reg) * 2.2;
+  norm = 0;
+  k = 0;
+  while (k < 8) (
+    ratio = bl_r[k];
+    f = f0 * ratio;
+    d = k - centre;
+    amp = exp(-d * d / wide);
+    // the bottom partials stay solid so low bells feel massive, not airy
+    k <= 1 ? amp = max(amp, 1 - reg * 0.35);
+    k == 2 ? amp = max(amp, (1 - reg) * 0.5);
+    (f > srate * 0.45 || f < 15) ? amp = 0;
+    bl_f[b + k] = f;
+    bl_amp[b + k] = amp;
+    // higher partials always die first -- the core bell cue
+    tau = max(0.02, tau0 / pow(ratio, 0.8));
+    bl_dec[b + k] = exp(-1 / (tau * srate));
+    bl_ph[b + k] = k < 2 ? 0 : rand(1);
+    norm += amp;
+    k += 1;
+  );
+  norm > 0.001 ? (
+    k = 0;
+    while (k < 8) ( bl_amp[b + k] = bl_amp[b + k] / norm; k += 1; );
+  );
+  // the strike itself: a short noise chirp, brighter/louder on small bells
+  bl_nz[bank] = (0.25 + stk / 100 * 0.75) * (0.35 + reg * 0.9);
+  bl_nzd[bank] = exp(-1 / ((0.004 + (1 - reg) * 0.03) * srate));
+);
+
+function bell_voice(bank) local(b, beat, s, k, a, warb) (
+  b = bank * 8;
+  bl_beat[bank] += 0.7 / srate;
+  bl_beat[bank] > 1 ? bl_beat[bank] -= 1;
+  beat = 2 * $pi * bl_beat[bank];
+  s = 0;
+  k = 0;
+  while (k < 8) (
+    a = bl_amp[b + k];
+    a >= 0.00001 ? (
+      bl_ph[b + k] += bl_f[b + k] / srate;
+      bl_ph[b + k] >= 1 ? bl_ph[b + k] -= 1;
+      // every partial warbles at its own rate: real bells shimmer and beat
+      warb = 1 + 0.14 * sin(beat * (1 + k * 0.37) + k);
+      s += a * warb * sin(2 * $pi * bl_ph[b + k]);
+      bl_amp[b + k] = a * bl_dec[b + k];
+    );
+    k += 1;
+  );
+  bl_nz[bank] > 0.0001 ? (
+    s += (rand(2) - 1) * bl_nz[bank] * 0.5;
+    bl_nz[bank] *= bl_nzd[bank];
+  );
+  s * 2.2;
+);
+
+// One sample of a throat-song drone: a steady fundamental plus an overtone
+// that climbs the harmonic series with "mouth openness" (closed = low
+// harmonics, open = high), like sygyt overtone singing. The emphasis is a
+// narrow gaussian over harmonics 2..10, morphing smoothly between them, so an
+// LFO on OPEN sweeps the singing formant. wav shapes the body the way the
+// classic osc does: 0 = near-pure, 50 = tri-ish (1/h^2), 100 = saw-ish (1/h).
+function drone_voice(si, ph, open, wav) local(tgt, hsel, body, roll, s, h, d, a) (
+  dr_vib[si] += 0.9 / srate;
+  dr_vib[si] > 1 ? dr_vib[si] -= 1;
+  tgt = 1.6 + open / 100 * 8.2 + sin(2 * $pi * dr_vib[si]) * 0.18;
+  // slew the formant per-sample so LFO block-steps can't zipper
+  dr_hsel[si] += (tgt - dr_hsel[si]) * 0.0008;
+  hsel = dr_hsel[si];
+  body = 0.04 + wav / 100 * 0.42;
+  roll = wav < 50 ? 2.4 - wav / 50 * 0.7 : 1.7 - (wav - 50) / 50 * 0.7;
+  s = sin(2 * $pi * ph);                              // the root drone
+  h = 2;
+  while (h <= 10) (
+    d = h - hsel;
+    a = body / pow(h, roll) + 1.9 * exp(-d * d / 0.7) * 0.32;
+    a > 0.004 ? s += a * sin(2 * $pi * ph * h);
+    h += 1;
+  );
+  s * 0.42;
+);
+
+// One sample of a blown-glass voice: stretched partials + a slow shimmer on
+// the upper ones + a decaying breath-noise onset. chord picks the per-chord-
+// voice shimmer/breath state (vv), otherwise the per-synth one (si).
+function glass_voice(si, ph, mix, chord, vv) local(sh, br, e, s, tw) (
+  tw = 2 * $pi;
+  chord ? (
+    gls_shc[vv] += 4.6 / srate;
+    gls_shc[vv] > tw ? gls_shc[vv] -= tw;
+    sh = 0.5 + 0.5 * sin(gls_shc[vv]);
+    br = gls_brc[vv];
+  ) : (
+    gls_shim[si] += 4.398 / srate;
+    gls_shim[si] > tw ? gls_shim[si] -= tw;
+    sh = 0.5 + 0.5 * sin(gls_shim[si]);
+    br = gls_brth[si];
+  );
+  e = gls_emph + si * 5;
+  s = e[0] * sin(tw * ph)
+    + e[1] * 0.5 * sin(tw * ph * 2)
+    + e[2] * mix * 0.32 * (0.4 + 0.6 * sh) * sin(tw * ph * 3.01)
+    + e[3] * mix * 0.22 * sin(tw * ph * 4.18)
+    + e[4] * mix * 0.13 * (0.6 + 0.4 * sh) * sin(tw * ph * 5.43);
+  br > 0.0001 ? (
+    s += (rand(2) - 1) * br * 0.5;
+    chord ? (gls_brc[vv] = br * 0.999) : (gls_brth[si] = br * 0.999);
+  );
+  s * 0.5;
 );
 
 // catch NaN/inf - NaN fails both comparisons -> 0
@@ -703,6 +1114,84 @@ initialized == 0 ? (
   initialized = 1;
 );
 
+// Engine scratch. Not serialized -- it is all running DSP state -- but it does
+// need sane starting values: an unstruck bell must be silent, not stuck.
+bl_r[0] = 0.5;   bl_r[1] = 1.0;   bl_r[2] = 1.19;  bl_r[3] = 1.5;
+bl_r[4] = 2.0;   bl_r[5] = 3.236; bl_r[6] = 5.236; bl_r[7] = 8.472;
+_i = 0;
+while (_i < 6) (
+  ks_act[_i] = 0; ks_len[_i] = 2; ks_pos[_i] = 0;
+  bl_nz[_i] = 0; bl_nzd[_i] = 0.999; bl_beat[_i] = 0;
+  _i += 1;
+);
+_i = 0;
+while (_i < 48) ( bl_ph[_i] = 0; bl_amp[_i] = 0; bl_dec[_i] = 0.999; bl_f[_i] = 0; _i += 1; );
+_i = 0;
+while (_i < 6 * KS_MAX) ( ks_buf[_i] = 0; _i += 1; );
+_i = 0;
+while (_i < NSYN) (
+  ks_dec[_i] = 0.99; ks_brt[_i] = 0.16; bl_dsc[_i] = 1;
+  gls_shim[_i] = 0; gls_brth[_i] = 0; gls_mix[_i] = 0.5;
+  dr_vib[_i] = 0; dr_hsel[_i] = 4;
+  pno_prv[_i] = 0; pno_dc[_i] = 0; sv_eng[_i] = 0;
+  _i += 1;
+);
+_i = 0;
+while (_i < 4) ( gls_shc[_i] = 0; gls_brc[_i] = 0; _i += 1; );
+_i = 0;
+while (_i < NSYN * 5) ( gls_emph[_i] = 1; _i += 1; );
+
+// Defaults for the web-parity region. Runs on every @init, so a project saved
+// before v11 keeps whatever it had for 0..727 and simply inherits these for the
+// rest -- @serialize reads fewer words than the block is wide and leaves the
+// tail alone. Mirrors seedNewRegions() in gnome.js exactly.
+_i = 0;
+while (_i < NSYN) (
+  eng_a[_i] = 0;
+  spl_st_a[_i] = 0; spl_en_a[_i] = 100; spl_mode_a[_i] = 0; spl_tune_a[_i] = 0;
+  glc_a[_i] = 0; mute_syn[_i] = 0; solo_syn[_i] = 0;
+  drone_op_a[_i] = 30; bell_stk_a[_i] = 40; pno_a[_i] = 45;
+  xsrc_a[_i] = 0; xamt_a[_i] = 40; xmode_a[_i] = 0;
+  sfill_a[_i] = _i == 2 ? 1 : 2;
+  spin_p[_i] = _i == 2 ? 1 : 0;
+  _i += 1;
+);
+_i = 0;
+while (_i < LANES_CAP) (
+  dnse_a[_i] = 20; dswp_a[_i] = 55; dsub_a[_i] = 25; dclk_a[_i] = 25;
+  dcrp_a[_i] = 0; dfill_a[_i] = 2; dvol_a[_i] = 90; dsyn_a[_i] = 0;
+  daz_a[_i] = 0; dfrc_a[_i] = 0; solo_lane[_i] = 0; plsnd_a[_i] = 0;
+  mbr_lsnd_a[_i] = 0;
+  dsnd_a[_i * 3] = 0; dsnd_a[_i * 3 + 1] = 0; dsnd_a[_i * 3 + 2] = 0;
+  _i += 1;
+);
+_i = 0;
+while (_i < 4) (
+  pan_az_a[_i] = 0; pan_frc_a[_i] = 0; send_a[_i] = 0;
+  psnd_a[_i] = 0; mbr_snd_a[_i] = 0;
+  snd_mtx[_i * 3] = 0; snd_mtx[_i * 3 + 1] = 0; snd_mtx[_i * 3 + 2] = 0;
+  _i += 1;
+);
+_i = 0;
+while (_i < MOD_SLOTS) ( mod_tgt_a[_i] = 0; mod_msk_a[_i] = 0; _i += 1; );
+gen_style[0] = 0;
+fx_on[0] = 0; fx_feed[0] = 0; snd_pre[0] = 0;
+dly_on[0] = 1; dly_time[0] = 0.75; dly_fb[0] = 38; dly_tone[0] = 55;
+dly_wow[0] = 30; dly_pitch[0] = 0; dly_rev[0] = 0; dly_gld[0] = 0;
+avo_on[0] = 0; avo_amt[0] = 40; avo_rate[0] = 0.5; avo_crush[0] = 0; avo_mix[0] = 100;
+cld_on[0] = 0; cld_mix[0] = 50; cld_size[0] = 45; cld_dens[0] = 55;
+cld_pitch[0] = 0; cld_spread[0] = 40; cld_reverb[0] = 55; cld_revg[0] = 0;
+bpm_wob[0] = 0; bpm_wrt[0] = 32; bpm_wsh[0] = 0;
+mlfo_a[0] = 8; mlfo_a[1] = 50; mlfo_a[2] = 0;
+mlfo_a[3] = 16; mlfo_a[4] = 50; mlfo_a[5] = 0;
+pan_bnc[0] = 40; xy_drv[0] = 0; xy_skw[0] = 0; whl_spin[0] = 0;
+frc_on[0] = 0; frc_rule[0] = 0; frc_depth[0] = 4; frc_amt[0] = 50;
+frc_pmask[0] = 3; frc_bend[0] = 25;
+phi_tune[0] = 0; gld_time[0] = 0;
+pres_on[0] = 0; pres_mix[0] = 45; pres_dec[0] = 70; pres_tone[0] = 55;
+mbr_on[0] = 0; mbr_freq[0] = 180; mbr_sprd[0] = 50; mbr_q[0] = 45;
+mbr_mode[0] = 0; mbr_mix[0] = 60; mbr_drv[0] = 30;
+
 @slider
 slider1 != l_s1 ? ( l_s1 = slider1; load_sample(0, file_open(slider1)); );
 slider2 != l_s2 ? ( l_s2 = slider2; load_sample(1, file_open(slider2)); );
@@ -715,10 +1204,19 @@ slider8 != l_s8 ? ( l_s8 = slider8; load_sample(7, file_open(slider8)); );
 
 @serialize
 ser_rd = file_avail(0) >= 0;
-ser_ver = 10;
+ser_ver = 12;
 file_var(0, ser_ver);
 nl_ser = num_lanes;
-ser_ver >= 10 ? (
+ser_ver >= 12 ? (
+  // v12 = the web-parity block plus the plugin's own tail
+  file_mem(0, 0, SER_END);
+  file_var(0, nl_ser);
+) : ser_ver == 11 ? (
+  // v11 carries the whole web-parity block, so a groove moves between the
+  // plugin and the browser port unchanged
+  file_mem(0, 0, 1049);
+  file_var(0, nl_ser);
+) : ser_ver == 10 ? (
   file_mem(0, 0, 728);
   file_var(0, nl_ser);
 ) : ser_ver == 9 ? (
@@ -787,6 +1285,16 @@ slider8 != l_s8 ? ( l_s8 = slider8; load_sample(7, file_open(slider8)); );
 playing = play_state & 1;
 bps = tempo / 60;
 spb = srate / bps;
+// TEMPO WOBBLE. In the browser the gnome owns its clock and the wobble warps
+// it; here REAPER owns beat_position and the host transport is authoritative,
+// so instead the same LFO shapes push and drag each HIT off the grid. Same
+// audible breathing, no fight with the DAW's timeline.
+wob_amt = 0;
+bpm_wob[0] > 0 ? (
+  wob_ph = beat_position / max(4, bpm_wrt[0]);
+  wob_amt = shape_at(floor(wob_ph), wob_ph - floor(wob_ph), bpm_wsh[0], 14)
+    * bpm_wob[0] / 100 * 0.12;
+);
 blk_start = beat_position;
 blk_end = blk_start + samplesblock / spb;
 g_beat = blk_start;
@@ -849,6 +1357,36 @@ while (si < NSYN) (
   sv_dmp[si] = 1.3 - sp[13] / 100 * 1.15;
   sv_wv[si] = sp[19];
   sv_gcoef[si] = sp[21] <= 0 ? 1 : 1 - exp(-1 / (sp[21] * 0.001 * srate));
+  // latch the engine once per block: a switch mid-note would leave the old
+  // engine's state half-advanced and click
+  sv_eng[si] = eng_a[si];
+  // string: RES -> loop sustain (100 = lossless = infinite, for drones on the
+  // LATCH envelope). CUT does the tone-shaping via the post low-pass above, so
+  // the loop filter itself stays a mild fixed damping.
+  ks_dec[si] = sp[13] >= 100 ? 1.0 : 0.965 + sp[13] / 100 * 0.0349;
+  ks_brt[si] = 0.16;
+  eng_a[si] == 6 ? (
+    // piano: stiffer, brighter strings that ring long -- PNO is the sustain
+    // pedal (longer ring + more sympathetic bleed between the voices)
+    ks_dec[si] = min(0.99985, 0.9993 + pno_a[si] / 100 * 0.00055 + sp[13] / 100 * 0.0002);
+    ks_brt[si] = 0.34;
+  );
+  // bell ring-length scale from DEC (ms), so DEC still shapes the tail
+  bl_dsc[si] = max(0.12, sp[9] / 600);
+  // glass: WAV -> upper-partial richness
+  gls_mix[si] = 0.25 + sp[19] / 100 * 0.75;
+  // glass harmonic cycle: sweep the emphasised partial for evolving drones
+  eng_a[si] == 2 ? (
+    g_amt = glc_a[si] / 100;
+    g_per = g_amt <= 0 ? 1000000000 : 34 - g_amt * 30;   // 34..4 beats / cycle
+    g_cyc = beat_position / g_per; g_cyc -= floor(g_cyc);
+    g_p = 0;
+    while (g_p < 5) (
+      g_bump = 0.5 + 0.5 * cos(2 * $pi * (g_cyc - g_p / 5));
+      gls_emph[si * 5 + g_p] = g_amt <= 0 ? 1 : 1 - g_amt + g_amt * g_bump * 2;
+      g_p += 1;
+    );
+  );
   si += 1;
 );
 
@@ -885,21 +1423,41 @@ playing ? (
       n = ceil((blk_start - stepdur) / stepdur - 0.000000001);
       t = n * stepdur;
       while (t < blk_end + stepdur) (
-        stepidx = ((n % steps_a[l]) + steps_a[l]) % steps_a[l];
+        gld_time[0] ? (
+          gold_loop(n);
+          stepidx = gl_local % steps_a[l];
+          npass = gl_pass;
+        ) : (
+          stepidx = ((n % steps_a[l]) + steps_a[l]) % steps_a[l];
+          npass = floor(n / steps_a[l]);
+        );
         pv = pat[l * MAX_STEPS + stepidx];
         // value 2 = plays only every second cycle
-        (pv && (pv != 2 || floor(n / steps_a[l]) % 2 != 0)) ? (
-          tsh = t + (ndg_a[l] / 100 + ((stepidx & 1) ? swg_a[l] / 100 : 0)) * stepdur;
+        (pv && (pv != 2 || npass % 2 != 0)) ? (
+          tsh = t + (ndg_a[l] / 100 * step_rand(n, l + 1)
+            + ((stepidx & 1) ? swg_a[l] / 100 : 0) + wob_amt) * stepdur;
           (tsh >= blk_start && tsh < blk_end) ? (
             ofs = min(max(0, floor((tsh - blk_start) * spb)), samplesblock - 1);
             hvel = vel_a[l];
             vhm_a[l] > 0 ? hvel = max(1, floor(hvel * (1 - rand(1) * vhm_a[l] / 100 * 0.7)));
-            smp_len[l] > 0 ? (
+            (dsyn_a[l] || smp_len[l] > 0) ? (
               v_del[l] = ofs;
-              v_pos[l] = 0;
+              // CRP starts the sample part-way in; the synth drum always
+              // starts at 0 because its click keys off the first 3 samples
+              v_pos[l] = dsyn_a[l] ? 0
+                : floor(dcrp_a[l] / 100 * smp_len[l] * 0.95);
               v_on[l] = 1;
               v_gain[l] = hvel / 127;
               fenv[l] = 1;
+              dsyn_a[l] ? (
+                d_env[l] = 1; d_nze[l] = 1; d_ph[l] = 0; d_sph[l] = 0;
+                // GATE stretches the body's decay, 20ms .. 320ms
+                d_dec[l] = exp(-1 / ((0.02 + gate_a[l] / 200 * 0.6) * srate));
+                d_nzd[l] = exp(-1 / (0.03 * srate));
+                d_f0[l] = 55 * pow(2, pit_a[l] / 12);
+                d_nse[l] = dnse_a[l] / 100; d_swp[l] = dswp_a[l] / 100;
+                d_sub[l] = dsub_a[l] / 100; d_clk[l] = dclk_a[l] / 100;
+              );
             ) : (
               nt = note_a[l];
               ch = chan_a[l];
@@ -946,10 +1504,18 @@ playing ? (
       n = ceil((blk_start - stepdur) / stepdur - 0.000000001);
       t = n * stepdur;
       while (t < blk_end + stepdur) (
-        stepidx = ((n % sp[2]) + sp[2]) % sp[2];
+        gld_time[0] ? (
+          gold_loop(n);
+          stepidx = gl_local % sp[2];
+          npass = gl_pass;
+        ) : (
+          stepidx = ((n % sp[2]) + sp[2]) % sp[2];
+          npass = floor(n / sp[2]);
+        );
         sv2 = ron[stepidx];
-        (sv2 && (sv2 != 2 || floor(n / sp[2]) % 2 != 0)) ? (
-          tsh = t + (snd_a[si] / 100 + ((stepidx & 1) ? ssw_a[si] / 100 : 0)) * stepdur;
+        (sv2 && (sv2 != 2 || npass % 2 != 0)) ? (
+          tsh = t + (snd_a[si] / 100 * step_rand(n, si + 17)
+            + ((stepidx & 1) ? ssw_a[si] / 100 : 0) + wob_amt) * stepdur;
           (tsh >= blk_start && tsh < blk_end) ? (
             ofs = min(max(0, floor((tsh - blk_start) * spb)), samplesblock - 1);
             // harmony: diatonic degree shift for 12-TET progs, exact cents for JI
@@ -961,6 +1527,7 @@ playing ? (
             si < 2 ? (
               // ---- mono voice (bass / melody) ----
               cents = deg_cents(rdg[stepidx] + dsh, escale) + hcents;
+              phi_tune[0] ? cents *= 0.6942419136;
               si == 0 ? gsnd_b[0] = ((ebase * 100 + cents) % 1200 + 1200) % 1200
                       : gsnd_m[0] = ((ebase * 100 + cents) % 1200 + 1200) % 1200;
               sp[10] ? (
@@ -999,6 +1566,7 @@ playing ? (
               v = 0;
               while (v < nv) (
                 rcv = deg_cents(rdg[stepidx] + dsh + v * 2, escale) + hcents;
+                phi_tune[0] ? rcv *= 0.6942419136;
                 tc = rcv;
                 vl_have[0] ? (
                   // nearest-octave pull = inversion; anchor within an octave
@@ -1060,27 +1628,61 @@ expected_beat = blk_end;
 p_playing = playing;
 
 @sample
+// perform mute + solo, resolved once per sample block. Any solo anywhere means
+// only soloed channels sound -- same rule as the browser port.
+any_solo = 0;
+_k = 0;
+while (_k < num_lanes) ( solo_lane[_k] ? any_solo = 1; _k += 1; );
+_k = 0;
+while (_k < NSYN) ( solo_syn[_k] ? any_solo = 1; _k += 1; );
+
 // drum sample voices -> mix (1/2) + stem pair (3/4 .. 17/18)
 c = 0;
 while (c < num_lanes) (
   v_del[c] > 0 ? (
     v_del[c] -= 1;
   ) : v_on[c] ? (
-    vp = v_pos[c];
-    vp < smp_len[c] ? (
-      vrate = smp_sr[c] / srate * v_rt[c];
-      ip = floor(vp);
-      frac = vp - ip;
-      vbase = smp_base + c * SMP_MAX;
-      vnch = smp_nch[c];
-      sa = vbase[ip * vnch];
-      sb = ip + 1 < smp_len[c] ? vbase[(ip + 1) * vnch] : 0;
-      smix = (sa + (sb - sa) * frac) * v_gain[c];
-      vnch >= 2 ? (
-        sa2 = vbase[ip * vnch + 1];
-        sb2 = ip + 1 < smp_len[c] ? vbase[(ip + 1) * vnch + 1] : 0;
-        smix2 = (sa2 + (sb2 - sa2) * frac) * v_gain[c];
-      ) : smix2 = smix;
+    dhave = 0;
+    dsyn_a[c] ? (
+      // synth drum: a swept sine body + noise burst + click + 30Hz sub, all
+      // under one fast decay, then the same per-lane filter as a sample
+      (d_env[c] < 0.0008 && d_nze[c] < 0.0008) ? v_on[c] = 0 : (
+        dsf = d_f0[c] * (1 + 4 * d_swp[c] * d_env[c] * d_env[c]);
+        d_ph[c] += dsf / srate; d_ph[c] >= 1 ? d_ph[c] -= 1;
+        d_sph[c] += 30 / srate; d_sph[c] >= 1 ? d_sph[c] -= 1;
+        dnn = d_nse[c];
+        dbdy = sin(2 * $pi * d_ph[c]) * d_env[c] * (1 - dnn * 0.5);
+        dnzs = (rand(2) - 1) * d_nze[c] * dnn;
+        dclick = v_pos[c] < 3 ? d_clk[c] * 0.9 : 0;
+        dsubs = sin(2 * $pi * d_sph[c]) * d_sub[c] * d_env[c];
+        smix = (dbdy + dnzs + dclick + dsubs) * v_gain[c] * 0.9;
+        smix2 = smix;
+        d_env[c] *= d_dec[c];
+        d_nze[c] *= d_nzd[c];
+        v_pos[c] += 1;
+        dhave = 1;
+      );
+    ) : (
+      vp = v_pos[c];
+      vp < smp_len[c] ? (
+        vrate = smp_sr[c] / srate * v_rt[c];
+        ip = floor(vp);
+        frac = vp - ip;
+        vbase = smp_base + c * SMP_MAX;
+        vnch = smp_nch[c];
+        sa = vbase[ip * vnch];
+        sb = ip + 1 < smp_len[c] ? vbase[(ip + 1) * vnch] : 0;
+        smix = (sa + (sb - sa) * frac) * v_gain[c];
+        vnch >= 2 ? (
+          sa2 = vbase[ip * vnch + 1];
+          sb2 = ip + 1 < smp_len[c] ? vbase[(ip + 1) * vnch + 1] : 0;
+          smix2 = (sa2 + (sb2 - sa2) * frac) * v_gain[c];
+        ) : smix2 = smix;
+        v_pos[c] = vp + vrate;
+        dhave = 1;
+      ) : v_on[c] = 0;
+    );
+    dhave ? (
       flt_f[c] < 1.99 ? (
         fl2 = flt_f[c] * 0.5;
         flt_lo[c] += fl2 * flt_bp[c];
@@ -1098,12 +1700,16 @@ while (c < num_lanes) (
         flt_bp2[c] += fl2 * hp;
         smix2 = flt_lo2[c];
       );
-      spl0 += smix;
-      spl1 += smix2;
+      // per-lane fader, then the mute/solo gate. The stem taps stay pre-gate
+      // so a muted lane still records to its own stem pair.
+      lg = dvol_a[c] / 100; lg *= lg;
+      smix *= lg; smix2 *= lg;
+      laud = (any_solo ? solo_lane[c] : 1) && !mute_a[c];
+      spl0 += smix * laud;
+      spl1 += smix2 * laud;
       spl(2 + c * 2) += smix;
       spl(3 + c * 2) += smix2;
-      v_pos[c] = vp + vrate;
-    ) : v_on[c] = 0;
+    );
   );
   c += 1;
 );
@@ -1114,14 +1720,23 @@ while (si2 < NSYN) (
   sv_del[si2] > 0 ? (
     sv_del[si2] -= 1;
     sv_del[si2] == 0 ? (
+      eng = sv_eng[si2];
       si2 < 2 ? (
         sv_tfreq[si2] = sv_nfreq[si2];
         (sv_gcoef[si2] >= 1 || sv_env[si2] < 0.001) ? sv_freq[si2] = sv_nfreq[si2];
+        // the physical engines are struck, not just gated: pluck the string,
+        // puff the glass, hit the bell
+        (eng == 1 || eng == 6) ? ks_excite(si2, sv_nfreq[si2]) :
+        eng == 2 ? (gls_brth[si2] = 1) :
+        eng == 5 ? bell_strike(si2, sv_nfreq[si2], bell_stk_a[si2], bl_dsc[si2]);
       ) : (
         vv = 0;
         while (vv < ch_nv[0]) (
           ch4_tfreq[vv] = ch4_nfreq[vv];
           (sv_gcoef[2] >= 1 || sv_env[2] < 0.001) ? ch4_freq[vv] = ch4_nfreq[vv];
+          (eng == 1 || eng == 6) ? ks_excite(2 + vv, ch4_nfreq[vv]) :
+          eng == 2 ? (gls_brc[vv] = 1) :
+          eng == 5 ? bell_strike(2 + vv, ch4_nfreq[vv], bell_stk_a[2], bl_dsc[2]);
           vv += 1;
         );
       );
@@ -1146,21 +1761,35 @@ while (si2 < NSYN) (
     );
 
     wv = sv_wv[si2];
+    eng = sv_eng[si2];
     si2 < 2 ? (
       sv_freq[si2] += (sv_tfreq[si2] - sv_freq[si2]) * sv_gcoef[si2];
       sv_ph[si2] += sv_freq[si2] / srate;
       sv_ph[si2] >= 1 ? sv_ph[si2] -= 1;
-      sv_phs[si2] += sv_freq[si2] * 0.5 / srate;
-      sv_phs[si2] >= 1 ? sv_phs[si2] -= 1;
-      osin = (sin(2 * $pi * sv_ph[si2]) * 0.8
-              + sin(2 * $pi * sv_phs[si2]) * 0.5
-              + sin(4 * $pi * sv_ph[si2]) * 0.18) / 1.1;
-      otri = 1 - 4 * abs(sv_ph[si2] - 0.5);
-      osaw = 2 * sv_ph[si2] - 1;
-      wv < 50 ? (
-        osc = osin + (otri - osin) * (wv / 50);
+      sph = sv_ph[si2];
+      // engine 3 (splice) has no sample bank of its own here, so it falls
+      // through to the classic osc rather than going silent
+      (eng == 1 || eng == 6) ? (
+        osc = ks_step(si2, ks_dec[si2], ks_brt[si2], 0);
+      ) : eng == 2 ? (
+        osc = glass_voice(si2, sph, gls_mix[si2], 0, 0);
+      ) : eng == 4 ? (
+        osc = drone_voice(si2, sph, drone_op_a[si2], wv);
+      ) : eng == 5 ? (
+        osc = bell_voice(si2);
       ) : (
-        osc = otri + (osaw - otri) * ((wv - 50) / 50);
+        sv_phs[si2] += sv_freq[si2] * 0.5 / srate;
+        sv_phs[si2] >= 1 ? sv_phs[si2] -= 1;
+        osin = (sin(2 * $pi * sph) * 0.8
+                + sin(2 * $pi * sv_phs[si2]) * 0.5
+                + sin(4 * $pi * sph) * 0.18) / 1.1;
+        otri = 1 - 4 * abs(sph - 0.5);
+        osaw = 2 * sph - 1;
+        wv < 50 ? (
+          osc = osin + (otri - osin) * (wv / 50);
+        ) : (
+          osc = otri + (osaw - otri) * ((wv - 50) / 50);
+        );
       );
       so = osc * sv_env[si2] * sv_gain[si2];
     ) : (
@@ -1171,17 +1800,40 @@ while (si2 < NSYN) (
         ch4_ph[vv] += ch4_freq[vv] / srate;
         ch4_ph[vv] >= 1 ? ch4_ph[vv] -= 1;
         cph = ch4_ph[vv];
-        osin = sin(2 * $pi * cph) + 0.15 * sin(4 * $pi * cph);
-        otri = 1 - 4 * abs(cph - 0.5);
-        osaw = 2 * cph - 1;
-        wv < 50 ? (
-          csum += osin + (otri - osin) * (wv / 50);
+        eng == 1 ? (
+          csum += ks_step(2 + vv, ks_dec[2], ks_brt[2], 0);
+        ) : eng == 2 ? (
+          csum += glass_voice(2, cph, gls_mix[2], 1, vv);
+        ) : eng == 4 ? (
+          csum += drone_voice(2, cph, drone_op_a[2], wv);
+        ) : eng == 5 ? (
+          csum += bell_voice(2 + vv);
+        ) : eng == 6 ? (
+          // Sustain pedal: every string hears a little of all the others, so
+          // held chords bloom the way an open piano does. The coupling has to
+          // be LOSSY -- a near-lossless comb integrates any DC -- so strip the
+          // running mean and scale the bleed by the loop's own losses. The
+          // strings share energy; they never create it.
+          pno_dc[2] += 0.0008 * (pno_prv[2] - pno_dc[2]);
+          p_ac = pno_prv[2] - pno_dc[2];
+          p_inj = p_ac * (pno_a[2] / 100) * (1 - ks_dec[2]) * 0.6 / max(1, ch_nv[0]);
+          csum += ks_step(2 + vv, ks_dec[2], ks_brt[2], p_inj);
         ) : (
-          csum += otri + (osaw - otri) * ((wv - 50) / 50);
+          osin = sin(2 * $pi * cph) + 0.15 * sin(4 * $pi * cph);
+          otri = 1 - 4 * abs(cph - 0.5);
+          osaw = 2 * cph - 1;
+          wv < 50 ? (
+            csum += osin + (otri - osin) * (wv / 50);
+          ) : (
+            csum += otri + (osaw - otri) * ((wv - 50) / 50);
+          );
         );
         vv += 1;
       );
-      so = csum * 0.35 * sv_env[2] * sv_gain[2];
+      eng == 6 ? (pno_prv[2] = csum);
+      // the physical engines land at very different levels than the osc stack
+      so = csum * ((eng == 1 || eng == 3) ? 0.5 : eng == 6 ? 1.7 : 0.35)
+           * sv_env[2] * sv_gain[2];
     );
 
     sv_fon[si2] ? (
@@ -1199,8 +1851,11 @@ while (si2 < NSYN) (
       sv_bp[si2] += sf * s_hp;
       so = sv_lo[si2];
     );
-    spl0 += so;
-    spl1 += so;
+    // mute/solo gate at the render, so it responds instantly and also silences
+    // a latched or still-ringing voice rather than only stopping new notes
+    saud = (any_solo ? solo_syn[si2] : 1) && !mute_syn[si2];
+    spl0 += so * saud;
+    spl1 += so * saud;
     spl(18 + si2 * 2) += so;
     spl(19 + si2 * 2) += so;
   );
@@ -1307,6 +1962,13 @@ click ? (
     sprintf(#status, "sample pickers: %s", smp_show ? "shown below" : "hidden");
     have_status = 1;
   ) :
+  (mouse_y < 28 && mouse_x >= gfx_w - 208 && mouse_x < gfx_w - 112) ? (
+    dpage = !dpage;
+    sprintf(#status, "drum lanes: %s", dpage
+      ? "VOICE page - SYN switches the lane to the internal drum"
+      : "PATTERN page");
+    have_status = 1;
+  ) :
   (mouse_y >= y_btn && mouse_y < y_btn + 18) ? (
     mouse_x >= 8 && mouse_x < 60 ? num_lanes = min(LANES_CAP, num_lanes + 1) :
     mouse_x >= 64 && mouse_x < 116 ? num_lanes = max(1, num_lanes - 1) :
@@ -1372,12 +2034,22 @@ click ? (
       ) :
       (mouse_y >= ys + rowh && mouse_y < ys + 2 * rowh) ? (
         hit = 1;
-        mouse_x >= x_fields && mouse_x < x_fields + 14 * fieldw ? (
+        mouse_x >= x_fields && mouse_x < x_fields + 16 * fieldw ? (
           drag_f = floor((mouse_x - x_fields) / fieldw);
           drag_y = mouse_y;
           drag_synth = gsi;
-          drag_v = sget(gsi, r2map(drag_f));
-          drag_mode = 10;
+          drag_f == 14 ? (
+            drag_v = eng_a[gsi];
+            drag_mode = 18;
+            sprintf(#status, "%s %s", syn_name(gsi), eng_blurb(eng_a[gsi]));
+            have_status = 1;
+          ) : drag_f == 15 ? (
+            drag_v = engp_get(gsi);
+            drag_mode = 19;
+          ) : (
+            drag_v = sget(gsi, r2map(drag_f));
+            drag_mode = 10;
+          );
         ) :
         mouse_x >= x_euc && mouse_x < x_euc + 32 ? (
           sset(gsi, 10, !sget(gsi, 10));
@@ -1415,12 +2087,26 @@ click ? (
     !hit ? (
       ml = floor((mouse_y - top) / rowh);
       (ml >= 0 && ml < num_lanes && mouse_y >= top) ? (
-        mouse_x >= x_fields && mouse_x < x_fields + 18 * fieldw ? (
+        mouse_x >= x_fields && mouse_x < x_fields + (dpage ? DV_N : 18) * fieldw ? (
           drag_f = floor((mouse_x - x_fields) / fieldw);
           drag_lane = ml;
           drag_y = mouse_y;
-          drag_v = get_param(ml, drag_f);
-          drag_mode = drag_f == 5 ? 8 : 1;
+          dpage ? (
+            drag_f == 0 ? (
+              // SYN is a switch, not a value: tap it
+              dsyn_a[ml] = !dsyn_a[ml];
+              sprintf(#status, "lane %d: %s", ml + 1,
+                dsyn_a[ml] ? "internal synth drum - PIT tunes it, GATE is the decay"
+                           : (smp_len[ml] > 0 ? "sample" : "MIDI out"));
+              have_status = 1;
+            ) : (
+              drag_v = dv_get(ml, drag_f);
+              drag_mode = 20;
+            );
+          ) : (
+            drag_v = get_param(ml, drag_f);
+            drag_mode = drag_f == 5 ? 8 : 1;
+          );
         ) :
         mouse_x >= x_mute && mouse_x < x_mute + 18 ? (
           mute_a[ml] = !mute_a[ml];
@@ -1507,6 +2193,24 @@ lmb || rmb ? (
     d = floor((drag_y - mouse_y) / 4);
     sset(drag_synth, r2map(drag_f), drag_v + ((drag_f == 4 || drag_f == 13) ? d * 0.25 : drag_f == 8 ? d * 10 : d));
   ) :
+  drag_mode == 20 ? (
+    dv_set(drag_lane, drag_f, drag_v + floor((drag_y - mouse_y) / 4));
+  ) :
+  drag_mode == 18 ? (
+    d = floor((drag_y - mouse_y) / 4);
+    dv = max(0, min(6, drag_v + d));
+    // splice has no sample bank of its own in the plugin, so step over it
+    dv == 3 ? dv = d > 0 ? 4 : 2;
+    dv != eng_a[drag_synth] ? (
+      eng_a[drag_synth] = dv;
+      sprintf(#status, "%s %s", syn_name(drag_synth), eng_blurb(dv));
+      have_status = 1;
+    );
+  ) :
+  drag_mode == 19 ? (
+    d = floor((drag_y - mouse_y) / 4);
+    engp_set(drag_synth, drag_v + d);
+  ) :
   drag_mode == 8 ? (
     d = floor((drag_y - mouse_y) / 4);
     d != rot_applied ? (
@@ -1587,26 +2291,38 @@ gfx_set(0.85, 0.9, 0.85);
 gfx_x = gfx_w - 104; gfx_y = 9;
 gfx_drawstr(smp_show ? "SAMPLES [-]" : "SAMPLES [+]", 1, gfx_w - 8, 24);
 
+// the drum lanes' field row has two pages; this flips between them
+dpage ? gfx_set(0.42, 0.34, 0.24) : gfx_set(0.24, 0.26, 0.3);
+gfx_rect(gfx_w - 208, 6, 96, 20);
+gfx_set(0.9, 0.87, 0.82);
+gfx_x = gfx_w - 208; gfx_y = 9;
+gfx_drawstr(dpage ? "VOICE" : "PATTERN", 1, gfx_w - 112, 24);
+
 gl = 0;
 while (gl < num_lanes) (
   ry = top + gl * rowh;
   gsd = lmode_a[gl] ? span_a[gl] / 16 : span_a[gl] / steps_a[gl];
   playstep = (play_state & 1) ? (floor(g_beat / gsd) % steps_a[gl] + steps_a[gl]) % steps_a[gl] : -1;
 
-  smp_len[gl] > 0 ? (
+  // the source tab down the left edge: green = sample, amber = synth drum
+  dsyn_a[gl] ? (
+    gfx_set(0.85, 0.6, 0.25);
+    gfx_rect(2, ry + 4, 4, 32);
+  ) : smp_len[gl] > 0 ? (
     gfx_set(0.35, 0.8, 0.4);
     gfx_rect(2, ry + 4, 4, 32);
   );
 
   gf = 0;
-  while (gf < 18) (
+  while (gf < (dpage ? DV_N : 18)) (
     fx = x_fields + gf * fieldw;
-    gfx_set(0.19, 0.19, 0.21);
+    dpage ? gfx_set(0.23, 0.2, 0.18) : gfx_set(0.19, 0.19, 0.21);
     gfx_rect(fx, ry + 4, fieldw - 4, 32);
     gfx_setfont(1, "Arial", 10);
     gfx_set(0.45, 0.45, 0.5);
     gfx_x = fx; gfx_y = ry + 5;
     gfx_drawstr(
+      dpage ? dv_name(gf) :
       gf == 0 ? "NOTE" : gf == 1 ? "CH" : gf == 2 ? "ST" : gf == 3 ? "SPAN" :
       gf == 4 ? "PULS" : gf == 5 ? "ROT" : gf == 6 ? "VEL" : gf == 7 ? "GATE" :
       gf == 8 ? "PIT" : gf == 9 ? "LPF" : gf == 10 ? "FEV" :
@@ -1615,6 +2331,17 @@ while (gl < num_lanes) (
       1, fx + fieldw - 4, ry + 16);
     gfx_setfont(1, "Arial", 13);
     gfx_set(0.85, 0.85, 0.85);
+    dpage ? (
+      gf == 0 ? (
+        dsyn_a[gl] ? gfx_set(0.95, 0.72, 0.35) : gfx_set(0.5, 0.5, 0.55);
+        strcpy(#v, dsyn_a[gl] ? "ON" : "off");
+      ) : (
+        // the sample-only fields grey out on a synth lane and vice versa
+        (gf == 6 && dsyn_a[gl]) || (gf >= 1 && gf <= 4 && !dsyn_a[gl]) ?
+          gfx_set(0.42, 0.42, 0.46);
+        sprintf(#v, "%d", dv_get(gl, gf));
+      );
+    ) :
     gf == 0 ? note_name(note_a[gl], #v) :
     gf == 1 ? sprintf(#v, "%d", chan_a[gl] + 1) :
     gf == 3 ? sprintf(#v, "%g", span_a[gl]) :
@@ -1793,11 +2520,11 @@ while (gsi < NSYN) (
   gfx_x = x_mode; gfx_y = ys + 12;
   gfx_drawstr(gsp[15] ? "PM" : "PR", 1, x_mode + 26, ys + 30);
 
-  // row 2 (14 fields)
+  // row 2 (14 fields, then ENG + the engine's own knob)
   gf = 0;
-  while (gf < 14) (
+  while (gf < 16) (
     fx = x_fields + gf * fieldw;
-    gfx_set(0.21, 0.19, 0.23);
+    gf >= 14 ? gfx_set(0.19, 0.23, 0.25) : gfx_set(0.21, 0.19, 0.23);
     gfx_rect(fx, ys + rowh + 4, fieldw - 4, 32);
     gfx_setfont(1, "Arial", 10);
     gfx_set(0.5, 0.45, 0.5);
@@ -1806,7 +2533,7 @@ while (gsi < NSYN) (
       gf == 0 ? "CUT" : gf == 1 ? "RES" : gf == 2 ? "ENV" : gf == 3 ? "WAV" :
       gf == 4 ? "RATE" : gf == 5 ? "DEP" : gf == 6 ? "SHP" : gf == 7 ? "EMD" :
       gf == 8 ? "GLD" : gf == 9 ? "SWG" : gf == 10 ? "NDG" : gf == 11 ? "FEL" :
-      gf == 12 ? "PRG" : "SPD",
+      gf == 12 ? "PRG" : gf == 13 ? "SPD" : gf == 14 ? "ENG" : engp_name(gsi),
       1, fx + fieldw - 4, ys + rowh + 16);
     gfx_setfont(1, "Arial", 13);
     (glk && gf >= 12) ? gfx_set(0.5, 0.5, 0.55) : gfx_set(0.85, 0.85, 0.85);
@@ -1825,6 +2552,11 @@ while (gsi < NSYN) (
     gf == 11 ? strcpy(#v, sfl_a[gsi] == 0 ? "STR" : sfl_a[gsi] == 1 ? "TRP" : "DOT") :
     gf == 12 ? (gsp[22] > 0 ? sprintf(#v, "P%d", gsp[22]) : strcpy(#v, "off")) :
     gf == 13 ? sprintf(#v, "%g", gsp[23]) :
+    gf == 14 ? strcpy(#v, eng_name(eng_a[gsi])) :
+    gf == 15 ? (
+      eng_a[gsi] == 0 || eng_a[gsi] == 1 || eng_a[gsi] == 3 ? strcpy(#v, "--")
+        : sprintf(#v, "%d", engp_get(gsi));
+    ) :
              sprintf(#v, "%d", sget(gsi, r2map(gf)));
     gfx_x = fx; gfx_y = ys + rowh + 18;
     gfx_drawstr(#v, 1, fx + fieldw - 4, ys + rowh + 34);

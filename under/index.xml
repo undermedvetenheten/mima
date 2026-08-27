@@ -15,6 +15,16 @@
         <source type="data" file="supergnome/dr55_sn.wav">https://mima.chat/under/supergnome/dr55_sn.wav</source>
         <source type="data" file="supergnome/dr55_rim.wav">https://mima.chat/under/supergnome/dr55_rim.wav</source>
       </version>
+      <version name="1.1.0" author="joade comack" time="2026-08-27T00:00:00Z">
+        <changelog><![CDATA[Six synth engines, the synth drum, and web parity.
+- ENG on each synth section picks the voice: OSC / STR (plucked string) / GLS (glass) / DRN (throat-song drone) / BEL (bell + gong) / PNO (piano), each with one contextual knob (CYC / OPEN / STK / PED)
+- Drum lanes get a second field page: the PATTERN / VOICE button flips the row to SYN NSE SWP SUB CLK VOL CRP. SYN turns a lane into the internal synth drum - swept sine body, noise burst, click and 30Hz sub - instead of a sample or MIDI
+- Saved state now matches the browser port offset for offset, so a groove means the same thing in both. Older saves load unchanged]]></changelog>
+        <source file="sequencer_supergnome.jsfx">https://mima.chat/under/supergnome/sequencer_supergnome.jsfx</source>
+        <source type="data" file="supergnome/dr55_bd.wav">https://mima.chat/under/supergnome/dr55_bd.wav</source>
+        <source type="data" file="supergnome/dr55_sn.wav">https://mima.chat/under/supergnome/dr55_sn.wav</source>
+        <source type="data" file="supergnome/dr55_rim.wav">https://mima.chat/under/supergnome/dr55_rim.wav</source>
+      </version>
     </reapack>
   </category>
   <metadata>
